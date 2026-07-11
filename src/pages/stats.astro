@@ -1,0 +1,37 @@
+---
+import Layout from '../layouts/Layout.astro';
+import StatsCharts from '../components/StatsCharts';
+import { fetchScoredGames, fetchBallStats, groupByLaneCondition, average } from '../lib/stats';
+
+const { supabase } = Astro.locals;
+
+const scoredGames = await fetchScoredGames(supabase);
+const ballStats = await fetchBallStats(supabase);
+
+const overallAverage = average(scoredGames.map((g) => g.score));
+const byLaneCondition = groupByLaneCondition(scoredGames);
+const byBall = ballStats.map((b) => ({ label: b.ballName, value: b.avgPinsPerShot, count: b.shotCount }));
+
+let runningSum = 0;
+const averageOverTime = scoredGames.map((g, i) => {
+  runningSum += g.score;
+  return { date: g.sessionDate, score: runningSum / (i + 1) };
+});
+---
+
+<Layout title="Stats">
+  <nav class="top"><a href="/dashboard">&larr; Dashboard</a></nav>
+  <h1>Stats</h1>
+
+  {scoredGames.length === 0 ? (
+    <p class="empty">No scored non-practice games yet — log a few games and come back.</p>
+  ) : (
+    <StatsCharts
+      client:load
+      overallAverage={overallAverage}
+      byLaneCondition={byLaneCondition}
+      byBall={byBall}
+      averageOverTime={averageOverTime}
+    />
+  )}
+</Layout>
