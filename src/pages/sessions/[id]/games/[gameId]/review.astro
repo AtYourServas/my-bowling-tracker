@@ -1,0 +1,82 @@
+---
+import Layout from '../../../../../layouts/Layout.astro';
+import { fetchDerivedScoreForGame } from '../../../../../lib/scoring';
+
+const { supabase } = Astro.locals;
+const { id: sessionId, gameId } = Astro.params;
+
+const { data: game } = await supabase.from('games').select('*').eq('id', gameId).maybeSingle();
+
+if (!game) {
+  return Astro.redirect(`/sessions/${sessionId}`);
+}
+
+const derivedScore = await fetchDerivedScoreForGame(supabase, gameId!);
+
+const { data: frames } = await supabase
+  .from('frames')
+  .select(
+    'frame_number, shots(id, pins_standing, strike, spare, hook_timing, miss_direction, target_type, target_value, breakpoint_board, note, created_at, balls(name), approaches(name))',
+  )
+  .eq('game_id', gameId)
+  .order('frame_number', { ascending: true })
+  .order('created_at', { foreignTable: 'shots', ascending: true });
+
+const framesByNumber = new Map((frames ?? []).map((f: any) => [f.frame_number, f]));
+
+const gameLabel = game.is_practice ? 'Practice' : game.game_number ? `Game ${game.game_number}` : 'Game';
+const effectiveScore = game.final_score ?? derivedScore;
+---
+
+<Layout title={`${gameLabel} review`}>
+  <nav class="top"><a href={`/sessions/${sessionId}`}>&larr; Session</a></nav>
+  <h1>{gameLabel}</h1>
+  <p class="empty">
+    {effectiveScore != null ? `Score: ${effectiveScore}` : 'No score entered yet'}
+    {game.final_score != null && derivedScore != null && game.final_score !== derivedScore
+      ? ` (derived: ${derivedScore})`
+      : ''}
+  </p>
+
+  <a href={`/sessions/${sessionId}/games/${gameId}`}>Log shots / edit &rarr;</a>
+
+  <hr />
+
+  {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => {
+    const frame = framesByNumber.get(n);
+    const shots = frame?.shots ?? [];
+    return (
+      <div class="review-frame">
+        <h2>Frame {n}</h2>
+        {shots.length > 0 ? (
+          <ul>
+            {shots.map((shot: any) => (
+              <li>
+                {shot.strike
+                  ? 'Strike'
+                  : shot.spare
+                    ? 'Spare'
+                    : shot.pins_standing?.length
+                      ? `Standing: ${shot.pins_standing.join(', ')}`
+                      : 'No pins marked'}
+                {' — '}
+                {[
+                  shot.balls?.name,
+                  shot.approaches?.name ? `vs ${shot.approaches.name}` : null,
+                  shot.target_type && shot.target_value != null ? `${shot.target_type} ${shot.target_value}` : null,
+                  shot.hook_timing,
+                  shot.miss_direction,
+                  shot.note,
+                ]
+                  .filter(Boolean)
+                  .join(' · ') || 'No other details'}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p class="none">No shots logged</p>
+        )}
+      </div>
+    );
+  })}
+</Layout>

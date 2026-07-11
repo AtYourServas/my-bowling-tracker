@@ -99,10 +99,13 @@ const leagueSlots = [
       {leagueSlots.map((slot) => (
         <li>
           {slot.game ? (
-            <a class="card" href={`/sessions/${id}/games/${slot.game.id}`}>
-              <strong>{slot.label}</strong>
-              <span>{scoreLabel(slot.game)}</span>
-            </a>
+            <>
+              <a class="card" href={`/sessions/${id}/games/${slot.game.id}`}>
+                <strong>{slot.label}</strong>
+                <span>{scoreLabel(slot.game)}</span>
+              </a>
+              <a href={`/sessions/${id}/games/${slot.game.id}/review`} class="review-link">Review scorecard &rarr;</a>
+            </>
           ) : (
             <form method="POST">
               <input type="hidden" name="slot" value={slot.key} />
@@ -122,6 +125,7 @@ const leagueSlots = [
                 <strong>Game {i + 1}</strong>
                 <span>{scoreLabel(game)}</span>
               </a>
+              <a href={`/sessions/${id}/games/${game.id}/review`} class="review-link">Review scorecard &rarr;</a>
             </li>
           ))}
         </ul>

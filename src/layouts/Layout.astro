@@ -116,6 +116,12 @@ const { title } = Astro.props;
         font-size: 0.85rem;
         opacity: 0.75;
       }
+      .review-link {
+        display: block;
+        font-size: 0.8rem;
+        margin: 0.2rem 0 0;
+        text-align: right;
+      }
       .empty {
         font-size: 0.9rem;
         opacity: 0.75;
@@ -135,6 +141,52 @@ const { title } = Astro.props;
         border: none;
         border-top: 1px solid #ccc;
         margin: 1.5rem 0;
+      }
+
+      .filter-form {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.6rem;
+        margin: 0.75rem 0;
+        padding: 0.75rem;
+        border: 1px solid #ccc;
+        border-radius: 8px;
+      }
+      .filter-form label {
+        font-size: 0.8rem;
+      }
+      .filter-form button {
+        grid-column: span 2;
+      }
+      .filter-form a {
+        grid-column: span 2;
+        text-align: center;
+        font-size: 0.85rem;
+      }
+      .review-frame {
+        border: 1px solid #ccc;
+        border-radius: 8px;
+        padding: 0.6rem 0.8rem;
+        margin-bottom: 0.5rem;
+      }
+      .review-frame h2 {
+        font-size: 0.95rem;
+        margin: 0 0 0.35rem;
+      }
+      .review-frame ul {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.3rem;
+      }
+      .review-frame li {
+        font-size: 0.85rem;
+      }
+      .review-frame .none {
+        font-size: 0.85rem;
+        opacity: 0.6;
       }
 
       .score-box {

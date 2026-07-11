@@ -40,11 +40,36 @@ if (Astro.request.method === 'POST') {
   }
 }
 
-const { data: sessions } = await supabase
+const params = Astro.url.searchParams;
+const filterType = params.get('type') ?? '';
+const filterAlley = params.get('alley') ?? '';
+const filterFrom = params.get('from') ?? '';
+const filterTo = params.get('to') ?? '';
+const hasFilters = Boolean(filterType || filterAlley || filterFrom || filterTo);
+
+let sessionsQuery = supabase
   .from('sessions')
   .select('*')
   .order('session_date', { ascending: false })
   .order('created_at', { ascending: false });
+
+if (filterType === 'league' || filterType === 'practice') {
+  sessionsQuery = sessionsQuery.eq('session_type', filterType);
+}
+if (filterAlley) {
+  sessionsQuery = sessionsQuery.eq('alley_name', filterAlley);
+}
+if (filterFrom) {
+  sessionsQuery = sessionsQuery.gte('session_date', filterFrom);
+}
+if (filterTo) {
+  sessionsQuery = sessionsQuery.lte('session_date', filterTo);
+}
+
+const { data: sessions } = await sessionsQuery;
+
+const { data: alleyRows } = await supabase.from('sessions').select('alley_name').not('alley_name', 'is', null);
+const alleyOptions = Array.from(new Set((alleyRows ?? []).map((r) => r.alley_name))).sort();
 ---
 
 <Layout title="Sessions">
@@ -52,6 +77,36 @@ const { data: sessions } = await supabase
   <h1>Sessions</h1>
 
   {error && <p class="error">{error}</p>}
+
+  <form method="GET" class="filter-form">
+    <label>
+      Type
+      <select name="type">
+        <option value="" selected={!filterType}>All</option>
+        <option value="league" selected={filterType === 'league'}>League</option>
+        <option value="practice" selected={filterType === 'practice'}>Practice</option>
+      </select>
+    </label>
+    <label>
+      Alley
+      <select name="alley">
+        <option value="">All</option>
+        {alleyOptions.map((alley) => (
+          <option value={alley} selected={alley === filterAlley}>{alley}</option>
+        ))}
+      </select>
+    </label>
+    <label>
+      From
+      <input type="date" name="from" value={filterFrom} />
+    </label>
+    <label>
+      To
+      <input type="date" name="to" value={filterTo} />
+    </label>
+    <button type="submit">Filter</button>
+    {hasFilters && <a href="/sessions">Clear filters</a>}
+  </form>
 
   {sessions && sessions.length > 0 ? (
     <ul class="list">
@@ -65,7 +120,7 @@ const { data: sessions } = await supabase
       ))}
     </ul>
   ) : (
-    <p class="empty">No sessions yet — start one below.</p>
+    <p class="empty">{hasFilters ? 'No sessions match those filters.' : 'No sessions yet — start one below.'}</p>
   )}
 
   <hr />
