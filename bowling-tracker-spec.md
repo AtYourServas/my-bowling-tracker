@@ -78,6 +78,18 @@ Paste one phase below as a prompt, let Claude Code build and you test it, then m
 
 > Add a simple stats view: my average broken out by lane condition, by ball, and over time. Keep the first version to 2-3 charts max — we can expand later once we see what's actually useful.
 
+### Phase 5.5 — League setup & handicap _(do this once Phase 5's averages are working)_
+
+> Add a "My Leagues" page where I can create, edit, and delete leagues I bowl in — each with a name (e.g. "Tuesday Night Mixed"), a handicap basis score (default 200), a handicap percentage (default 80%), and a handicap type: **Rolling average** (my handicap for a given week is based on my league average from all *completed prior weeks only* — not including that week's own games — so it's locked in before I bowl and only shifts for the following week once that night's three games are logged; this is what my league actually does, so make it the default for new leagues), **Book average** (a fixed average I set once, e.g. from last season, that doesn't change until I update it manually), or **Manual entry** (I just type in whatever handicap number the league gives me that week, no calculation at all).
+>
+> When I start a league session, let me pick which league it belongs to from a dropdown of my leagues (separate from the existing team-name field, since a league and a team within that league aren't the same thing). For Rolling average leagues, calculate that session's handicap from my league average across all *other* league sessions for that league with an earlier date (excluding practice games, same as Phase 3/5) — not from anything logged in the current session. Handicap = `max(0, round((basis - that average) * percentage))`. For Book average, use the fixed value I set. For Manual entry, use whatever I typed for that session. Show the handicapped score (scratch + handicap) alongside the scratch score everywhere a league score already appears — the game page, session list, and the Phase 5 stats view. If it's my first week in a league (no prior sessions to average) or the league isn't set, just show the scratch score with no handicap rather than guessing.
+
+**New in the data model:**
+- **leagues** — owned by a user: name, handicap_basis (integer, default 200), handicap_percent (numeric, default 0.8), handicap_type (`rolling` / `book_average` / `manual`), book_average (integer, nullable — used when handicap_type is book_average), notes.
+- **sessions** — add `league_id` (FK to leagues, nullable, only used when session_type is league) and `manual_handicap` (integer, nullable — used when the league's handicap_type is manual, since the number can differ week to week). The existing `league_team_name` field stays as-is for the team name.
+
+RLS on `leagues` follows the same pattern as `balls`/`approaches` (owned directly by `user_id`).
+
 ### Phase 6 — AI suggestions _(future — don't build until you have real logged history)_
 
 > Once I have enough session history, build a feature that looks at my recent shots (ball reaction, target, pin results) and suggests adjustments — e.g. "you've been hitting light on the last 3 shots with this ball, consider moving your target left." This is also the right place to detect trends _within_ a league night — e.g. drift in target, hook timing, or miss direction from Practice through Game 3 as the lane transitions. We'll design the exact prompt and scope for this together when we get here.
