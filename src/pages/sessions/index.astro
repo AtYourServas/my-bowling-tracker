@@ -14,6 +14,9 @@ if (Astro.request.method === 'POST') {
   const session_date = formData.get('session_date')?.toString() || new Date().toISOString().slice(0, 10);
   const lane_condition_notes = formData.get('lane_condition_notes')?.toString().trim() || null;
   const league_team_name = formData.get('league_team_name')?.toString().trim() || null;
+  const league_id = formData.get('league_id')?.toString() || null;
+  const manualHandicapRaw = formData.get('manual_handicap')?.toString().trim();
+  const manual_handicap = manualHandicapRaw ? Number(manualHandicapRaw) : null;
 
   if (session_type !== 'league' && session_type !== 'practice') {
     error = 'Session type is required.';
@@ -28,6 +31,8 @@ if (Astro.request.method === 'POST') {
         session_date,
         lane_condition_notes,
         league_team_name: session_type === 'league' ? league_team_name : null,
+        league_id: session_type === 'league' ? league_id : null,
+        manual_handicap: session_type === 'league' ? manual_handicap : null,
       })
       .select('id')
       .single();
@@ -70,6 +75,8 @@ const { data: sessions } = await sessionsQuery;
 
 const { data: alleyRows } = await supabase.from('sessions').select('alley_name').not('alley_name', 'is', null);
 const alleyOptions = Array.from(new Set((alleyRows ?? []).map((r) => r.alley_name))).sort();
+
+const { data: leagues } = await supabase.from('leagues').select('id, name').order('name');
 ---
 
 <Layout title="Sessions">
@@ -147,8 +154,19 @@ const alleyOptions = Array.from(new Set((alleyRows ?? []).map((r) => r.alley_nam
       </select>
     </label>
     <label>
+      League (if league)
+      <select name="league_id">
+        <option value="">None</option>
+        {leagues?.map((league) => <option value={league.id}>{league.name}</option>)}
+      </select>
+    </label>
+    <label>
       League/team name (if league)
       <input type="text" name="league_team_name" />
+    </label>
+    <label>
+      Manual handicap (only used if the league's type is Manual entry)
+      <input type="number" name="manual_handicap" />
     </label>
     <label>
       Lane condition notes

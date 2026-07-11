@@ -1,0 +1,97 @@
+---
+import Layout from '../../layouts/Layout.astro';
+
+const { supabase } = Astro.locals;
+const { id } = Astro.params;
+
+let error: string | null = null;
+
+if (Astro.request.method === 'POST') {
+  const formData = await Astro.request.formData();
+  const intent = formData.get('intent')?.toString();
+
+  if (intent === 'delete') {
+    const { error: deleteError } = await supabase.from('leagues').delete().eq('id', id);
+    if (deleteError) {
+      error = deleteError.message;
+    } else {
+      return Astro.redirect('/leagues');
+    }
+  } else {
+    const name = formData.get('name')?.toString().trim() ?? '';
+    const basisRaw = formData.get('handicap_basis')?.toString().trim();
+    const handicap_basis = basisRaw ? Number(basisRaw) : 200;
+    const percentRaw = formData.get('handicap_percent')?.toString().trim();
+    const handicap_percent = percentRaw ? Number(percentRaw) / 100 : 0.8;
+    const handicap_type = formData.get('handicap_type')?.toString() || 'rolling';
+    const bookAvgRaw = formData.get('book_average')?.toString().trim();
+    const book_average = bookAvgRaw ? Number(bookAvgRaw) : null;
+    const notes = formData.get('notes')?.toString().trim() || null;
+
+    if (!name) {
+      error = 'League name is required.';
+    } else {
+      const { error: updateError } = await supabase
+        .from('leagues')
+        .update({ name, handicap_basis, handicap_percent, handicap_type, book_average, notes })
+        .eq('id', id);
+
+      if (updateError) {
+        error = updateError.message;
+      } else {
+        return Astro.redirect('/leagues');
+      }
+    }
+  }
+}
+
+const { data: league } = await supabase.from('leagues').select('*').eq('id', id).maybeSingle();
+
+if (!league) {
+  return Astro.redirect('/leagues');
+}
+---
+
+<Layout title={league.name}>
+  <nav class="top"><a href="/leagues">&larr; My Leagues</a></nav>
+  <h1>Edit league</h1>
+
+  {error && <p class="error">{error}</p>}
+
+  <form method="POST">
+    <label>
+      Name
+      <input type="text" name="name" required value={league.name} />
+    </label>
+    <label>
+      Handicap basis
+      <input type="number" name="handicap_basis" value={league.handicap_basis} />
+    </label>
+    <label>
+      Handicap percentage
+      <input type="number" name="handicap_percent" value={Math.round(league.handicap_percent * 100)} min="0" max="100" />
+    </label>
+    <label>
+      Handicap type
+      <select name="handicap_type">
+        <option value="rolling" selected={league.handicap_type === 'rolling'}>Rolling average (recalculated week to week from prior weeks)</option>
+        <option value="book_average" selected={league.handicap_type === 'book_average'}>Book average (fixed value I set)</option>
+        <option value="manual" selected={league.handicap_type === 'manual'}>Manual entry (I type the number each week)</option>
+      </select>
+    </label>
+    <label>
+      Book average (only used for Book average type)
+      <input type="number" name="book_average" value={league.book_average ?? ''} />
+    </label>
+    <label>
+      Notes
+      <textarea name="notes" rows="2">{league.notes ?? ''}</textarea>
+    </label>
+    <button type="submit">Save changes</button>
+  </form>
+
+  <form method="POST" class="row-actions">
+    <input type="hidden" name="intent" value="delete" />
+    <button type="submit" class="danger">Delete league</button>
+  </form>
+</Layout>

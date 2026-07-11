@@ -1,0 +1,105 @@
+---
+import Layout from '../../layouts/Layout.astro';
+
+const { supabase, user } = Astro.locals;
+
+let error: string | null = null;
+
+const HANDICAP_TYPE_LABELS: Record<string, string> = {
+  rolling: 'Rolling average',
+  book_average: 'Book average',
+  manual: 'Manual entry',
+};
+
+if (Astro.request.method === 'POST') {
+  const formData = await Astro.request.formData();
+  const name = formData.get('name')?.toString().trim() ?? '';
+  const basisRaw = formData.get('handicap_basis')?.toString().trim();
+  const handicap_basis = basisRaw ? Number(basisRaw) : 200;
+  const percentRaw = formData.get('handicap_percent')?.toString().trim();
+  const handicap_percent = percentRaw ? Number(percentRaw) / 100 : 0.8;
+  const handicap_type = formData.get('handicap_type')?.toString() || 'rolling';
+  const bookAvgRaw = formData.get('book_average')?.toString().trim();
+  const book_average = bookAvgRaw ? Number(bookAvgRaw) : null;
+  const notes = formData.get('notes')?.toString().trim() || null;
+
+  if (!name) {
+    error = 'League name is required.';
+  } else {
+    const { error: insertError } = await supabase.from('leagues').insert({
+      user_id: user!.id,
+      name,
+      handicap_basis,
+      handicap_percent,
+      handicap_type,
+      book_average,
+      notes,
+    });
+
+    if (insertError) {
+      error = insertError.message;
+    } else {
+      return Astro.redirect('/leagues');
+    }
+  }
+}
+
+const { data: leagues } = await supabase.from('leagues').select('*').order('name');
+---
+
+<Layout title="My Leagues">
+  <nav class="top"><a href="/dashboard">&larr; Dashboard</a></nav>
+  <h1>My Leagues</h1>
+
+  {error && <p class="error">{error}</p>}
+
+  {leagues && leagues.length > 0 ? (
+    <ul class="list">
+      {leagues.map((league) => (
+        <li>
+          <a class="card" href={`/leagues/${league.id}`}>
+            <strong>{league.name}</strong>
+            <span>{HANDICAP_TYPE_LABELS[league.handicap_type]} · basis {league.handicap_basis} · {Math.round(league.handicap_percent * 100)}%</span>
+          </a>
+        </li>
+      ))}
+    </ul>
+  ) : (
+    <p class="empty">No leagues yet — add your first one below.</p>
+  )}
+
+  <hr />
+
+  <h1>Add a league</h1>
+  <form method="POST">
+    <label>
+      Name
+      <input type="text" name="name" required placeholder="e.g. Tuesday Night Mixed" />
+    </label>
+    <label>
+      Handicap basis
+      <input type="number" name="handicap_basis" value="200" />
+    </label>
+    <label>
+      Handicap percentage
+      <input type="number" name="handicap_percent" value="80" min="0" max="100" />
+    </label>
+    <label>
+      Handicap type
+      <select name="handicap_type">
+        <option value="rolling">Rolling average (recalculated week to week from prior weeks)</option>
+        <option value="book_average">Book average (fixed value I set)</option>
+        <option value="manual">Manual entry (I type the number each week)</option>
+      </select>
+    </label>
+    <label>
+      Book average (only used for Book average type)
+      <input type="number" name="book_average" />
+    </label>
+    <label>
+      Notes
+      <textarea name="notes" rows="2"></textarea>
+    </label>
+    <button type="submit">Add league</button>
+  </form>
+</Layout>

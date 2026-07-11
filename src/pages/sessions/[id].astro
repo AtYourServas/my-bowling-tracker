@@ -1,6 +1,7 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 import { fetchDerivedScoreForGame } from '../../lib/scoring';
+import { fetchSessionHandicap } from '../../lib/handicap';
 
 const { supabase } = Astro.locals;
 const { id } = Astro.params;
@@ -9,32 +10,51 @@ let error: string | null = null;
 
 if (Astro.request.method === 'POST') {
   const formData = await Astro.request.formData();
-  const slot = formData.get('slot')?.toString();
+  const intent = formData.get('intent')?.toString();
 
-  const gameToInsert: Record<string, unknown> = { session_id: id };
+  if (intent === 'set_league') {
+    const league_id = formData.get('league_id')?.toString() || null;
+    const manualHandicapRaw = formData.get('manual_handicap')?.toString().trim();
+    const manual_handicap = manualHandicapRaw ? Number(manualHandicapRaw) : null;
 
-  if (slot === 'practice') {
-    gameToInsert.is_practice = true;
-    gameToInsert.game_number = null;
-  } else if (slot === 'game1' || slot === 'game2' || slot === 'game3') {
-    gameToInsert.is_practice = false;
-    gameToInsert.game_number = Number(slot.replace('game', ''));
+    const { error: updateError } = await supabase
+      .from('sessions')
+      .update({ league_id, manual_handicap })
+      .eq('id', id);
+
+    if (updateError) {
+      error = updateError.message;
+    } else {
+      return Astro.redirect(`/sessions/${id}`);
+    }
   } else {
-    // Freeform game for a standalone practice session.
-    gameToInsert.is_practice = false;
-    gameToInsert.game_number = null;
-  }
+    const slot = formData.get('slot')?.toString();
 
-  const { data, error: insertError } = await supabase
-    .from('games')
-    .insert(gameToInsert)
-    .select('id')
-    .single();
+    const gameToInsert: Record<string, unknown> = { session_id: id };
 
-  if (insertError) {
-    error = insertError.message;
-  } else {
-    return Astro.redirect(`/sessions/${id}/games/${data.id}`);
+    if (slot === 'practice') {
+      gameToInsert.is_practice = true;
+      gameToInsert.game_number = null;
+    } else if (slot === 'game1' || slot === 'game2' || slot === 'game3') {
+      gameToInsert.is_practice = false;
+      gameToInsert.game_number = Number(slot.replace('game', ''));
+    } else {
+      // Freeform game for a standalone practice session.
+      gameToInsert.is_practice = false;
+      gameToInsert.game_number = null;
+    }
+
+    const { data, error: insertError } = await supabase
+      .from('games')
+      .insert(gameToInsert)
+      .select('id')
+      .single();
+
+    if (insertError) {
+      error = insertError.message;
+    } else {
+      return Astro.redirect(`/sessions/${id}/games/${data.id}`);
+    }
   }
 }
 
@@ -43,6 +63,9 @@ const { data: session } = await supabase.from('sessions').select('*').eq('id', i
 if (!session) {
   return Astro.redirect('/sessions');
 }
+
+const sessionHandicap = await fetchSessionHandicap(supabase, session);
+const { data: leagues } = await supabase.from('leagues').select('id, name').order('name');
 
 const { data: games } = await supabase
   .from('games')
@@ -58,12 +81,22 @@ const derivedScores = new Map<string, number | null>(
 
 function scoreLabel(game: { id: string; final_score: number | null }) {
   const derived = derivedScores.get(game.id) ?? null;
+  const scratch = game.final_score ?? derived;
+
+  let label: string;
   if (game.final_score != null) {
-    return derived != null && derived !== game.final_score
+    label = derived != null && derived !== game.final_score
       ? `Score: ${game.final_score} (derived: ${derived})`
       : `Score: ${game.final_score}`;
+  } else {
+    label = derived != null ? `Score: ${derived} (derived)` : 'No score entered yet';
   }
-  return derived != null ? `Score: ${derived} (derived)` : 'No score entered yet';
+
+  if (scratch != null && sessionHandicap != null) {
+    label += ` · with hdcp: ${scratch + sessionHandicap}`;
+  }
+
+  return label;
 }
 
 const practiceGame = games?.find((g) => g.is_practice);
@@ -89,6 +122,31 @@ const leagueSlots = [
   {session.lane_condition_notes && <p class="empty">Lane: {session.lane_condition_notes}</p>}
 
   {error && <p class="error">{error}</p>}
+
+  {session.session_type === 'league' && (
+    <div class="score-box">
+      <form method="POST">
+        <input type="hidden" name="intent" value="set_league" />
+        <label>
+          League
+          <select name="league_id">
+            <option value="">None</option>
+            {leagues?.map((league) => (
+              <option value={league.id} selected={league.id === session.league_id}>{league.name}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Manual handicap (if league's type is Manual)
+          <input type="number" name="manual_handicap" value={session.manual_handicap ?? ''} />
+        </label>
+        <button type="submit">Save</button>
+      </form>
+      <p class="empty">
+        {sessionHandicap != null ? `This session's handicap: ${sessionHandicap}` : 'No handicap available for this session yet.'}
+      </p>
+    </div>
+  )}
 
   <hr />
 

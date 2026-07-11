@@ -1,10 +1,15 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { fetchDerivedScoreForGame } from './scoring';
+import { fetchSessionHandicap } from './handicap';
 
 export type ScoredGame = {
   gameId: string;
   score: number;
+  sessionId: string;
   sessionDate: string;
+  sessionType: string;
+  leagueId: string | null;
+  manualHandicap: number | null;
   laneCondition: string | null;
 };
 
@@ -17,7 +22,7 @@ export type StatsFilter = {
 export async function fetchScoredGames(supabase: SupabaseClient, filter: StatsFilter): Promise<ScoredGame[]> {
   const { data: games } = await supabase
     .from('games')
-    .select('id, final_score, sessions(session_date, lane_condition_notes, session_type)')
+    .select('id, final_score, session_id, sessions(session_date, lane_condition_notes, session_type, league_id, manual_handicap)')
     .eq('is_practice', false);
 
   if (!games) return [];
@@ -32,7 +37,11 @@ export async function fetchScoredGames(supabase: SupabaseClient, filter: StatsFi
     results.push({
       gameId: game.id,
       score,
+      sessionId: game.session_id,
       sessionDate: game.sessions.session_date,
+      sessionType: game.sessions.session_type,
+      leagueId: game.sessions.league_id,
+      manualHandicap: game.sessions.manual_handicap,
       laneCondition: game.sessions.lane_condition_notes,
     });
   }
@@ -78,6 +87,37 @@ export async function fetchBallStats(supabase: SupabaseClient, filter: StatsFilt
   return Array.from(totals.entries())
     .map(([ballName, { sum, count }]) => ({ ballName, avgPinsPerShot: sum / count, shotCount: count }))
     .sort((a, b) => b.avgPinsPerShot - a.avgPinsPerShot);
+}
+
+/**
+ * Average of (scratch + handicap) across league games whose session
+ * resolves to a handicap. Games with no resolvable handicap (no league set,
+ * or a rolling league with no prior-week average yet) are left out rather
+ * than guessed at.
+ */
+export async function fetchHandicappedAverage(supabase: SupabaseClient, games: ScoredGame[]): Promise<number | null> {
+  const handicapBySession = new Map<string, number | null>();
+  const handicappedScores: number[] = [];
+
+  for (const game of games) {
+    if (game.sessionType !== 'league' || !game.leagueId) continue;
+
+    if (!handicapBySession.has(game.sessionId)) {
+      const handicap = await fetchSessionHandicap(supabase, {
+        id: game.sessionId,
+        session_date: game.sessionDate,
+        session_type: game.sessionType,
+        league_id: game.leagueId,
+        manual_handicap: game.manualHandicap,
+      });
+      handicapBySession.set(game.sessionId, handicap);
+    }
+
+    const handicap = handicapBySession.get(game.sessionId);
+    if (handicap != null) handicappedScores.push(game.score + handicap);
+  }
+
+  return average(handicappedScores);
 }
 
 export function average(values: number[]): number | null {

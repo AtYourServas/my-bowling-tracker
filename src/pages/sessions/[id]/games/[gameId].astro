@@ -2,6 +2,7 @@
 import Layout from '../../../../layouts/Layout.astro';
 import ShotForm from '../../../../components/ShotForm';
 import { fetchDerivedScoreForGame } from '../../../../lib/scoring';
+import { fetchSessionHandicap } from '../../../../lib/handicap';
 
 const { supabase } = Astro.locals;
 const { id: sessionId, gameId } = Astro.params;
@@ -97,13 +98,19 @@ if (Astro.request.method === 'POST') {
   }
 }
 
-const { data: game } = await supabase.from('games').select('*, sessions(alley_name)').eq('id', gameId).maybeSingle();
+const { data: game } = await supabase
+  .from('games')
+  .select('*, sessions(alley_name, session_date, session_type, league_id, manual_handicap)')
+  .eq('id', gameId)
+  .maybeSingle();
 
 if (!game) {
   return Astro.redirect(`/sessions/${sessionId}`);
 }
 
 const derivedScore = await fetchDerivedScoreForGame(supabase, gameId!);
+const scratchScore = game.final_score ?? derivedScore;
+const sessionHandicap = await fetchSessionHandicap(supabase, { id: sessionId!, ...game.sessions });
 
 const { data: frameRow } = await supabase
   .from('frames')
@@ -149,6 +156,9 @@ const gameLabel = game.is_practice ? 'Practice' : game.game_number ? `Game ${gam
         Derived from frames: {derivedScore}
         {game.final_score != null && game.final_score !== derivedScore && ` (differs from final score of ${game.final_score})`}
       </p>
+    )}
+    {scratchScore != null && sessionHandicap != null && (
+      <p class="empty">With handicap ({sessionHandicap}): {scratchScore + sessionHandicap}</p>
     )}
   </div>
 
