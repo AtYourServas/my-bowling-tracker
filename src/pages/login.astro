@@ -1,0 +1,46 @@
+---
+import Layout from '../layouts/Layout.astro';
+
+let error: string | null = null;
+
+if (Astro.request.method === 'POST') {
+  const formData = await Astro.request.formData();
+  const email = formData.get('email')?.toString() ?? '';
+  const password = formData.get('password')?.toString() ?? '';
+
+  if (!email || !password) {
+    error = 'Email and password are required.';
+  } else {
+    const { error: signInError } = await Astro.locals.supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (signInError) {
+      error = signInError.message;
+    } else {
+      return Astro.redirect('/dashboard');
+    }
+  }
+}
+---
+
+<Layout title="Log in">
+  <h1>Log in</h1>
+
+  {error && <p class="error">{error}</p>}
+
+  <form method="POST">
+    <label>
+      Email
+      <input type="email" name="email" required autocomplete="email" />
+    </label>
+    <label>
+      Password
+      <input type="password" name="password" required autocomplete="current-password" />
+    </label>
+    <button type="submit">Log in</button>
+  </form>
+
+  <p class="switch">Need an account? <a href="/signup">Sign up</a></p>
+</Layout>

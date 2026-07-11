@@ -1,0 +1,84 @@
+---
+interface Props {
+  title: string;
+}
+
+const { title } = Astro.props;
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="generator" content={Astro.generator} />
+    <title>{title} · MyBowlingTracker</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: system-ui, sans-serif;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 1.5rem 1rem;
+        max-width: 480px;
+        margin-inline: auto;
+        line-height: 1.4;
+      }
+      h1 {
+        font-size: 1.5rem;
+      }
+      form {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        margin-top: 1rem;
+      }
+      label {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        font-size: 0.9rem;
+      }
+      input {
+        font-size: 1rem;
+        padding: 0.6rem;
+        border: 1px solid #888;
+        border-radius: 6px;
+      }
+      button {
+        font-size: 1rem;
+        padding: 0.7rem;
+        border: none;
+        border-radius: 6px;
+        background: #2b6cb0;
+        color: white;
+        cursor: pointer;
+      }
+      button:active {
+        opacity: 0.85;
+      }
+      .error {
+        color: #c53030;
+        font-size: 0.9rem;
+      }
+      .notice {
+        color: #2f855a;
+        font-size: 0.9rem;
+      }
+      p.switch {
+        font-size: 0.9rem;
+        margin-top: 1rem;
+      }
+      a {
+        color: #2b6cb0;
+      }
+    </style>
+  </head>
+  <body>
+    <slot />
+  </body>
+</html>

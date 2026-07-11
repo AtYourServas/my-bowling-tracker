@@ -1,0 +1,18 @@
+---
+import Layout from '../layouts/Layout.astro';
+
+const { user } = Astro.locals;
+---
+
+<Layout title="Home">
+  <h1>MyBowlingTracker</h1>
+  {
+    user ? (
+      <p><a href="/dashboard">Go to dashboard</a></p>
+    ) : (
+      <p>
+        <a href="/login">Log in</a> or <a href="/signup">sign up</a>
+      </p>
+    )
+  }
+</Layout>

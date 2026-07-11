@@ -1,0 +1,14 @@
+---
+import Layout from '../layouts/Layout.astro';
+
+const { user } = Astro.locals;
+---
+
+<Layout title="Dashboard">
+  <h1>Dashboard</h1>
+  <p>Signed in as {user?.email}</p>
+
+  <form method="POST" action="/api/auth/logout">
+    <button type="submit">Log out</button>
+  </form>
+</Layout>

@@ -1,0 +1,50 @@
+---
+import Layout from '../layouts/Layout.astro';
+
+let error: string | null = null;
+let notice: string | null = null;
+
+if (Astro.request.method === 'POST') {
+  const formData = await Astro.request.formData();
+  const email = formData.get('email')?.toString() ?? '';
+  const password = formData.get('password')?.toString() ?? '';
+
+  if (!email || !password) {
+    error = 'Email and password are required.';
+  } else {
+    const { data, error: signUpError } = await Astro.locals.supabase.auth.signUp({
+      email,
+      password,
+    });
+
+    if (signUpError) {
+      error = signUpError.message;
+    } else if (data.session) {
+      return Astro.redirect('/dashboard');
+    } else {
+      notice = 'Check your email to confirm your account before logging in.';
+    }
+  }
+}
+---
+
+<Layout title="Sign up">
+  <h1>Create an account</h1>
+
+  {error && <p class="error">{error}</p>}
+  {notice && <p class="notice">{notice}</p>}
+
+  <form method="POST">
+    <label>
+      Email
+      <input type="email" name="email" required autocomplete="email" />
+    </label>
+    <label>
+      Password
+      <input type="password" name="password" required minlength="6" autocomplete="new-password" />
+    </label>
+    <button type="submit">Sign up</button>
+  </form>
+
+  <p class="switch">Already have an account? <a href="/login">Log in</a></p>
+</Layout>
