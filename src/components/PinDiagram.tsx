@@ -7,10 +7,16 @@ const PIN_ROWS = [
   [1],
 ];
 
-export default function PinDiagram() {
-  const [standing, setStanding] = useState<Set<number>>(new Set());
-  const [strike, setStrike] = useState(false);
-  const [spare, setSpare] = useState(false);
+type Props = {
+  initialStanding?: number[];
+  initialStrike?: boolean;
+  initialSpare?: boolean;
+};
+
+export default function PinDiagram({ initialStanding = [], initialStrike = false, initialSpare = false }: Props) {
+  const [standing, setStanding] = useState<Set<number>>(new Set(initialStanding));
+  const [strike, setStrike] = useState(initialStrike);
+  const [spare, setSpare] = useState(initialSpare);
 
   function togglePin(pin: number) {
     setStrike(false);

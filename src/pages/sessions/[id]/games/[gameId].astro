@@ -168,17 +168,19 @@ const gameLabel = game.is_practice ? 'Practice' : game.game_number ? `Game ${gam
   {shots && shots.length > 0 && (
     <ul class="list">
       {shots.map((shot: any) => (
-        <li class="card">
-          <strong>
-            {shot.strike ? 'Strike' : shot.spare ? 'Spare' : shot.pins_standing?.length
-              ? `Standing: ${shot.pins_standing.join(', ')}`
-              : 'No pins marked'}
-          </strong>
-          <span>
-            {[shot.balls?.name, shot.target_type && shot.target_value != null ? `${shot.target_type} ${shot.target_value}` : null, shot.hook_timing, shot.miss_direction]
-              .filter(Boolean)
-              .join(' · ') || 'No other details'}
-          </span>
+        <li>
+          <a class="card" href={`/sessions/${sessionId}/games/${gameId}/shots/${shot.id}`}>
+            <strong>
+              {shot.strike ? 'Strike' : shot.spare ? 'Spare' : shot.pins_standing?.length
+                ? `Standing: ${shot.pins_standing.join(', ')}`
+                : 'No pins marked'}
+            </strong>
+            <span>
+              {[shot.balls?.name, shot.target_type && shot.target_value != null ? `${shot.target_type} ${shot.target_value}` : null, shot.hook_timing, shot.miss_direction]
+                .filter(Boolean)
+                .join(' · ') || 'No other details'}
+            </span>
+          </a>
         </li>
       ))}
     </ul>

@@ -11,14 +11,32 @@ type Approach = {
   reference_target_value: number | null;
 };
 
+type InitialShot = {
+  approach_id: string | null;
+  ball_id: string | null;
+  lineup_position: string | null;
+  slide_position: string | null;
+  target_type: string | null;
+  target_value: number | null;
+  pins_standing: number[];
+  strike: boolean;
+  spare: boolean;
+  hook_timing: string | null;
+  miss_direction: string | null;
+  breakpoint_board: number | null;
+  note: string | null;
+};
+
 type Props = {
   balls: Ball[];
   approaches: Approach[];
   frameNumber: number;
+  initial?: InitialShot;
+  submitLabel?: string;
 };
 
-export default function ShotForm({ balls, approaches, frameNumber }: Props) {
-  const [approachId, setApproachId] = useState('');
+export default function ShotForm({ balls, approaches, frameNumber, initial, submitLabel = 'Log shot' }: Props) {
+  const [approachId, setApproachId] = useState(initial?.approach_id ?? '');
 
   const selectedApproach = useMemo(
     () => approaches.find((a) => a.id === approachId) ?? null,
@@ -58,7 +76,7 @@ export default function ShotForm({ balls, approaches, frameNumber }: Props) {
 
       <label>
         Ball
-        <select name="ball_id" defaultValue="">
+        <select name="ball_id" defaultValue={initial?.ball_id ?? ''}>
           <option value="">None</option>
           {balls.map((ball) => (
             <option key={ball.id} value={ball.id}>
@@ -70,18 +88,18 @@ export default function ShotForm({ balls, approaches, frameNumber }: Props) {
 
       <label>
         Lineup / stance position
-        <input type="text" name="lineup_position" />
+        <input type="text" name="lineup_position" defaultValue={initial?.lineup_position ?? ''} />
       </label>
 
       <label>
         Slide position
-        <input type="text" name="slide_position" />
+        <input type="text" name="slide_position" defaultValue={initial?.slide_position ?? ''} />
       </label>
 
       <div className="target-row">
         <label>
           Target type
-          <select name="target_type" defaultValue="">
+          <select name="target_type" defaultValue={initial?.target_type ?? ''}>
             <option value="">None</option>
             <option value="board">Board</option>
             <option value="arrow">Arrow</option>
@@ -90,15 +108,19 @@ export default function ShotForm({ balls, approaches, frameNumber }: Props) {
         </label>
         <label>
           Target value
-          <input type="number" name="target_value" />
+          <input type="number" name="target_value" defaultValue={initial?.target_value ?? ''} />
         </label>
       </div>
 
-      <PinDiagram />
+      <PinDiagram
+        initialStanding={initial?.pins_standing ?? []}
+        initialStrike={initial?.strike ?? false}
+        initialSpare={initial?.spare ?? false}
+      />
 
       <label>
         Hook timing
-        <select name="hook_timing" defaultValue="">
+        <select name="hook_timing" defaultValue={initial?.hook_timing ?? ''}>
           <option value="">None</option>
           <option value="early">Early</option>
           <option value="on-time">On-time</option>
@@ -109,7 +131,7 @@ export default function ShotForm({ balls, approaches, frameNumber }: Props) {
 
       <label>
         Miss direction
-        <select name="miss_direction" defaultValue="">
+        <select name="miss_direction" defaultValue={initial?.miss_direction ?? ''}>
           <option value="">None</option>
           <option value="high">High</option>
           <option value="low">Low</option>
@@ -120,15 +142,15 @@ export default function ShotForm({ balls, approaches, frameNumber }: Props) {
 
       <label>
         Breakpoint board
-        <input type="number" name="breakpoint_board" />
+        <input type="number" name="breakpoint_board" defaultValue={initial?.breakpoint_board ?? ''} />
       </label>
 
       <label>
         Note
-        <textarea name="note" rows={2}></textarea>
+        <textarea name="note" rows={2} defaultValue={initial?.note ?? ''}></textarea>
       </label>
 
-      <button type="submit">Log shot</button>
+      <button type="submit">{submitLabel}</button>
     </form>
   );
 }
