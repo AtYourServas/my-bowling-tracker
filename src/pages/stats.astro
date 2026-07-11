@@ -5,8 +5,11 @@ import { fetchScoredGames, fetchBallStats, groupByLaneCondition, average } from 
 
 const { supabase } = Astro.locals;
 
-const scoredGames = await fetchScoredGames(supabase);
-const ballStats = await fetchBallStats(supabase);
+const includePracticeSessions = Astro.url.searchParams.get('practice') !== 'exclude';
+const filter = { includePracticeSessions };
+
+const scoredGames = await fetchScoredGames(supabase, filter);
+const ballStats = await fetchBallStats(supabase, filter);
 
 const overallAverage = average(scoredGames.map((g) => g.score));
 const byLaneCondition = groupByLaneCondition(scoredGames);
@@ -17,17 +20,31 @@ const averageOverTime = scoredGames.map((g, i) => {
   runningSum += g.score;
   return { date: g.sessionDate, score: runningSum / (i + 1) };
 });
+
+const heroLabel = includePracticeSessions ? 'Overall average' : 'League-only average';
 ---
 
 <Layout title="Stats">
   <nav class="top"><a href="/dashboard">&larr; Dashboard</a></nav>
   <h1>Stats</h1>
 
+  <form method="GET" class="filter-form">
+    <label style="grid-column: span 2;">
+      Practice sessions
+      <select name="practice">
+        <option value="include" selected={includePracticeSessions}>Include</option>
+        <option value="exclude" selected={!includePracticeSessions}>League only</option>
+      </select>
+    </label>
+    <button type="submit">Apply</button>
+  </form>
+
   {scoredGames.length === 0 ? (
-    <p class="empty">No scored non-practice games yet — log a few games and come back.</p>
+    <p class="empty">No scored games match this filter yet.</p>
   ) : (
     <StatsCharts
       client:load
+      heroLabel={heroLabel}
       overallAverage={overallAverage}
       byLaneCondition={byLaneCondition}
       byBall={byBall}

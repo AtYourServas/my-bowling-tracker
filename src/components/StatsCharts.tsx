@@ -4,6 +4,7 @@ type BarDatum = { label: string; value: number; count: number };
 type TimeDatum = { date: string; score: number };
 
 type Props = {
+  heroLabel: string;
   overallAverage: number | null;
   byLaneCondition: BarDatum[];
   byBall: BarDatum[];
@@ -186,11 +187,11 @@ function LineChart({ title, data }: { title: string; data: TimeDatum[] }) {
   );
 }
 
-export default function StatsCharts({ overallAverage, byLaneCondition, byBall, averageOverTime }: Props) {
+export default function StatsCharts({ heroLabel, overallAverage, byLaneCondition, byBall, averageOverTime }: Props) {
   return (
     <div className="stats-charts">
       <div className="hero-stat">
-        <span className="hero-label">Overall average</span>
+        <span className="hero-label">{heroLabel}</span>
         <span className="hero-value">{overallAverage != null ? overallAverage.toFixed(1) : '—'}</span>
       </div>
 
