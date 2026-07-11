@@ -1,0 +1,118 @@
+---
+import Layout from '../../layouts/Layout.astro';
+
+const { supabase } = Astro.locals;
+const { id } = Astro.params;
+
+let error: string | null = null;
+
+if (Astro.request.method === 'POST') {
+  const formData = await Astro.request.formData();
+  const intent = formData.get('intent')?.toString();
+
+  if (intent === 'delete') {
+    const { error: deleteError } = await supabase.from('approaches').delete().eq('id', id);
+    if (deleteError) {
+      error = deleteError.message;
+    } else {
+      return Astro.redirect('/approaches');
+    }
+  } else {
+    const name = formData.get('name')?.toString().trim() ?? '';
+    const reference_ball_id = formData.get('reference_ball_id')?.toString() || null;
+    const reference_lineup = formData.get('reference_lineup')?.toString().trim() || null;
+    const reference_slide = formData.get('reference_slide')?.toString().trim() || null;
+    const reference_target_type = formData.get('reference_target_type')?.toString() || null;
+    const targetValueRaw = formData.get('reference_target_value')?.toString().trim();
+    const reference_target_value = targetValueRaw ? Number(targetValueRaw) : null;
+    const notes = formData.get('notes')?.toString().trim() || null;
+
+    if (!name) {
+      error = 'Approach name is required.';
+    } else {
+      const { error: updateError } = await supabase
+        .from('approaches')
+        .update({
+          name,
+          reference_ball_id,
+          reference_lineup,
+          reference_slide,
+          reference_target_type,
+          reference_target_value,
+          notes,
+        })
+        .eq('id', id);
+
+      if (updateError) {
+        error = updateError.message;
+      } else {
+        return Astro.redirect('/approaches');
+      }
+    }
+  }
+}
+
+const { data: approach } = await supabase.from('approaches').select('*').eq('id', id).maybeSingle();
+
+if (!approach) {
+  return Astro.redirect('/approaches');
+}
+
+const { data: balls } = await supabase.from('balls').select('id, name').order('name');
+---
+
+<Layout title={approach.name}>
+  <nav class="top"><a href="/approaches">&larr; My Approaches</a></nav>
+  <h1>Edit approach</h1>
+
+  {error && <p class="error">{error}</p>}
+
+  <form method="POST">
+    <label>
+      Name
+      <input type="text" name="name" required value={approach.name} />
+    </label>
+    <label>
+      Reference ball
+      <select name="reference_ball_id">
+        <option value="">None</option>
+        {balls?.map((ball) => (
+          <option value={ball.id} selected={ball.id === approach.reference_ball_id}>
+            {ball.name}
+          </option>
+        ))}
+      </select>
+    </label>
+    <label>
+      Reference lineup / stance
+      <input type="text" name="reference_lineup" value={approach.reference_lineup ?? ''} />
+    </label>
+    <label>
+      Reference slide position
+      <input type="text" name="reference_slide" value={approach.reference_slide ?? ''} />
+    </label>
+    <label>
+      Target type
+      <select name="reference_target_type">
+        <option value="" selected={!approach.reference_target_type}>None</option>
+        <option value="board" selected={approach.reference_target_type === 'board'}>Board</option>
+        <option value="arrow" selected={approach.reference_target_type === 'arrow'}>Arrow</option>
+        <option value="pin" selected={approach.reference_target_type === 'pin'}>Pin</option>
+      </select>
+    </label>
+    <label>
+      Target value
+      <input type="number" name="reference_target_value" value={approach.reference_target_value ?? ''} />
+    </label>
+    <label>
+      Notes
+      <textarea name="notes" rows="3">{approach.notes ?? ''}</textarea>
+    </label>
+    <button type="submit">Save changes</button>
+  </form>
+
+  <form method="POST" class="row-actions">
+    <input type="hidden" name="intent" value="delete" />
+    <button type="submit" class="danger">Delete approach</button>
+  </form>
+</Layout>

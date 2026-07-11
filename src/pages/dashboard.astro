@@ -8,6 +8,11 @@ const { user } = Astro.locals;
   <h1>Dashboard</h1>
   <p>Signed in as {user?.email}</p>
 
+  <nav class="top">
+    <a href="/balls">My Balls</a>
+    <a href="/approaches">My Approaches</a>
+  </nav>
+
   <form method="POST" action="/api/auth/logout">
     <button type="submit">Log out</button>
   </form>

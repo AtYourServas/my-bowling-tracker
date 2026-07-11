@@ -1,0 +1,81 @@
+---
+import Layout from '../../layouts/Layout.astro';
+
+const { supabase, user } = Astro.locals;
+
+let error: string | null = null;
+
+if (Astro.request.method === 'POST') {
+  const formData = await Astro.request.formData();
+  const name = formData.get('name')?.toString().trim() ?? '';
+  const brand_model = formData.get('brand_model')?.toString().trim() || null;
+  const weightRaw = formData.get('weight')?.toString().trim();
+  const weight = weightRaw ? Number(weightRaw) : null;
+  const layout_notes = formData.get('layout_notes')?.toString().trim() || null;
+
+  if (!name) {
+    error = 'Ball name is required.';
+  } else {
+    const { error: insertError } = await supabase
+      .from('balls')
+      .insert({ user_id: user!.id, name, brand_model, weight, layout_notes });
+
+    if (insertError) {
+      error = insertError.message;
+    } else {
+      return Astro.redirect('/balls');
+    }
+  }
+}
+
+const { data: balls } = await supabase
+  .from('balls')
+  .select('*')
+  .order('created_at', { ascending: false });
+---
+
+<Layout title="My Balls">
+  <nav class="top"><a href="/dashboard">&larr; Dashboard</a></nav>
+  <h1>My Balls</h1>
+
+  {error && <p class="error">{error}</p>}
+
+  {balls && balls.length > 0 ? (
+    <ul class="list">
+      {balls.map((ball) => (
+        <li>
+          <a class="card" href={`/balls/${ball.id}`}>
+            <strong>{ball.name}</strong>
+            {ball.brand_model && <span>{ball.brand_model}</span>}
+            {ball.weight && <span>{ball.weight} lb</span>}
+          </a>
+        </li>
+      ))}
+    </ul>
+  ) : (
+    <p class="empty">No balls yet — add your first one below.</p>
+  )}
+
+  <hr />
+
+  <h1>Add a ball</h1>
+  <form method="POST">
+    <label>
+      Name
+      <input type="text" name="name" required />
+    </label>
+    <label>
+      Brand / model
+      <input type="text" name="brand_model" />
+    </label>
+    <label>
+      Weight (lb)
+      <input type="number" name="weight" step="0.1" min="6" max="16" />
+    </label>
+    <label>
+      Layout notes
+      <textarea name="layout_notes" rows="3"></textarea>
+    </label>
+    <button type="submit">Add ball</button>
+  </form>
+</Layout>
