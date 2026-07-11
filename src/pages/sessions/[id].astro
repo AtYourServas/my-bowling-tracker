@@ -1,5 +1,6 @@
 ---
 import Layout from '../../layouts/Layout.astro';
+import { fetchDerivedScoreForGame } from '../../lib/scoring';
 
 const { supabase } = Astro.locals;
 const { id } = Astro.params;
@@ -49,6 +50,22 @@ const { data: games } = await supabase
   .eq('session_id', id)
   .order('created_at', { ascending: true });
 
+const derivedScores = new Map<string, number | null>(
+  await Promise.all(
+    (games ?? []).map(async (g) => [g.id, await fetchDerivedScoreForGame(supabase, g.id)] as const),
+  ),
+);
+
+function scoreLabel(game: { id: string; final_score: number | null }) {
+  const derived = derivedScores.get(game.id) ?? null;
+  if (game.final_score != null) {
+    return derived != null && derived !== game.final_score
+      ? `Score: ${game.final_score} (derived: ${derived})`
+      : `Score: ${game.final_score}`;
+  }
+  return derived != null ? `Score: ${derived} (derived)` : 'No score entered yet';
+}
+
 const practiceGame = games?.find((g) => g.is_practice);
 const game1 = games?.find((g) => g.game_number === 1);
 const game2 = games?.find((g) => g.game_number === 2);
@@ -84,7 +101,7 @@ const leagueSlots = [
           {slot.game ? (
             <a class="card" href={`/sessions/${id}/games/${slot.game.id}`}>
               <strong>{slot.label}</strong>
-              <span>{slot.game.final_score != null ? `Score: ${slot.game.final_score}` : 'No score entered yet'}</span>
+              <span>{scoreLabel(slot.game)}</span>
             </a>
           ) : (
             <form method="POST">
@@ -103,7 +120,7 @@ const leagueSlots = [
             <li>
               <a class="card" href={`/sessions/${id}/games/${game.id}`}>
                 <strong>Game {i + 1}</strong>
-                <span>{game.final_score != null ? `Score: ${game.final_score}` : 'No score entered yet'}</span>
+                <span>{scoreLabel(game)}</span>
               </a>
             </li>
           ))}
