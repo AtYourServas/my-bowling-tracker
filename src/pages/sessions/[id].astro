@@ -1,0 +1,120 @@
+---
+import Layout from '../../layouts/Layout.astro';
+
+const { supabase } = Astro.locals;
+const { id } = Astro.params;
+
+let error: string | null = null;
+
+if (Astro.request.method === 'POST') {
+  const formData = await Astro.request.formData();
+  const slot = formData.get('slot')?.toString();
+
+  const gameToInsert: Record<string, unknown> = { session_id: id };
+
+  if (slot === 'practice') {
+    gameToInsert.is_practice = true;
+    gameToInsert.game_number = null;
+  } else if (slot === 'game1' || slot === 'game2' || slot === 'game3') {
+    gameToInsert.is_practice = false;
+    gameToInsert.game_number = Number(slot.replace('game', ''));
+  } else {
+    // Freeform game for a standalone practice session.
+    gameToInsert.is_practice = false;
+    gameToInsert.game_number = null;
+  }
+
+  const { data, error: insertError } = await supabase
+    .from('games')
+    .insert(gameToInsert)
+    .select('id')
+    .single();
+
+  if (insertError) {
+    error = insertError.message;
+  } else {
+    return Astro.redirect(`/sessions/${id}/games/${data.id}`);
+  }
+}
+
+const { data: session } = await supabase.from('sessions').select('*').eq('id', id).maybeSingle();
+
+if (!session) {
+  return Astro.redirect('/sessions');
+}
+
+const { data: games } = await supabase
+  .from('games')
+  .select('*')
+  .eq('session_id', id)
+  .order('created_at', { ascending: true });
+
+const practiceGame = games?.find((g) => g.is_practice);
+const game1 = games?.find((g) => g.game_number === 1);
+const game2 = games?.find((g) => g.game_number === 2);
+const game3 = games?.find((g) => g.game_number === 3);
+
+const leagueSlots = [
+  { key: 'practice', label: 'Practice', game: practiceGame },
+  { key: 'game1', label: 'Game 1', game: game1 },
+  { key: 'game2', label: 'Game 2', game: game2 },
+  { key: 'game3', label: 'Game 3', game: game3 },
+];
+---
+
+<Layout title={session.alley_name || 'Session'}>
+  <nav class="top"><a href="/sessions">&larr; Sessions</a></nav>
+  <h1>{session.alley_name || 'Unnamed alley'}{session.lane_number ? ` · Lane ${session.lane_number}` : ''}</h1>
+  <p class="empty">
+    {session.session_date} · {session.session_type === 'league' ? 'League' : 'Practice'}
+    {session.league_team_name ? ` · ${session.league_team_name}` : ''}
+  </p>
+  {session.lane_condition_notes && <p class="empty">Lane: {session.lane_condition_notes}</p>}
+
+  {error && <p class="error">{error}</p>}
+
+  <hr />
+
+  <h1>Games</h1>
+
+  {session.session_type === 'league' ? (
+    <ul class="list">
+      {leagueSlots.map((slot) => (
+        <li>
+          {slot.game ? (
+            <a class="card" href={`/sessions/${id}/games/${slot.game.id}`}>
+              <strong>{slot.label}</strong>
+              <span>{slot.game.final_score != null ? `Score: ${slot.game.final_score}` : 'No score entered yet'}</span>
+            </a>
+          ) : (
+            <form method="POST">
+              <input type="hidden" name="slot" value={slot.key} />
+              <button type="submit">Add {slot.label}</button>
+            </form>
+          )}
+        </li>
+      ))}
+    </ul>
+  ) : (
+    <>
+      {games && games.length > 0 ? (
+        <ul class="list">
+          {games.map((game, i) => (
+            <li>
+              <a class="card" href={`/sessions/${id}/games/${game.id}`}>
+                <strong>Game {i + 1}</strong>
+                <span>{game.final_score != null ? `Score: ${game.final_score}` : 'No score entered yet'}</span>
+              </a>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p class="empty">No games yet — add one below.</p>
+      )}
+      <form method="POST" style="margin-top: 1rem;">
+        <input type="hidden" name="slot" value="new" />
+        <button type="submit">Add game</button>
+      </form>
+    </>
+  )}
+</Layout>

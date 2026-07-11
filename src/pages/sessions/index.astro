@@ -1,0 +1,104 @@
+---
+import Layout from '../../layouts/Layout.astro';
+
+const { supabase, user } = Astro.locals;
+
+let error: string | null = null;
+
+if (Astro.request.method === 'POST') {
+  const formData = await Astro.request.formData();
+  const alley_name = formData.get('alley_name')?.toString().trim() || null;
+  const laneRaw = formData.get('lane_number')?.toString().trim();
+  const lane_number = laneRaw ? Number(laneRaw) : null;
+  const session_type = formData.get('session_type')?.toString();
+  const session_date = formData.get('session_date')?.toString() || new Date().toISOString().slice(0, 10);
+  const lane_condition_notes = formData.get('lane_condition_notes')?.toString().trim() || null;
+  const league_team_name = formData.get('league_team_name')?.toString().trim() || null;
+
+  if (session_type !== 'league' && session_type !== 'practice') {
+    error = 'Session type is required.';
+  } else {
+    const { data, error: insertError } = await supabase
+      .from('sessions')
+      .insert({
+        user_id: user!.id,
+        alley_name,
+        lane_number,
+        session_type,
+        session_date,
+        lane_condition_notes,
+        league_team_name: session_type === 'league' ? league_team_name : null,
+      })
+      .select('id')
+      .single();
+
+    if (insertError) {
+      error = insertError.message;
+    } else {
+      return Astro.redirect(`/sessions/${data.id}`);
+    }
+  }
+}
+
+const { data: sessions } = await supabase
+  .from('sessions')
+  .select('*')
+  .order('session_date', { ascending: false })
+  .order('created_at', { ascending: false });
+---
+
+<Layout title="Sessions">
+  <nav class="top"><a href="/dashboard">&larr; Dashboard</a></nav>
+  <h1>Sessions</h1>
+
+  {error && <p class="error">{error}</p>}
+
+  {sessions && sessions.length > 0 ? (
+    <ul class="list">
+      {sessions.map((session) => (
+        <li>
+          <a class="card" href={`/sessions/${session.id}`}>
+            <strong>{session.alley_name || 'Unnamed alley'} {session.lane_number ? `· Lane ${session.lane_number}` : ''}</strong>
+            <span>{session.session_date} · {session.session_type === 'league' ? 'League' : 'Practice'}</span>
+          </a>
+        </li>
+      ))}
+    </ul>
+  ) : (
+    <p class="empty">No sessions yet — start one below.</p>
+  )}
+
+  <hr />
+
+  <h1>Start a session</h1>
+  <form method="POST">
+    <label>
+      Alley name
+      <input type="text" name="alley_name" />
+    </label>
+    <label>
+      Lane number
+      <input type="number" name="lane_number" min="1" />
+    </label>
+    <label>
+      Date
+      <input type="date" name="session_date" value={new Date().toISOString().slice(0, 10)} />
+    </label>
+    <label>
+      Session type
+      <select name="session_type" required>
+        <option value="league">League</option>
+        <option value="practice">Practice</option>
+      </select>
+    </label>
+    <label>
+      League/team name (if league)
+      <input type="text" name="league_team_name" />
+    </label>
+    <label>
+      Lane condition notes
+      <textarea name="lane_condition_notes" rows="2" placeholder="e.g. fresh oil, breaking down"></textarea>
+    </label>
+    <button type="submit">Start session</button>
+  </form>
+</Layout>

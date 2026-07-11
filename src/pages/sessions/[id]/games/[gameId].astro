@@ -1,0 +1,154 @@
+---
+import Layout from '../../../../layouts/Layout.astro';
+import ShotForm from '../../../../components/ShotForm';
+
+const { supabase } = Astro.locals;
+const { id: sessionId, gameId } = Astro.params;
+
+let error: string | null = null;
+
+const frameNumber = Math.min(10, Math.max(1, Number(Astro.url.searchParams.get('frame')) || 1));
+
+if (Astro.request.method === 'POST') {
+  const formData = await Astro.request.formData();
+
+  let { data: frame } = await supabase
+    .from('frames')
+    .select('id')
+    .eq('game_id', gameId)
+    .eq('frame_number', frameNumber)
+    .maybeSingle();
+
+  if (!frame) {
+    const { data: newFrame, error: frameError } = await supabase
+      .from('frames')
+      .insert({ game_id: gameId, frame_number: frameNumber })
+      .select('id')
+      .single();
+
+    if (frameError) {
+      error = frameError.message;
+    } else {
+      frame = newFrame;
+    }
+  }
+
+  if (frame) {
+    const pinsRaw = formData.get('pins_standing')?.toString() ?? '';
+    const pins_standing = pinsRaw
+      ? pinsRaw
+          .split(',')
+          .map(Number)
+          .filter((n) => n >= 1 && n <= 10)
+      : [];
+
+    const ball_id = formData.get('ball_id')?.toString() || null;
+    const approach_id = formData.get('approach_id')?.toString() || null;
+    const lineup_position = formData.get('lineup_position')?.toString().trim() || null;
+    const slide_position = formData.get('slide_position')?.toString().trim() || null;
+    const target_type = formData.get('target_type')?.toString() || null;
+    const targetValueRaw = formData.get('target_value')?.toString().trim();
+    const target_value = targetValueRaw ? Number(targetValueRaw) : null;
+    const strike = formData.get('strike') === 'true';
+    const spare = formData.get('spare') === 'true';
+    const hook_timing = formData.get('hook_timing')?.toString() || null;
+    const miss_direction = formData.get('miss_direction')?.toString() || null;
+    const breakpointRaw = formData.get('breakpoint_board')?.toString().trim();
+    const breakpoint_board = breakpointRaw ? Number(breakpointRaw) : null;
+    const note = formData.get('note')?.toString().trim() || null;
+
+    const { error: insertError } = await supabase.from('shots').insert({
+      frame_id: frame.id,
+      ball_id,
+      approach_id,
+      lineup_position,
+      slide_position,
+      target_type,
+      target_value,
+      pins_standing,
+      strike,
+      spare,
+      hook_timing,
+      miss_direction,
+      breakpoint_board,
+      note,
+    });
+
+    if (insertError) {
+      error = insertError.message;
+    } else {
+      return Astro.redirect(`/sessions/${sessionId}/games/${gameId}?frame=${frameNumber}`);
+    }
+  }
+}
+
+const { data: game } = await supabase.from('games').select('*, sessions(alley_name)').eq('id', gameId).maybeSingle();
+
+if (!game) {
+  return Astro.redirect(`/sessions/${sessionId}`);
+}
+
+const { data: frameRow } = await supabase
+  .from('frames')
+  .select('id')
+  .eq('game_id', gameId)
+  .eq('frame_number', frameNumber)
+  .maybeSingle();
+
+const { data: shots } = frameRow
+  ? await supabase
+      .from('shots')
+      .select('*, balls(name)')
+      .eq('frame_id', frameRow.id)
+      .order('created_at', { ascending: true })
+  : { data: [] };
+
+const { data: balls } = await supabase.from('balls').select('id, name').order('name');
+const { data: approaches } = await supabase
+  .from('approaches')
+  .select('id, name, reference_lineup, reference_slide, reference_target_type, reference_target_value')
+  .order('name');
+
+const gameLabel = game.is_practice ? 'Practice' : game.game_number ? `Game ${game.game_number}` : 'Game';
+---
+
+<Layout title={gameLabel}>
+  <nav class="top"><a href={`/sessions/${sessionId}`}>&larr; Session</a></nav>
+  <h1>{gameLabel}</h1>
+
+  {error && <p class="error">{error}</p>}
+
+  <div class="frame-picker">
+    {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
+      <a
+        class={`frame-btn${n === frameNumber ? ' active' : ''}`}
+        href={`/sessions/${sessionId}/games/${gameId}?frame=${n}`}
+      >
+        {n}
+      </a>
+    ))}
+  </div>
+
+  <h1>Frame {frameNumber}</h1>
+
+  {shots && shots.length > 0 && (
+    <ul class="list">
+      {shots.map((shot: any) => (
+        <li class="card">
+          <strong>
+            {shot.strike ? 'Strike' : shot.spare ? 'Spare' : shot.pins_standing?.length
+              ? `Standing: ${shot.pins_standing.join(', ')}`
+              : 'No pins marked'}
+          </strong>
+          <span>
+            {[shot.balls?.name, shot.target_type && shot.target_value != null ? `${shot.target_type} ${shot.target_value}` : null, shot.hook_timing, shot.miss_direction]
+              .filter(Boolean)
+              .join(' · ') || 'No other details'}
+          </span>
+        </li>
+      ))}
+    </ul>
+  )}
+
+  <ShotForm client:load balls={balls ?? []} approaches={approaches ?? []} frameNumber={frameNumber} />
+</Layout>

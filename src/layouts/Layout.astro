@@ -136,6 +136,99 @@ const { title } = Astro.props;
         border-top: 1px solid #ccc;
         margin: 1.5rem 0;
       }
+
+      /* Shot logging screen */
+      .frame-picker {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 0.4rem;
+        margin: 0.75rem 0;
+      }
+      .frame-btn {
+        display: block;
+        text-align: center;
+        padding: 0.6rem 0;
+        border-radius: 6px;
+        border: 1px solid #888;
+        text-decoration: none;
+        color: inherit;
+        font-size: 0.95rem;
+      }
+      .frame-btn.active {
+        background: #2b6cb0;
+        color: white;
+        border-color: #2b6cb0;
+      }
+      .reference-box {
+        display: flex;
+        flex-direction: column;
+        gap: 0.15rem;
+        border: 1px dashed #888;
+        border-radius: 8px;
+        padding: 0.6rem 0.8rem;
+        font-size: 0.85rem;
+        margin-top: -0.25rem;
+      }
+      .reference-box strong {
+        font-size: 0.9rem;
+      }
+      .target-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.75rem;
+      }
+      .pin-shortcuts {
+        display: flex;
+        gap: 0.75rem;
+        margin-top: 0.5rem;
+      }
+      .pin-shortcuts button {
+        flex: 1;
+        background: #718096;
+      }
+      .pin-shortcuts button.active {
+        background: #2f855a;
+      }
+      .pin-hint {
+        font-size: 0.8rem;
+        opacity: 0.75;
+        margin: 0.5rem 0 0.25rem;
+        text-align: center;
+      }
+      .pin-rows {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.5rem;
+      }
+      .pin-row {
+        display: flex;
+        gap: 0.5rem;
+      }
+      .pin {
+        width: 2.75rem;
+        height: 2.75rem;
+        border-radius: 50%;
+        border: 2px solid #888;
+        background: white;
+        color: #333;
+        font-size: 1rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+      }
+      .pin.standing {
+        background: #c53030;
+        border-color: #c53030;
+        color: white;
+      }
+      @media (prefers-color-scheme: dark) {
+        .pin {
+          background: #1a1a1a;
+          color: #eee;
+        }
+      }
     </style>
   </head>
   <body>
