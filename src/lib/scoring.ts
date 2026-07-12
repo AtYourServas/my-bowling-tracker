@@ -126,6 +126,47 @@ export async function fetchDerivedScoreForGame(
 }
 
 /**
+ * Derived scores for many games in a single round-trip (bulk version of
+ * fetchDerivedScoreForGame). Fetches every frame+shot for the given games at
+ * once, groups by game, and scores each in memory -- avoiding the per-game N+1
+ * that made the stats page slow. Every requested id gets an entry (null when the
+ * game has no resolvable score yet). Chunked so a huge id list stays within
+ * PostgREST's URL length limit.
+ */
+export async function fetchDerivedScoresForGames(
+  supabase: SupabaseClient,
+  gameIds: string[],
+): Promise<Map<string, number | null>> {
+  const result = new Map<string, number | null>();
+  if (gameIds.length === 0) return result;
+
+  const CHUNK = 200;
+  for (let i = 0; i < gameIds.length; i += CHUNK) {
+    const chunk = gameIds.slice(i, i + CHUNK);
+    const { data: frames } = await supabase
+      .from('frames')
+      .select('game_id, frame_number, shots(pins_standing, strike, spare, foul, created_at)')
+      .in('game_id', chunk)
+      .order('frame_number', { ascending: true })
+      .order('created_at', { foreignTable: 'shots', ascending: true });
+
+    const framesByGame = new Map<string, FrameLite[]>();
+    for (const frame of (frames ?? []) as any[]) {
+      const list = framesByGame.get(frame.game_id) ?? [];
+      list.push(frame as FrameLite);
+      framesByGame.set(frame.game_id, list);
+    }
+
+    for (const id of chunk) {
+      const gameFrames = framesByGame.get(id);
+      result.set(id, gameFrames ? computeDerivedScore(gameFrames) : null);
+    }
+  }
+
+  return result;
+}
+
+/**
  * Knocked-pin count for each roll in a single frame, derived from per-shot
  * pin state (the same rule computeScoresheet uses). The rack resets to 10
  * after any roll that clears it (or is fouled), which only matters for the
