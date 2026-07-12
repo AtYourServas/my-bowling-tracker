@@ -48,23 +48,22 @@ async function fetchPriorLeagueAverage(
   return scores.reduce((a, b) => a + b, 0) / scores.length;
 }
 
-/**
- * A session's handicap, per its league's handicap_type. Returns null when
- * the session isn't a league session, has no league set, or (for rolling
- * average) there isn't yet a prior-week average to calculate from.
- */
-export async function fetchSessionHandicap(
+export type SessionHandicap = {
+  /** What actually applies: the override if set, otherwise the calculated value. */
+  effective: number | null;
+  /** What the league's formula produces (null for manual-type leagues, or when it can't be computed yet). */
+  calculated: number | null;
+  /** A per-session manual override (`manual_handicap`), when the alley's number differs from ours. */
+  override: number | null;
+};
+
+/** The value a league's handicap_type formula produces. Null for manual leagues (no formula). */
+async function computeCalculatedHandicap(
   supabase: SupabaseClient,
   session: SessionForHandicap,
+  league: any,
 ): Promise<number | null> {
-  if (session.session_type !== 'league' || !session.league_id) return null;
-
-  const { data: league } = await supabase.from('leagues').select('*').eq('id', session.league_id).maybeSingle();
-  if (!league) return null;
-
-  if (league.handicap_type === 'manual') {
-    return session.manual_handicap ?? null;
-  }
+  if (league.handicap_type === 'manual') return null;
 
   if (league.handicap_type === 'book_average') {
     if (league.book_average == null) return null;
@@ -74,4 +73,35 @@ export async function fetchSessionHandicap(
   const avg = await fetchPriorLeagueAverage(supabase, league.id, session.session_date);
   if (avg == null) return null;
   return computeHandicapFromAverage(league.handicap_basis, league.handicap_percent, avg);
+}
+
+/**
+ * A session's handicap, split into the calculated value, the optional per-session
+ * override (`manual_handicap`), and the effective value that actually applies
+ * (override wins over calculated). The override lets you match whatever number the
+ * alley used when it differs from ours — for any league type, not just manual.
+ */
+export async function fetchSessionHandicapDetail(
+  supabase: SupabaseClient,
+  session: SessionForHandicap,
+): Promise<SessionHandicap> {
+  const override = session.manual_handicap ?? null;
+
+  if (session.session_type !== 'league' || !session.league_id) {
+    return { effective: null, calculated: null, override: null };
+  }
+
+  const { data: league } = await supabase.from('leagues').select('*').eq('id', session.league_id).maybeSingle();
+  if (!league) return { effective: override, calculated: null, override };
+
+  const calculated = await computeCalculatedHandicap(supabase, session, league);
+  return { effective: override ?? calculated, calculated, override };
+}
+
+/** The effective handicap for a session (override if set, else calculated). Null when none applies. */
+export async function fetchSessionHandicap(
+  supabase: SupabaseClient,
+  session: SessionForHandicap,
+): Promise<number | null> {
+  return (await fetchSessionHandicapDetail(supabase, session)).effective;
 }

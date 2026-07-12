@@ -176,36 +176,47 @@ export async function fetchBestSeriesStats(
 export type BallStat = { ballName: string; avgPinsPerShot: number; shotCount: number };
 
 /**
- * Average pins knocked down per shot, by ball. This is a rough per-shot
- * indicator (10 - pins left standing), not frame-adjusted scoring -- a
- * second-ball shot only had however many pins were left to knock down, so
- * this slightly overstates second-ball pinfall. Good enough for "which ball
- * is working," not a substitute for the real score. Always excludes
- * is_practice games (the Practice segment of a league night); standalone
- * practice sessions are excluded unless filter.includePracticeSessions.
+ * Average pinfall on FRESH-RACK shots, by ball -- i.e. a carry metric for how
+ * well a ball clears a full rack of 10. Counts only balls thrown when all ten
+ * were standing: every frame's first ball, plus a 10th-frame ball delivered at
+ * a reset rack (after a strike, or the fill ball after a spare). Second/spare
+ * balls are excluded because their pinfall is capped by what was left, not the
+ * ball. Walks each frame in delivery order tracking the standing count, exactly
+ * like the scoresheet. Always excludes is_practice games (the Practice segment
+ * of a league night); standalone practice sessions are excluded unless
+ * filter.includePracticeSessions.
  */
 export async function fetchBallStats(supabase: SupabaseClient, filter: StatsFilter): Promise<BallStat[]> {
-  const { data: shots } = await supabase
-    .from('shots')
-    .select('pins_standing, strike, balls(name), frames(games(is_practice, sessions(session_type)))')
-    .not('ball_id', 'is', null);
+  const { data: frames } = await supabase
+    .from('frames')
+    .select('games(is_practice, sessions(session_type)), shots(pins_standing, strike, created_at, balls(name))')
+    .order('created_at', { foreignTable: 'shots', ascending: true });
 
-  if (!shots) return [];
+  if (!frames) return [];
 
   const totals = new Map<string, { sum: number; count: number }>();
-  for (const shot of shots as any[]) {
-    const name = shot.balls?.name;
-    if (!name) continue;
 
-    const game = shot.frames?.games;
+  for (const frame of frames as any[]) {
+    const game = frame.games;
     if (!game || game.is_practice) continue;
     if (!filter.includePracticeSessions && game.sessions?.session_type === 'practice') continue;
 
-    const pinsDown = shot.strike ? 10 : 10 - (shot.pins_standing?.length ?? 0);
-    const entry = totals.get(name) ?? { sum: 0, count: 0 };
-    entry.sum += pinsDown;
-    entry.count += 1;
-    totals.set(name, entry);
+    let priorStanding = 10;
+    for (const shot of frame.shots ?? []) {
+      const standingAfter = shot.strike ? 0 : shot.pins_standing?.length ?? 0;
+      const freshRack = priorStanding === 10;
+      const knocked = shot.strike ? 10 : Math.max(0, Math.min(10, priorStanding - standingAfter));
+      const name = shot.balls?.name;
+
+      if (freshRack && name) {
+        const entry = totals.get(name) ?? { sum: 0, count: 0 };
+        entry.sum += knocked;
+        entry.count += 1;
+        totals.set(name, entry);
+      }
+
+      priorStanding = standingAfter === 0 ? 10 : standingAfter;
+    }
   }
 
   return Array.from(totals.entries())

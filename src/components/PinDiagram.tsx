@@ -60,6 +60,15 @@ export default function PinDiagram({ initialStanding = [], initialStrike = false
     setStrike(false);
   }
 
+  function markGutter() {
+    // gutter / miss on a fresh rack: nothing down, all ten still standing
+    setStanding(new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]));
+    setStrike(false);
+    setSpare(false);
+  }
+
+  const gutter = !strike && !spare && standing.size === 10;
+
   return (
     <div>
       <input type="hidden" name="pins_standing" value={Array.from(standing).join(',')} />
@@ -73,10 +82,19 @@ export default function PinDiagram({ initialStanding = [], initialStrike = false
         <button type="button" className={spare ? 'active' : ''} onClick={markSpare}>
           Spare
         </button>
+        <button type="button" className={gutter ? 'active' : ''} onClick={markGutter}>
+          Gutter
+        </button>
       </div>
 
       <p className="pin-hint">
-        {strike ? 'Strike marked' : spare ? 'Spare marked' : 'Or tap the pins still standing:'}
+        {strike
+          ? 'Strike marked'
+          : spare
+            ? 'Spare marked'
+            : gutter
+              ? 'Gutter — 0 pins down'
+              : 'Or tap the pins still standing:'}
       </p>
 
       <div className="pin-rows">
