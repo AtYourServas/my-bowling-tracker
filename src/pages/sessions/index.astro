@@ -21,6 +21,17 @@ if (Astro.request.method === 'POST') {
   if (session_type !== 'league' && session_type !== 'practice') {
     error = 'Session type is required.';
   } else {
+    // a league session with no team typed inherits the league's team name
+    let effectiveTeamName = session_type === 'league' ? league_team_name : null;
+    if (session_type === 'league' && league_id && !effectiveTeamName) {
+      const { data: league } = await supabase
+        .from('leagues')
+        .select('team_name')
+        .eq('id', league_id)
+        .maybeSingle();
+      effectiveTeamName = league?.team_name ?? null;
+    }
+
     const { data, error: insertError } = await supabase
       .from('sessions')
       .insert({
@@ -30,7 +41,7 @@ if (Astro.request.method === 'POST') {
         session_type,
         session_date,
         lane_condition_notes,
-        league_team_name: session_type === 'league' ? league_team_name : null,
+        league_team_name: effectiveTeamName,
         league_id: session_type === 'league' ? league_id : null,
         manual_handicap: session_type === 'league' ? manual_handicap : null,
       })
@@ -76,7 +87,7 @@ const { data: sessions } = await sessionsQuery;
 const { data: alleyRows } = await supabase.from('sessions').select('alley_name').not('alley_name', 'is', null);
 const alleyOptions = Array.from(new Set((alleyRows ?? []).map((r) => r.alley_name))).sort();
 
-const { data: leagues } = await supabase.from('leagues').select('id, name').order('name');
+const { data: leagues } = await supabase.from('leagues').select('id, name, team_name').order('name');
 ---
 
 <Layout title="Sessions">
@@ -159,13 +170,15 @@ const { data: leagues } = await supabase.from('leagues').select('id, name').orde
     <label>
       League (if league)
       <select name="league_id">
-        <option value="">None</option>
-        {leagues?.map((league) => <option value={league.id}>{league.name}</option>)}
+        <option value="" data-team="">None</option>
+        {leagues?.map((league) => (
+          <option value={league.id} data-team={league.team_name ?? ''}>{league.name}</option>
+        ))}
       </select>
     </label>
     <label>
-      League/team name (if league)
-      <input type="text" name="league_team_name" />
+      Team name (if league)
+      <input type="text" name="league_team_name" placeholder="Fills from the league — edit to override" />
     </label>
     <label>
       Handicap override (optional — overrides the league's calculated handicap)
@@ -178,3 +191,20 @@ const { data: leagues } = await supabase.from('leagues').select('id, name').orde
     <button type="submit">Start session</button>
   </form>
 </Layout>
+
+<script>
+  // Selecting a league fills the team-name field from that league, while
+  // leaving any name the user has typed themselves untouched (override).
+  const leagueSelect = document.querySelector<HTMLSelectElement>('select[name="league_id"]');
+  const teamInput = document.querySelector<HTMLInputElement>('input[name="league_team_name"]');
+  if (leagueSelect && teamInput) {
+    let autoValue = teamInput.value;
+    leagueSelect.addEventListener('change', () => {
+      const team = leagueSelect.selectedOptions[0]?.dataset.team ?? '';
+      if (teamInput.value === '' || teamInput.value === autoValue) {
+        teamInput.value = team;
+        autoValue = team;
+      }
+    });
+  }
+</script>
