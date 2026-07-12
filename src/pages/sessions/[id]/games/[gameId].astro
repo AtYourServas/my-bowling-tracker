@@ -54,7 +54,7 @@ if (Astro.request.method === 'POST') {
       // enforce the physical shot cap (2/frame, 3 in the 10th only on strike/spare)
       const { data: existing } = await supabase
         .from('shots')
-        .select('pins_standing, strike, spare')
+        .select('pins_standing, strike, spare, foul')
         .eq('frame_id', frame.id)
         .order('created_at', { ascending: true });
       const existingShots = (existing ?? []) as ShotLite[];
@@ -79,6 +79,7 @@ if (Astro.request.method === 'POST') {
         const target_value = targetValueRaw ? Number(targetValueRaw) : null;
         const strike = formData.get('strike') === 'true';
         const spare = formData.get('spare') === 'true';
+        const foul = formData.get('foul') === 'true';
         const hook_timing = formData.get('hook_timing')?.toString() || null;
         const miss_direction = formData.get('miss_direction')?.toString() || null;
         const breakpointRaw = formData.get('breakpoint_board')?.toString().trim();
@@ -96,6 +97,7 @@ if (Astro.request.method === 'POST') {
           pins_standing,
           strike,
           spare,
+          foul,
           hook_timing,
           miss_direction,
           breakpoint_board,
@@ -107,7 +109,7 @@ if (Astro.request.method === 'POST') {
         } else {
           // auto-advance: a completed frame jumps to the next; an unfinished
           // one stays put so the form reappears for the next ball
-          const after = frameProgress(frameNumber, [...existingShots, { pins_standing, strike, spare }]);
+          const after = frameProgress(frameNumber, [...existingShots, { pins_standing, strike, spare, foul }]);
           const target = after.complete && frameNumber < 10 ? frameNumber + 1 : frameNumber;
           return Astro.redirect(`/sessions/${sessionId}/games/${gameId}?frame=${target}`);
         }
@@ -192,6 +194,7 @@ const nextFrame = frameNumber < 10 ? frameNumber + 1 : null;
 const frameHref = (n: number) => `/sessions/${sessionId}/games/${gameId}?frame=${n}`;
 
 function ballResult(i: number): string {
+  if (frameShots[i]?.foul) return 'Foul — counts 0';
   const kind = frameMarks[i]?.kind;
   if (kind === 'strike') return 'Strike';
   if (kind === 'spare') return 'Spare';
@@ -235,6 +238,7 @@ function ballResult(i: number): string {
                     mark: b.kind === 'strike' || b.kind === 'spare',
                     strike: b.kind === 'strike',
                     spare: b.kind === 'spare',
+                    foul: b.kind === 'foul',
                     empty: b.kind === 'empty',
                   },
                 ]}

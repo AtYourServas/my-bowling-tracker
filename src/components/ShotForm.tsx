@@ -21,6 +21,7 @@ type InitialShot = {
   pins_standing: number[];
   strike: boolean;
   spare: boolean;
+  foul: boolean;
   hook_timing: string | null;
   miss_direction: string | null;
   breakpoint_board: number | null;
@@ -62,6 +63,7 @@ export default function ShotForm({
         initialStanding={initial?.pins_standing ?? startingPins ?? []}
         initialStrike={initial?.strike ?? false}
         initialSpare={initial?.spare ?? false}
+        initialFoul={initial?.foul ?? false}
       />
 
       <label>

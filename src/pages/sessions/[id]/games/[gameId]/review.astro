@@ -21,7 +21,7 @@ const derivedScore = await fetchDerivedScoreForGame(supabase, gameId!);
 const { data: frames } = await supabase
   .from('frames')
   .select(
-    'frame_number, shots(id, pins_standing, strike, spare, hook_timing, miss_direction, target_type, target_value, breakpoint_board, note, created_at, balls(name), approaches(name))',
+    'frame_number, shots(id, pins_standing, strike, spare, foul, hook_timing, miss_direction, target_type, target_value, breakpoint_board, note, created_at, balls(name), approaches(name))',
   )
   .eq('game_id', gameId)
   .order('frame_number', { ascending: true })
@@ -60,13 +60,15 @@ const showLane = laneConfig.secondLaneNumber != null;
           <ul>
             {shots.map((shot: any) => (
               <li>
-                {shot.strike
-                  ? 'Strike'
-                  : shot.spare
-                    ? 'Spare'
-                    : shot.pins_standing?.length
-                      ? `Standing: ${shot.pins_standing.join(', ')}`
-                      : 'No pins marked'}
+                {shot.foul
+                  ? 'Foul'
+                  : shot.strike
+                    ? 'Strike'
+                    : shot.spare
+                      ? 'Spare'
+                      : shot.pins_standing?.length
+                        ? `Standing: ${shot.pins_standing.join(', ')}`
+                        : 'No pins marked'}
                 {' — '}
                 {[
                   shot.balls?.name,

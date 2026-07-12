@@ -27,16 +27,24 @@ type Props = {
   initialStanding?: number[];
   initialStrike?: boolean;
   initialSpare?: boolean;
+  initialFoul?: boolean;
 };
 
-export default function PinDiagram({ initialStanding = [], initialStrike = false, initialSpare = false }: Props) {
+export default function PinDiagram({
+  initialStanding = [],
+  initialStrike = false,
+  initialSpare = false,
+  initialFoul = false,
+}: Props) {
   const [standing, setStanding] = useState<Set<number>>(new Set(initialStanding));
   const [strike, setStrike] = useState(initialStrike);
   const [spare, setSpare] = useState(initialSpare);
+  const [foul, setFoul] = useState(initialFoul);
 
   function togglePin(pin: number) {
     setStrike(false);
     setSpare(false);
+    setFoul(false);
     setStanding((prev) => {
       const next = new Set(prev);
       if (next.has(pin)) {
@@ -52,12 +60,14 @@ export default function PinDiagram({ initialStanding = [], initialStrike = false
     setStanding(new Set());
     setStrike(true);
     setSpare(false);
+    setFoul(false);
   }
 
   function markSpare() {
     setStanding(new Set());
     setSpare(true);
     setStrike(false);
+    setFoul(false);
   }
 
   function markGutter() {
@@ -65,15 +75,25 @@ export default function PinDiagram({ initialStanding = [], initialStrike = false
     setStanding(new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]));
     setStrike(false);
     setSpare(false);
+    setFoul(false);
   }
 
-  const gutter = !strike && !spare && standing.size === 10;
+  function markFoul() {
+    // a fouled delivery counts 0 regardless of pins; the rack respots for the next ball
+    setStanding(new Set());
+    setFoul(true);
+    setStrike(false);
+    setSpare(false);
+  }
+
+  const gutter = !strike && !spare && !foul && standing.size === 10;
 
   return (
     <div>
       <input type="hidden" name="pins_standing" value={Array.from(standing).join(',')} />
       <input type="hidden" name="strike" value={strike ? 'true' : 'false'} />
       <input type="hidden" name="spare" value={spare ? 'true' : 'false'} />
+      <input type="hidden" name="foul" value={foul ? 'true' : 'false'} />
 
       <div className="pin-shortcuts">
         <button type="button" className={strike ? 'active' : ''} onClick={markStrike}>
@@ -85,6 +105,9 @@ export default function PinDiagram({ initialStanding = [], initialStrike = false
         <button type="button" className={gutter ? 'active' : ''} onClick={markGutter}>
           Gutter
         </button>
+        <button type="button" className={foul ? 'active' : ''} onClick={markFoul}>
+          Foul
+        </button>
       </div>
 
       <p className="pin-hint">
@@ -92,9 +115,11 @@ export default function PinDiagram({ initialStanding = [], initialStrike = false
           ? 'Strike marked'
           : spare
             ? 'Spare marked'
-            : gutter
-              ? 'Gutter — 0 pins down'
-              : 'Or highlight the pins still standing:'}
+            : foul
+              ? 'Foul — this ball counts 0'
+              : gutter
+                ? 'Gutter — 0 pins down'
+                : 'Or highlight the pins still standing:'}
       </p>
 
       <div className="pin-rows">

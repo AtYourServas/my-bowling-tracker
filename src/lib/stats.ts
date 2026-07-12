@@ -190,7 +190,7 @@ export type BallStat = { ballName: string; avgPinsPerShot: number; shotCount: nu
 export async function fetchBallStats(supabase: SupabaseClient, filter: StatsFilter): Promise<BallStat[]> {
   const { data: frames } = await supabase
     .from('frames')
-    .select('games(is_practice, sessions(session_type)), shots(pins_standing, strike, created_at, balls(name))')
+    .select('games(is_practice, sessions(session_type)), shots(pins_standing, strike, foul, created_at, balls(name))')
     .order('created_at', { foreignTable: 'shots', ascending: true });
 
   if (!frames) return [];
@@ -204,6 +204,13 @@ export async function fetchBallStats(supabase: SupabaseClient, filter: StatsFilt
 
     let priorStanding = 10;
     for (const shot of frame.shots ?? []) {
+      // a fouled delivery counts 0 and doesn't reflect carry, so leave it out of
+      // the average entirely; its pins are respotted for the next ball
+      if (shot.foul) {
+        priorStanding = 10;
+        continue;
+      }
+
       const standingAfter = shot.strike ? 0 : shot.pins_standing?.length ?? 0;
       const freshRack = priorStanding === 10;
       const knocked = shot.strike ? 10 : Math.max(0, Math.min(10, priorStanding - standingAfter));
@@ -302,7 +309,7 @@ export async function fetchSessionLaneStats(
 ): Promise<SessionLaneStat[]> {
   const { data: frames } = await supabase
     .from('frames')
-    .select('frame_number, games!inner(session_id, is_practice), shots(pins_standing, strike, created_at)')
+    .select('frame_number, games!inner(session_id, is_practice), shots(pins_standing, strike, foul, created_at)')
     .eq('games.session_id', sessionId)
     .eq('games.is_practice', false)
     .order('created_at', { foreignTable: 'shots', ascending: true });
@@ -322,12 +329,15 @@ export async function fetchSessionLaneStats(
     const acc = byLane.get(lane) ?? { frames: 0, strikes: 0, sum: 0, count: 0 };
     acc.frames += 1;
 
-    // first ball is always thrown at a fresh rack of 10
+    // first ball is always thrown at a fresh rack of 10; a foul counts 0 and
+    // isn't a carry outcome, so it feeds neither the average nor the strike count
     const first = shots[0];
-    const standingAfter = first.strike ? 0 : first.pins_standing?.length ?? 0;
-    acc.sum += first.strike ? 10 : Math.max(0, Math.min(10, 10 - standingAfter));
-    acc.count += 1;
-    if (first.strike) acc.strikes += 1;
+    if (!first.foul) {
+      const standingAfter = first.strike ? 0 : first.pins_standing?.length ?? 0;
+      acc.sum += first.strike ? 10 : Math.max(0, Math.min(10, 10 - standingAfter));
+      acc.count += 1;
+      if (first.strike) acc.strikes += 1;
+    }
 
     byLane.set(lane, acc);
   }

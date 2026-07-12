@@ -421,6 +421,7 @@ a.card:hover { text-decoration: none; box-shadow: var(--shadow-md); border-color
 .bbox.mark { background: var(--mustard-weak); font-weight: var(--fw-semi); }
 .bbox.mark.strike { color: var(--strike-ink); }
 .bbox.mark.spare { color: var(--spare-ink); }
+.bbox.foul { color: var(--coral); font-weight: var(--fw-semi); }
 .bbox.empty { color: var(--text-muted); }
 .cell .total {
   align-self: center;
