@@ -70,15 +70,15 @@ const { data: leagues } = await supabase.from('leagues').select('id, name, team_
 
   <form method="POST">
     <label>
-      Alley name
+      Alley Name
       <input type="text" name="alley_name" />
     </label>
     <label>
-      Starting lane
+      Starting Lane
       <input type="number" name="lane_number" min="1" />
     </label>
     <label>
-      Second lane (optional — for a two-lane pair)
+      Second Lane (optional — for a two-lane pair)
       <input type="number" name="second_lane_number" min="1" placeholder="alternates each frame" />
     </label>
     <label>
@@ -86,7 +86,7 @@ const { data: leagues } = await supabase.from('leagues').select('id, name, team_
       <input type="date" name="session_date" value={new Date().toISOString().slice(0, 10)} />
     </label>
     <label>
-      Session type
+      Session Type
       <select name="session_type" required>
         <option value="league">League</option>
         <option value="practice">Practice</option>
@@ -102,18 +102,18 @@ const { data: leagues } = await supabase.from('leagues').select('id, name, team_
       </select>
     </label>
     <label>
-      Team name (if league)
+      Team Name (if league)
       <input type="text" name="league_team_name" placeholder="Fills from the league — edit to override" />
     </label>
     <label>
-      Handicap override (optional — overrides the league's calculated handicap)
+      Handicap Override (optional — overrides the league's calculated handicap)
       <input type="number" name="manual_handicap" />
     </label>
     <label>
-      Lane condition notes
+      Lane Condition Notes
       <textarea name="lane_condition_notes" rows="2" placeholder="e.g. fresh oil, breaking down"></textarea>
     </label>
-    <button type="submit">Start session</button>
+    <button type="submit">Start Session</button>
   </form>
 </Layout>
 

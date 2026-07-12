@@ -37,6 +37,9 @@ type Props = {
   /** Pins already standing at the start of this roll (e.g. the leftovers from ball 1),
    *  pre-highlighted so you only clear the ones this ball knocks down. */
   startingPins?: number[];
+  /** Whether the Strike / Spare shortcuts are legal for this ball (see allowedMarks). */
+  allowStrike?: boolean;
+  allowSpare?: boolean;
 };
 
 export default function ShotForm({
@@ -46,6 +49,8 @@ export default function ShotForm({
   initial,
   submitLabel = 'Log shot',
   startingPins,
+  allowStrike = true,
+  allowSpare = true,
 }: Props) {
   const [approachId, setApproachId] = useState(initial?.approach_id ?? '');
 
@@ -64,6 +69,8 @@ export default function ShotForm({
         initialStrike={initial?.strike ?? false}
         initialSpare={initial?.spare ?? false}
         initialFoul={initial?.foul ?? false}
+        allowStrike={allowStrike}
+        allowSpare={allowSpare}
       />
 
       <label>

@@ -178,7 +178,11 @@ const leagueSlots = [
   {error && <p class="error">{error}</p>}
 
   {session.session_type === 'league' && (
-    <div class="score-box">
+    <details class="score-box collapsible" open={session.league_id == null}>
+      <summary>
+        <span class="sum-label">League</span>
+        <span class="sum-value">{leagueName ?? 'None'}{sessionHandicap != null ? ` · Hdcp ${sessionHandicap}` : ''}</span>
+      </summary>
       <form method="POST">
         <input type="hidden" name="intent" value="set_league" />
         <label>
@@ -191,7 +195,7 @@ const leagueSlots = [
           </select>
         </label>
         <label>
-          Handicap override (optional)
+          Handicap Override (optional)
           <input type="number" name="manual_handicap" value={session.manual_handicap ?? ''} placeholder={handicap.calculated != null ? String(handicap.calculated) : '—'} />
         </label>
         <button type="submit">Save</button>
@@ -204,28 +208,32 @@ const leagueSlots = [
             ? `This session's handicap: ${sessionHandicap}.`
             : 'No handicap available for this session yet.'}
       </p>
-    </div>
+    </details>
   )}
 
-  <div class="score-box">
+  <details class="score-box collapsible" open={session.lane_number == null}>
+    <summary>
+      <span class="sum-label">Lanes</span>
+      <span class="sum-value">{laneLabel(laneConfig) || 'Not set'}</span>
+    </summary>
     <form method="POST">
       <input type="hidden" name="intent" value="edit_lanes" />
       <label>
-        Starting lane
+        Starting Lane
         <input type="number" name="lane_number" min="1" value={session.lane_number ?? ''} />
       </label>
       <label>
-        Second lane (optional — for a two-lane pair)
+        Second Lane (optional — for a two-lane pair)
         <input type="number" name="second_lane_number" min="1" value={session.second_lane_number ?? ''} placeholder="alternates each frame" />
       </label>
-      <button type="submit">Save lanes</button>
+      <button type="submit">Save Lanes</button>
     </form>
     {hasLanePair(laneConfig) && (
       <p class="empty">
         Strict alternation — odd frames on lane {laneConfig.laneNumber}, even frames on lane {laneConfig.secondLaneNumber}.
       </p>
     )}
-  </div>
+  </details>
 
   {laneStats.length > 0 && (
     <div class="score-box">
@@ -272,10 +280,10 @@ const leagueSlots = [
                       <input type="number" name="final_score" min="0" max="300" placeholder="final score" aria-label={`Final score for ${slot.label}`} />
                       <button type="submit" class="secondary">Save</button>
                     </form>
-                    <a href={`/sessions/${id}/games/${slot.game.id}/review`} class="review-link">Review scorecard &rarr;</a>
+                    <a href={`/sessions/${id}/games/${slot.game.id}/review`} class="review-link">Review Scorecard &rarr;</a>
                   </div>
                 ) : (
-                  <a href={`/sessions/${id}/games/${slot.game.id}/review`} class="review-link">Review scorecard &rarr;</a>
+                  <a href={`/sessions/${id}/games/${slot.game.id}/review`} class="review-link">Review Scorecard &rarr;</a>
                 )}
               </>
             ) : (
@@ -286,7 +294,7 @@ const leagueSlots = [
                   <input type="number" name="final_score" min="0" max="300" placeholder="final score (optional)" aria-label={`Score for ${slot.label}`} />
                   <div class="add-game-actions">
                     <button type="submit" name="action" value="score" class="secondary">Add Score Only</button>
-                    <button type="submit" name="action" value="log">Add &amp; log throws</button>
+                    <button type="submit" name="action" value="log">Add &amp; Log Throws</button>
                   </div>
                 </form>
               </div>
@@ -318,10 +326,10 @@ const leagueSlots = [
                       <input type="number" name="final_score" min="0" max="300" placeholder="final score" aria-label={`Final score for game ${i + 1}`} />
                       <button type="submit" class="secondary">Save</button>
                     </form>
-                    <a href={`/sessions/${id}/games/${game.id}/review`} class="review-link">Review scorecard &rarr;</a>
+                    <a href={`/sessions/${id}/games/${game.id}/review`} class="review-link">Review Scorecard &rarr;</a>
                   </div>
                 ) : (
-                  <a href={`/sessions/${id}/games/${game.id}/review`} class="review-link">Review scorecard &rarr;</a>
+                  <a href={`/sessions/${id}/games/${game.id}/review`} class="review-link">Review Scorecard &rarr;</a>
                 )}
               </li>
             );
@@ -335,7 +343,7 @@ const leagueSlots = [
         <input type="number" name="final_score" min="0" max="300" placeholder="final score (optional)" aria-label="Score for new game" />
         <div class="add-game-actions">
           <button type="submit" name="action" value="score" class="secondary">Add Score Only</button>
-          <button type="submit" name="action" value="log">Add &amp; log throws</button>
+          <button type="submit" name="action" value="log">Add &amp; Log Throws</button>
         </div>
       </form>
     </>
@@ -343,9 +351,9 @@ const leagueSlots = [
 
   <hr />
 
-  <form method="POST" class="row-actions">
+  <form method="POST" class="row-actions" onsubmit="return confirm('Delete this session? All of its games, throws, and scores will be permanently removed.');">
     <input type="hidden" name="intent" value="delete_session" />
-    <button type="submit" class="danger">Delete session</button>
+    <button type="submit" class="danger">Delete Session</button>
   </form>
 </Layout>
 
