@@ -94,7 +94,7 @@ export default function PinDiagram({ initialStanding = [], initialStrike = false
             ? 'Spare marked'
             : gutter
               ? 'Gutter — 0 pins down'
-              : 'Or tap the pins still standing:'}
+              : 'Or highlight the pins still standing:'}
       </p>
 
       <div className="pin-rows">

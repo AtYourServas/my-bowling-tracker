@@ -258,12 +258,14 @@ a.card:hover { text-decoration: none; box-shadow: var(--shadow-md); border-color
 .game-actions { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); margin-top: var(--s1); }
 .game-actions .review-link { margin: 0; }
 .score-inline { flex-direction: row; align-items: center; gap: var(--s2); margin: 0; }
-.score-inline input { width: 5.5rem; }
+.score-inline input { width: 7rem; }
 .score-inline button { padding: 6px 12px; font-size: var(--text-sm); }
-/* add-a-game row: optional score + button */
-.add-game { flex-direction: row; align-items: center; gap: var(--s2); }
-.add-game input { flex: 1; min-width: 0; }
-.add-game button { flex: none; }
+/* add a game: an optional score, then an explicit choice of the two paths */
+.add-slot { display: flex; flex-direction: column; gap: var(--s2); }
+.add-slot > strong { font-size: var(--text-base); font-weight: var(--fw-semi); }
+.add-game { gap: var(--s2); margin-top: var(--s2); }
+.add-game-actions { display: flex; gap: var(--s2); }
+.add-game-actions button { flex: 1; }
 
 /* game row: title + detail on the left, big score on the right */
 .card.game-card { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); }
