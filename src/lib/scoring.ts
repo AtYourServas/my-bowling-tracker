@@ -109,6 +109,57 @@ export async function fetchDerivedScoreForGame(
   return computeDerivedScore(frames as unknown as FrameLite[]);
 }
 
+/**
+ * Knocked-pin count for each roll in a single frame, derived from per-shot
+ * pin state (the same rule computeScoresheet uses). The rack resets to 10
+ * after any roll that clears it, which only matters for the 10th frame's
+ * bonus balls.
+ */
+export function computeFrameRolls(shots: ShotLite[]): number[] {
+  const rolls: number[] = [];
+  let priorStanding = 10;
+  for (const shot of shots) {
+    const standingAfter = shot.pins_standing?.length ?? 0;
+    const knocked = shot.strike ? 10 : Math.max(0, Math.min(10, priorStanding - standingAfter));
+    rolls.push(knocked);
+    priorStanding = standingAfter === 0 ? 10 : standingAfter;
+  }
+  return rolls;
+}
+
+export type FrameProgress = {
+  count: number; // shots logged so far
+  complete: boolean; // frame is fully bowled per ten-pin rules
+  canAdd: boolean; // another roll is allowed (always the inverse of complete)
+  nextBall: number | null; // 1-based ordinal of the next expected ball, null once complete
+};
+
+/**
+ * Where a frame stands, reusing the scoresheet's roll logic. A strike completes
+ * frames 1-9 in a single ball, so once a frame is `complete` no further shot is
+ * allowed -- to add a second ball to a struck frame you must first edit the
+ * strike away. In the 10th a third ball opens up only when a strike or spare
+ * earns it.
+ */
+export function frameProgress(frameNumber: number, shots: ShotLite[]): FrameProgress {
+  const rolls = computeFrameRolls(shots);
+  const count = shots.length;
+
+  let complete: boolean;
+  if (frameNumber < 10) {
+    const strike = count >= 1 && rolls[0] === 10;
+    complete = strike || count >= 2;
+  } else {
+    // tenth frame: a third ball only when the first two earn it (strike or spare)
+    const [r0, r1] = rolls;
+    const firstStrike = r0 === 10;
+    const spare = !firstStrike && r0 !== undefined && r1 !== undefined && r0 + r1 === 10;
+    complete = count >= (firstStrike || spare ? 3 : 2);
+  }
+
+  return { count, complete, canAdd: !complete, nextBall: complete ? null : count + 1 };
+}
+
 export type BallKind = 'strike' | 'spare' | 'pins' | 'empty';
 export type BallMark = { text: string; kind: BallKind };
 export type FrameCell = {

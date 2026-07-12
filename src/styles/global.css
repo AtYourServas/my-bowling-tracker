@@ -463,6 +463,52 @@ a.card:hover { text-decoration: none; box-shadow: var(--shadow-md); border-color
 .finalscore button { padding: 4px 12px; font-size: var(--text-xs); }
 
 /* ============================================================
+   Now-bowling frame: nav arrows, ball history, log/complete states
+   ============================================================ */
+.framehead { display: flex; align-items: center; gap: var(--s2); margin: var(--s5) 0 var(--s3); }
+.framehead .sechead { flex: 1; margin: 0; }
+.framenav {
+  flex: none;
+  width: 2rem;
+  height: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-lg);
+  line-height: 1;
+  color: var(--text-primary);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+}
+.framenav:hover { text-decoration: none; background: var(--surface-sunk); border-color: var(--accent); }
+.framenav.disabled { color: var(--border-strong); background: transparent; border-color: var(--border); cursor: default; }
+
+.ball-log { list-style: none; margin: 0 0 var(--s3); padding: 0; display: flex; flex-direction: column; gap: var(--s2); }
+.ball-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: baseline;
+  gap: var(--s3);
+  padding: var(--s2) var(--s3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  text-decoration: none;
+  color: inherit;
+}
+a.ball-row:hover { text-decoration: none; box-shadow: var(--shadow-md); border-color: var(--border-strong); }
+.ball-ord { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+.ball-result { font-weight: var(--fw-semi); }
+.ball-detail { font-size: var(--text-sm); color: var(--text-muted); text-align: right; }
+
+.logball { font-size: var(--text-sm); font-weight: var(--fw-semi); color: var(--text-secondary); margin: var(--s3) 0 calc(-1 * var(--s1)); }
+
+.framedone { font-size: var(--text-sm); color: var(--text-secondary); margin: var(--s3) 0 0; }
+
+/* ============================================================
    Shot logging: reference, targets, quick pin shortcuts
    ============================================================ */
 .reference-box {

@@ -33,9 +33,19 @@ type Props = {
   frameNumber: number;
   initial?: InitialShot;
   submitLabel?: string;
+  /** Pins already standing at the start of this roll (e.g. the leftovers from ball 1),
+   *  pre-highlighted so you only clear the ones this ball knocks down. */
+  startingPins?: number[];
 };
 
-export default function ShotForm({ balls, approaches, frameNumber, initial, submitLabel = 'Log shot' }: Props) {
+export default function ShotForm({
+  balls,
+  approaches,
+  frameNumber,
+  initial,
+  submitLabel = 'Log shot',
+  startingPins,
+}: Props) {
   const [approachId, setApproachId] = useState(initial?.approach_id ?? '');
 
   const selectedApproach = useMemo(
@@ -49,7 +59,7 @@ export default function ShotForm({ balls, approaches, frameNumber, initial, subm
       <input type="hidden" name="intent" value="log_shot" />
 
       <PinDiagram
-        initialStanding={initial?.pins_standing ?? []}
+        initialStanding={initial?.pins_standing ?? startingPins ?? []}
         initialStrike={initial?.strike ?? false}
         initialSpare={initial?.spare ?? false}
       />
