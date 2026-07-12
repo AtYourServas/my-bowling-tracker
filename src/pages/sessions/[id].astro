@@ -285,7 +285,7 @@ const leagueSlots = [
                   <input type="hidden" name="slot" value={slot.key} />
                   <input type="number" name="final_score" min="0" max="300" placeholder="final score (optional)" aria-label={`Score for ${slot.label}`} />
                   <div class="add-game-actions">
-                    <button type="submit" name="action" value="score" class="secondary">Add with score</button>
+                    <button type="submit" name="action" value="score" class="secondary">Add Score Only</button>
                     <button type="submit" name="action" value="log">Add &amp; log throws</button>
                   </div>
                 </form>
@@ -334,7 +334,7 @@ const leagueSlots = [
         <input type="hidden" name="slot" value="new" />
         <input type="number" name="final_score" min="0" max="300" placeholder="final score (optional)" aria-label="Score for new game" />
         <div class="add-game-actions">
-          <button type="submit" name="action" value="score" class="secondary">Add with score</button>
+          <button type="submit" name="action" value="score" class="secondary">Add Score Only</button>
           <button type="submit" name="action" value="log">Add &amp; log throws</button>
         </div>
       </form>

@@ -17,7 +17,15 @@ if (Astro.request.method === 'POST') {
   const formData = await Astro.request.formData();
   const intent = formData.get('intent')?.toString();
 
-  if (intent === 'set_score') {
+  if (intent === 'delete_game') {
+    const { error: deleteError } = await supabase.from('games').delete().eq('id', gameId);
+
+    if (deleteError) {
+      error = deleteError.message;
+    } else {
+      return Astro.redirect(`/sessions/${sessionId}`);
+    }
+  } else if (intent === 'set_score') {
     const raw = formData.get('final_score')?.toString().trim();
     const final_score = raw ? Number(raw) : null;
 
@@ -285,7 +293,7 @@ function ballResult(i: number): string {
     {prevFrame
       ? <a class="framenav" href={frameHref(prevFrame)} aria-label={`Frame ${prevFrame}`} rel="prev">&larr;</a>
       : <span class="framenav disabled" aria-hidden="true">&larr;</span>}
-    <div class="sechead"><span class="chev"><i></i><i></i><i></i></span><h2>Now bowling &middot; Frame {frameNumber}{showFrameLane && ` · Lane ${frameLane}`}</h2></div>
+    <div class="sechead"><span class="chev"><i></i><i></i><i></i></span><h2>Now bowling &middot; Frame {frameNumber}{progress.nextBall != null && ` · Ball ${progress.nextBall}`}{showFrameLane && ` · Lane ${frameLane}`}</h2></div>
     {nextFrame
       ? <a class="framenav" href={frameHref(nextFrame)} aria-label={`Frame ${nextFrame}`} rel="next">&rarr;</a>
       : <span class="framenav disabled" aria-hidden="true">&rarr;</span>}
@@ -332,4 +340,11 @@ function ballResult(i: number): string {
       {nextFrame && <a href={frameHref(nextFrame)}>Go to frame {nextFrame} &rarr;</a>}
     </p>
   )}
+
+  <hr />
+
+  <form method="POST" class="row-actions">
+    <input type="hidden" name="intent" value="delete_game" />
+    <button type="submit" class="danger">Delete game</button>
+  </form>
 </Layout>

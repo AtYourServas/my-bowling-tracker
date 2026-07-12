@@ -208,6 +208,29 @@ button.secondary { background: var(--surface); color: var(--text-primary); borde
 button.secondary:hover { background: var(--surface-sunk); filter: none; }
 button.danger { background: var(--coral); color: #fff; }
 
+/* Anchor styled as a primary button (e.g. "+ Start a session"). */
+a.button {
+  display: inline-block;
+  font-size: var(--text-base);
+  font-weight: var(--fw-med);
+  padding: var(--s3);
+  color: var(--accent-ink);
+  background: var(--accent);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  white-space: nowrap;
+}
+a.button:hover { filter: brightness(1.05); text-decoration: none; }
+
+.page-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  flex-wrap: wrap;
+}
+
 /* ============================================================
    Navigation + messages
    ============================================================ */
