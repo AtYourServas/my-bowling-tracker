@@ -54,7 +54,7 @@ const hasFilters = Boolean(filterType || filterAlley || filterFrom || filterTo);
 
 let sessionsQuery = supabase
   .from('sessions')
-  .select('*')
+  .select('*, leagues(name)')
   .order('session_date', { ascending: false })
   .order('created_at', { ascending: false });
 
@@ -121,7 +121,10 @@ const { data: leagues } = await supabase.from('leagues').select('id, name').orde
         <li>
           <a class="card" href={`/sessions/${session.id}`}>
             <strong>{session.alley_name || 'Unnamed alley'} {session.lane_number ? `· Lane ${session.lane_number}` : ''}</strong>
-            <span>{session.session_date} · {session.session_type === 'league' ? 'League' : 'Practice'}</span>
+            <span>
+              {session.session_date} · {session.session_type === 'league' ? 'League' : 'Practice'}
+              {session.leagues?.name ? ` · ${session.leagues.name}` : ''}
+            </span>
           </a>
         </li>
       ))}
@@ -165,7 +168,7 @@ const { data: leagues } = await supabase.from('leagues').select('id, name').orde
       <input type="text" name="league_team_name" />
     </label>
     <label>
-      Manual handicap (only used if the league's type is Manual entry)
+      Handicap override (optional — overrides the league's calculated handicap)
       <input type="number" name="manual_handicap" />
     </label>
     <label>

@@ -254,6 +254,19 @@ a.card:hover { text-decoration: none; box-shadow: var(--shadow-md); border-color
 
 .review-link { display: block; font-size: var(--text-xs); margin: var(--s1) 0 0; text-align: right; }
 
+/* inline score entry + review link under a game card */
+.game-actions { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); margin-top: var(--s1); }
+.game-actions .review-link { margin: 0; }
+.score-inline { flex-direction: row; align-items: center; gap: var(--s2); margin: 0; }
+.score-inline input { width: 7rem; }
+.score-inline button { padding: 6px 12px; font-size: var(--text-sm); }
+/* add a game: an optional score, then an explicit choice of the two paths */
+.add-slot { display: flex; flex-direction: column; gap: var(--s2); }
+.add-slot > strong { font-size: var(--text-base); font-weight: var(--fw-semi); }
+.add-game { gap: var(--s2); margin-top: var(--s2); }
+.add-game-actions { display: flex; gap: var(--s2); }
+.add-game-actions button { flex: 1; }
+
 /* game row: title + detail on the left, big score on the right */
 .card.game-card { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); }
 .game-card-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }

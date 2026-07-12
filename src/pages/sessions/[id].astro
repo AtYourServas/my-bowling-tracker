@@ -2,7 +2,7 @@
 import Layout from '../../layouts/Layout.astro';
 import GameScoreValue from '../../components/GameScoreValue.astro';
 import { fetchDerivedScoreForGame } from '../../lib/scoring';
-import { fetchSessionHandicap } from '../../lib/handicap';
+import { fetchSessionHandicapDetail } from '../../lib/handicap';
 
 const { supabase } = Astro.locals;
 const { id } = Astro.params;
@@ -36,10 +36,31 @@ if (Astro.request.method === 'POST') {
     } else {
       return Astro.redirect(`/sessions/${id}`);
     }
+  } else if (intent === 'set_game_score') {
+    const gameId = formData.get('game_id')?.toString();
+    const raw = formData.get('final_score')?.toString().trim();
+    const final_score = raw ? Number(raw) : null;
+
+    const { error: scoreError } = await supabase
+      .from('games')
+      .update({ final_score })
+      .eq('id', gameId)
+      .eq('session_id', id);
+
+    if (scoreError) {
+      error = scoreError.message;
+    } else {
+      return Astro.redirect(`/sessions/${id}`);
+    }
   } else {
     const slot = formData.get('slot')?.toString();
+    const action = formData.get('action')?.toString();
+    const rawScore = formData.get('final_score')?.toString().trim();
+    // "Add & log throws" starts an empty game and opens the logger; "Add with
+    // score" saves the typed score (if any) and stays on the session.
+    const final_score = action === 'log' ? null : rawScore ? Number(rawScore) : null;
 
-    const gameToInsert: Record<string, unknown> = { session_id: id };
+    const gameToInsert: Record<string, unknown> = { session_id: id, final_score };
 
     if (slot === 'practice') {
       gameToInsert.is_practice = true;
@@ -62,18 +83,20 @@ if (Astro.request.method === 'POST') {
     if (insertError) {
       error = insertError.message;
     } else {
-      return Astro.redirect(`/sessions/${id}/games/${data.id}`);
+      return Astro.redirect(action === 'log' ? `/sessions/${id}/games/${data.id}` : `/sessions/${id}`);
     }
   }
 }
 
-const { data: session } = await supabase.from('sessions').select('*').eq('id', id).maybeSingle();
+const { data: session } = await supabase.from('sessions').select('*, leagues(name)').eq('id', id).maybeSingle();
 
 if (!session) {
   return Astro.redirect('/sessions');
 }
 
-const sessionHandicap = await fetchSessionHandicap(supabase, session);
+const handicap = await fetchSessionHandicapDetail(supabase, session);
+const sessionHandicap = handicap.effective;
+const leagueName = session.leagues?.name ?? null;
 const { data: leagues } = await supabase.from('leagues').select('id, name').order('name');
 
 const { data: games } = await supabase
@@ -126,6 +149,7 @@ const leagueSlots = [
   <h1>{session.alley_name || 'Unnamed alley'}{session.lane_number ? ` · Lane ${session.lane_number}` : ''}</h1>
   <p class="empty">
     {session.session_date} · {session.session_type === 'league' ? 'League' : 'Practice'}
+    {leagueName ? ` · ${leagueName}` : ''}
     {session.league_team_name ? ` · ${session.league_team_name}` : ''}
   </p>
   {session.lane_condition_notes && <p class="empty">Lane: {session.lane_condition_notes}</p>}
@@ -146,13 +170,18 @@ const leagueSlots = [
           </select>
         </label>
         <label>
-          Manual handicap (if league's type is Manual)
-          <input type="number" name="manual_handicap" value={session.manual_handicap ?? ''} />
+          Handicap override (optional)
+          <input type="number" name="manual_handicap" value={session.manual_handicap ?? ''} placeholder={handicap.calculated != null ? String(handicap.calculated) : '—'} />
         </label>
         <button type="submit">Save</button>
       </form>
       <p class="empty">
-        {sessionHandicap != null ? `This session's handicap: ${sessionHandicap}` : 'No handicap available for this session yet.'}
+        {handicap.calculated != null && `Calculated: ${handicap.calculated}. `}
+        {handicap.override != null
+          ? `Using your override of ${handicap.override}.`
+          : sessionHandicap != null
+            ? `This session's handicap: ${sessionHandicap}.`
+            : 'No handicap available for this session yet.'}
       </p>
     </div>
   )}
@@ -160,6 +189,7 @@ const leagueSlots = [
   <hr />
 
   <h1>Games</h1>
+  <p class="empty">Enter a game's final score, or add &amp; log it shot-by-shot.</p>
 
   {session.session_type === 'league' ? (
     <ul class="list">
@@ -176,13 +206,32 @@ const leagueSlots = [
                   </div>
                   <GameScoreValue primary={score.primary} handicap={score.handicap} />
                 </a>
-                <a href={`/sessions/${id}/games/${slot.game.id}/review`} class="review-link">Review scorecard &rarr;</a>
+                {score.primary == null ? (
+                  <div class="game-actions">
+                    <form method="POST" class="score-inline">
+                      <input type="hidden" name="intent" value="set_game_score" />
+                      <input type="hidden" name="game_id" value={slot.game.id} />
+                      <input type="number" name="final_score" min="0" max="300" placeholder="final score" aria-label={`Final score for ${slot.label}`} />
+                      <button type="submit" class="secondary">Save</button>
+                    </form>
+                    <a href={`/sessions/${id}/games/${slot.game.id}/review`} class="review-link">Review scorecard &rarr;</a>
+                  </div>
+                ) : (
+                  <a href={`/sessions/${id}/games/${slot.game.id}/review`} class="review-link">Review scorecard &rarr;</a>
+                )}
               </>
             ) : (
-              <form method="POST">
-                <input type="hidden" name="slot" value={slot.key} />
-                <button type="submit">Add {slot.label}</button>
-              </form>
+              <div class="add-slot">
+                <strong>{slot.label}</strong>
+                <form method="POST" class="add-game">
+                  <input type="hidden" name="slot" value={slot.key} />
+                  <input type="number" name="final_score" min="0" max="300" placeholder="final score (optional)" aria-label={`Score for ${slot.label}`} />
+                  <div class="add-game-actions">
+                    <button type="submit" name="action" value="score" class="secondary">Add with score</button>
+                    <button type="submit" name="action" value="log">Add &amp; log throws</button>
+                  </div>
+                </form>
+              </div>
             )}
           </li>
         );
@@ -203,7 +252,19 @@ const leagueSlots = [
                   </div>
                   <GameScoreValue primary={score.primary} handicap={score.handicap} />
                 </a>
-                <a href={`/sessions/${id}/games/${game.id}/review`} class="review-link">Review scorecard &rarr;</a>
+                {score.primary == null ? (
+                  <div class="game-actions">
+                    <form method="POST" class="score-inline">
+                      <input type="hidden" name="intent" value="set_game_score" />
+                      <input type="hidden" name="game_id" value={game.id} />
+                      <input type="number" name="final_score" min="0" max="300" placeholder="final score" aria-label={`Final score for game ${i + 1}`} />
+                      <button type="submit" class="secondary">Save</button>
+                    </form>
+                    <a href={`/sessions/${id}/games/${game.id}/review`} class="review-link">Review scorecard &rarr;</a>
+                  </div>
+                ) : (
+                  <a href={`/sessions/${id}/games/${game.id}/review`} class="review-link">Review scorecard &rarr;</a>
+                )}
               </li>
             );
           })}
@@ -211,9 +272,13 @@ const leagueSlots = [
       ) : (
         <p class="empty">No games yet — add one below.</p>
       )}
-      <form method="POST" style="margin-top: 1rem;">
+      <form method="POST" class="add-game" style="margin-top: 1rem;">
         <input type="hidden" name="slot" value="new" />
-        <button type="submit">Add game</button>
+        <input type="number" name="final_score" min="0" max="300" placeholder="final score (optional)" aria-label="Score for new game" />
+        <div class="add-game-actions">
+          <button type="submit" name="action" value="score" class="secondary">Add with score</button>
+          <button type="submit" name="action" value="log">Add &amp; log throws</button>
+        </div>
       </form>
     </>
   )}
