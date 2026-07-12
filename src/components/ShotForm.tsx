@@ -48,6 +48,12 @@ export default function ShotForm({ balls, approaches, frameNumber, initial, subm
       <input type="hidden" name="frame_number" value={frameNumber} />
       <input type="hidden" name="intent" value="log_shot" />
 
+      <PinDiagram
+        initialStanding={initial?.pins_standing ?? []}
+        initialStrike={initial?.strike ?? false}
+        initialSpare={initial?.spare ?? false}
+      />
+
       <label>
         Reference approach
         <select name="approach_id" value={approachId} onChange={(e) => setApproachId(e.target.value)}>
@@ -111,12 +117,6 @@ export default function ShotForm({ balls, approaches, frameNumber, initial, subm
           <input type="number" name="target_value" defaultValue={initial?.target_value ?? ''} />
         </label>
       </div>
-
-      <PinDiagram
-        initialStanding={initial?.pins_standing ?? []}
-        initialStrike={initial?.strike ?? false}
-        initialSpare={initial?.spare ?? false}
-      />
 
       <label>
         Hook timing

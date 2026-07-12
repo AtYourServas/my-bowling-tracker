@@ -1,7 +1,7 @@
 ---
 import Layout from '../../../../layouts/Layout.astro';
 import ShotForm from '../../../../components/ShotForm';
-import { fetchDerivedScoreForGame } from '../../../../lib/scoring';
+import { fetchScoresheetForGame } from '../../../../lib/scoring';
 import { fetchSessionHandicap } from '../../../../lib/handicap';
 
 const { supabase } = Astro.locals;
@@ -108,9 +108,25 @@ if (!game) {
   return Astro.redirect(`/sessions/${sessionId}`);
 }
 
-const derivedScore = await fetchDerivedScoreForGame(supabase, gameId!);
-const scratchScore = game.final_score ?? derivedScore;
+const cells = await fetchScoresheetForGame(supabase, gameId!);
+const through = [...cells].reverse().find((c) => c.cumulative != null);
+const runningTotal = through?.cumulative ?? null;
+const finalDerived = cells[9]?.cumulative ?? null; // full total once all 10 resolve
+const scratchScore = game.final_score ?? finalDerived ?? runningTotal;
 const sessionHandicap = await fetchSessionHandicap(supabase, { id: sessionId!, ...game.sessions });
+
+const sessionMeta = [
+  game.sessions?.alley_name,
+  game.sessions?.session_date
+    ? new Date(`${game.sessions.session_date}T00:00:00`).toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      })
+    : null,
+]
+  .filter(Boolean)
+  .join(' · ');
 
 const { data: frameRow } = await supabase
   .from('frames')
@@ -139,41 +155,81 @@ const gameLabel = game.is_practice ? 'Practice' : game.game_number ? `Game ${gam
 <Layout title={gameLabel}>
   <nav class="top"><a href={`/sessions/${sessionId}`}>&larr; Session</a></nav>
   <h1>{gameLabel}</h1>
+  {sessionMeta && <p class="meta">{sessionMeta}</p>}
 
   {error && <p class="error">{error}</p>}
 
-  <div class="score-box">
-    <form method="POST">
+  <div class="sechead"><span class="chev"><i></i><i></i><i></i></span><h2>Scoresheet</h2></div>
+
+  <div class="sheetwrap">
+    <div class="sheet" role="group" aria-label="Frames">
+      {cells.map((cell) => (
+        <a
+          class:list={[
+            'cell',
+            {
+              active: cell.frameNumber === frameNumber,
+              future: !cell.bowled && cell.frameNumber !== frameNumber,
+              f10: cell.frameNumber === 10,
+            },
+          ]}
+          href={`/sessions/${sessionId}/games/${gameId}?frame=${cell.frameNumber}`}
+          aria-current={cell.frameNumber === frameNumber ? 'true' : undefined}
+          aria-label={`Frame ${cell.frameNumber}${cell.cumulative != null ? `, ${cell.cumulative}` : ''}`}
+        >
+          <span class="fnum">{cell.frameNumber}</span>
+          <span class="balls">
+            {cell.balls.map((b) => (
+              <span
+                class:list={[
+                  'bbox',
+                  {
+                    mark: b.kind === 'strike' || b.kind === 'spare',
+                    strike: b.kind === 'strike',
+                    spare: b.kind === 'spare',
+                    empty: b.kind === 'empty',
+                  },
+                ]}
+              >
+                {b.text}
+              </span>
+            ))}
+          </span>
+          <span class:list={['total', { blank: cell.cumulative == null }]}>
+            {cell.cumulative == null ? '—' : cell.cumulative}
+          </span>
+        </a>
+      ))}
+    </div>
+  </div>
+
+  <div class="scorecard">
+    <div class="scorenow">
+      <div class="row">
+        <span class="n">{runningTotal ?? '—'}</span>
+        <span class="lbl">{through ? `through ${through.frameNumber}` : 'no frames yet'}</span>
+      </div>
+      {scratchScore != null && sessionHandicap != null && (
+        <span class="hcap">+ handicap {sessionHandicap} = <b>{scratchScore + sessionHandicap}</b></span>
+      )}
+    </div>
+    <form class="finalscore" method="POST">
       <input type="hidden" name="intent" value="set_score" />
-      <label>
-        Final score
-        <input type="number" name="final_score" min="0" max="300" value={game.final_score ?? ''} />
-      </label>
-      <button type="submit">Save score</button>
+      <label for="final_score">Final score</label>
+      <input
+        id="final_score"
+        type="number"
+        name="final_score"
+        min="0"
+        max="300"
+        value={game.final_score ?? ''}
+        placeholder="&#8212;"
+      />
+      <button type="submit" class="secondary">Save</button>
     </form>
-    {derivedScore != null && (
-      <p class="empty">
-        Derived from frames: {derivedScore}
-        {game.final_score != null && game.final_score !== derivedScore && ` (differs from final score of ${game.final_score})`}
-      </p>
-    )}
-    {scratchScore != null && sessionHandicap != null && (
-      <p class="empty">With handicap ({sessionHandicap}): {scratchScore + sessionHandicap}</p>
-    )}
   </div>
 
-  <div class="frame-picker">
-    {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
-      <a
-        class={`frame-btn${n === frameNumber ? ' active' : ''}`}
-        href={`/sessions/${sessionId}/games/${gameId}?frame=${n}`}
-      >
-        {n}
-      </a>
-    ))}
-  </div>
-
-  <h1>Frame {frameNumber}</h1>
+  <div class="sechead"><span class="chev"><i></i><i></i><i></i></span><h2>Now bowling &middot; Frame {frameNumber}</h2></div>
 
   {shots && shots.length > 0 && (
     <ul class="list">
