@@ -352,6 +352,32 @@ const { title } = Astro.props;
         font-weight: 600;
         color: var(--text-primary);
       }
+      .best-stats-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.6rem;
+        margin-top: 0.75rem;
+      }
+      .best-stat {
+        display: flex;
+        flex-direction: column;
+        gap: 0.15rem;
+        padding: 0.6rem;
+        border: 1px solid #ccc;
+        border-radius: 8px;
+      }
+      .best-stat-label {
+        font-size: 0.8rem;
+        opacity: 0.75;
+      }
+      .best-stat-value {
+        font-size: 1.5rem;
+        font-weight: 600;
+      }
+      .best-stat-date {
+        font-size: 0.75rem;
+        opacity: 0.7;
+      }
       .chart-card {
         border: 1px solid #ccc;
         border-radius: 8px;

@@ -3,11 +3,14 @@ import Layout from '../layouts/Layout.astro';
 import StatsCharts from '../components/StatsCharts';
 import {
   fetchScoredGames,
+  fetchAllScoredGames,
   fetchBallStats,
   groupByLaneCondition,
   fetchLeagueStats,
   average,
   fetchHandicappedAverage,
+  fetchBestGameStats,
+  fetchBestSeriesStats,
 } from '../lib/stats';
 
 const { supabase } = Astro.locals;
@@ -31,6 +34,10 @@ const averageOverTime = scoredGames.map((g, i) => {
 });
 
 const heroLabel = includePracticeSessions ? 'Overall average' : 'League-only average';
+
+const allGamesEver = await fetchAllScoredGames(supabase);
+const bestGame = await fetchBestGameStats(supabase, allGamesEver);
+const bestSeries = await fetchBestSeriesStats(supabase, allGamesEver);
 ---
 
 <Layout title="Stats">
@@ -62,4 +69,32 @@ const heroLabel = includePracticeSessions ? 'Overall average' : 'League-only ave
       averageOverTime={averageOverTime}
     />
   )}
+
+  <hr />
+
+  <h1>All-time bests</h1>
+  <p class="empty">Every game and session ever logged, practice included — not affected by the filter above.</p>
+
+  <div class="best-stats-grid">
+    <div class="best-stat">
+      <span class="best-stat-label">Best game (scratch)</span>
+      <span class="best-stat-value">{bestGame.scratch ? bestGame.scratch.value : '—'}</span>
+      {bestGame.scratch && <span class="best-stat-date">{bestGame.scratch.date}</span>}
+    </div>
+    <div class="best-stat">
+      <span class="best-stat-label">Best game (handicap)</span>
+      <span class="best-stat-value">{bestGame.handicapped ? bestGame.handicapped.value : '—'}</span>
+      {bestGame.handicapped && <span class="best-stat-date">{bestGame.handicapped.date}</span>}
+    </div>
+    <div class="best-stat">
+      <span class="best-stat-label">Best series (scratch)</span>
+      <span class="best-stat-value">{bestSeries.scratch ? bestSeries.scratch.value : '—'}</span>
+      {bestSeries.scratch && <span class="best-stat-date">{bestSeries.scratch.date} · {bestSeries.scratch.gameCount} games</span>}
+    </div>
+    <div class="best-stat">
+      <span class="best-stat-label">Best series (handicap)</span>
+      <span class="best-stat-value">{bestSeries.handicapped ? bestSeries.handicapped.value : '—'}</span>
+      {bestSeries.handicapped && <span class="best-stat-date">{bestSeries.handicapped.date} · {bestSeries.handicapped.gameCount} games</span>}
+    </div>
+  </div>
 </Layout>

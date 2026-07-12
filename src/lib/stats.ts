@@ -8,6 +8,7 @@ export type ScoredGame = {
   sessionId: string;
   sessionDate: string;
   sessionType: string;
+  isPractice: boolean;
   leagueId: string | null;
   manualHandicap: number | null;
   laneCondition: string | null;
@@ -40,6 +41,7 @@ export async function fetchScoredGames(supabase: SupabaseClient, filter: StatsFi
       sessionId: game.session_id,
       sessionDate: game.sessions.session_date,
       sessionType: game.sessions.session_type,
+      isPractice: false,
       leagueId: game.sessions.league_id,
       manualHandicap: game.sessions.manual_handicap,
       laneCondition: game.sessions.lane_condition_notes,
@@ -47,6 +49,128 @@ export async function fetchScoredGames(supabase: SupabaseClient, filter: StatsFi
   }
 
   return results.sort((a, b) => a.sessionDate.localeCompare(b.sessionDate));
+}
+
+/**
+ * Every game ever logged with a resolvable score, with no exclusions at all --
+ * unlike fetchScoredGames, this includes is_practice games (the Practice
+ * segment of a league night) and practice-session games too. Meant for
+ * all-time "best game"/"best series" bragging-rights stats, not averages.
+ */
+export async function fetchAllScoredGames(supabase: SupabaseClient): Promise<ScoredGame[]> {
+  const { data: games } = await supabase
+    .from('games')
+    .select('id, final_score, session_id, is_practice, sessions(session_date, lane_condition_notes, session_type, league_id, manual_handicap)');
+
+  if (!games) return [];
+
+  const results: ScoredGame[] = [];
+  for (const game of games as any[]) {
+    const derived = await fetchDerivedScoreForGame(supabase, game.id);
+    const score = game.final_score ?? derived;
+    if (score == null) continue;
+    results.push({
+      gameId: game.id,
+      score,
+      sessionId: game.session_id,
+      sessionDate: game.sessions.session_date,
+      sessionType: game.sessions.session_type,
+      isPractice: game.is_practice,
+      leagueId: game.sessions.league_id,
+      manualHandicap: game.sessions.manual_handicap,
+      laneCondition: game.sessions.lane_condition_notes,
+    });
+  }
+
+  return results.sort((a, b) => a.sessionDate.localeCompare(b.sessionDate));
+}
+
+export type BestStat = { value: number; date: string; gameCount?: number };
+
+/** Highest single game, scratch and (if a handicap resolves) handicapped, across every game ever logged. */
+export async function fetchBestGameStats(
+  supabase: SupabaseClient,
+  games: ScoredGame[],
+): Promise<{ scratch: BestStat | null; handicapped: BestStat | null }> {
+  let scratch: BestStat | null = null;
+  for (const g of games) {
+    if (!scratch || g.score > scratch.value) scratch = { value: g.score, date: g.sessionDate };
+  }
+
+  const handicapBySession = new Map<string, number | null>();
+  let handicapped: BestStat | null = null;
+
+  for (const g of games) {
+    if (g.sessionType !== 'league' || !g.leagueId) continue;
+
+    if (!handicapBySession.has(g.sessionId)) {
+      const h = await fetchSessionHandicap(supabase, {
+        id: g.sessionId,
+        session_date: g.sessionDate,
+        session_type: g.sessionType,
+        league_id: g.leagueId,
+        manual_handicap: g.manualHandicap,
+      });
+      handicapBySession.set(g.sessionId, h);
+    }
+
+    const h = handicapBySession.get(g.sessionId);
+    if (h == null) continue;
+    const total = g.score + h;
+    if (!handicapped || total > handicapped.value) handicapped = { value: total, date: g.sessionDate };
+  }
+
+  return { scratch, handicapped };
+}
+
+/**
+ * Highest series (sum of a session's non-practice-segment games), scratch
+ * and handicapped, across every session ever logged. Handicapped series
+ * uses the session's single handicap applied to each of its games.
+ */
+export async function fetchBestSeriesStats(
+  supabase: SupabaseClient,
+  games: ScoredGame[],
+): Promise<{ scratch: BestStat | null; handicapped: BestStat | null }> {
+  const bySession = new Map<string, ScoredGame[]>();
+  for (const g of games) {
+    if (g.isPractice) continue;
+    const list = bySession.get(g.sessionId) ?? [];
+    list.push(g);
+    bySession.set(g.sessionId, list);
+  }
+
+  let scratch: BestStat | null = null;
+  let handicapped: BestStat | null = null;
+
+  for (const sessionGames of bySession.values()) {
+    const scratchSum = sessionGames.reduce((sum, g) => sum + g.score, 0);
+    const date = sessionGames[0].sessionDate;
+    const gameCount = sessionGames.length;
+
+    if (!scratch || scratchSum > scratch.value) {
+      scratch = { value: scratchSum, date, gameCount };
+    }
+
+    const first = sessionGames[0];
+    if (first.sessionType === 'league' && first.leagueId) {
+      const h = await fetchSessionHandicap(supabase, {
+        id: first.sessionId,
+        session_date: first.sessionDate,
+        session_type: first.sessionType,
+        league_id: first.leagueId,
+        manual_handicap: first.manualHandicap,
+      });
+      if (h != null) {
+        const total = scratchSum + h * gameCount;
+        if (!handicapped || total > handicapped.value) {
+          handicapped = { value: total, date, gameCount };
+        }
+      }
+    }
+  }
+
+  return { scratch, handicapped };
 }
 
 export type BallStat = { ballName: string; avgPinsPerShot: number; shotCount: number };
