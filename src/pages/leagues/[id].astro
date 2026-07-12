@@ -19,6 +19,7 @@ if (Astro.request.method === 'POST') {
     }
   } else {
     const name = formData.get('name')?.toString().trim() ?? '';
+    const team_name = formData.get('team_name')?.toString().trim() || null;
     const basisRaw = formData.get('handicap_basis')?.toString().trim();
     const handicap_basis = basisRaw ? Number(basisRaw) : 200;
     const percentRaw = formData.get('handicap_percent')?.toString().trim();
@@ -33,7 +34,7 @@ if (Astro.request.method === 'POST') {
     } else {
       const { error: updateError } = await supabase
         .from('leagues')
-        .update({ name, handicap_basis, handicap_percent, handicap_type, book_average, notes })
+        .update({ name, team_name, handicap_basis, handicap_percent, handicap_type, book_average, notes })
         .eq('id', id);
 
       if (updateError) {
@@ -62,6 +63,10 @@ if (!league) {
     <label>
       Name
       <input type="text" name="name" required value={league.name} />
+    </label>
+    <label>
+      Team name
+      <input type="text" name="team_name" value={league.team_name ?? ''} placeholder="auto-fills new sessions" />
     </label>
     <label>
       Handicap basis

@@ -21,6 +21,17 @@ if (Astro.request.method === 'POST') {
   if (session_type !== 'league' && session_type !== 'practice') {
     error = 'Session type is required.';
   } else {
+    // a league session with no team typed inherits the league's team name
+    let effectiveTeamName = session_type === 'league' ? league_team_name : null;
+    if (session_type === 'league' && league_id && !effectiveTeamName) {
+      const { data: league } = await supabase
+        .from('leagues')
+        .select('team_name')
+        .eq('id', league_id)
+        .maybeSingle();
+      effectiveTeamName = league?.team_name ?? null;
+    }
+
     const { data, error: insertError } = await supabase
       .from('sessions')
       .insert({
@@ -30,7 +41,7 @@ if (Astro.request.method === 'POST') {
         session_type,
         session_date,
         lane_condition_notes,
-        league_team_name: session_type === 'league' ? league_team_name : null,
+        league_team_name: effectiveTeamName,
         league_id: session_type === 'league' ? league_id : null,
         manual_handicap: session_type === 'league' ? manual_handicap : null,
       })
@@ -164,8 +175,8 @@ const { data: leagues } = await supabase.from('leagues').select('id, name').orde
       </select>
     </label>
     <label>
-      League/team name (if league)
-      <input type="text" name="league_team_name" />
+      Team name (if league)
+      <input type="text" name="league_team_name" placeholder="Leave blank to use the league's team" />
     </label>
     <label>
       Handicap override (optional — overrides the league's calculated handicap)
