@@ -4,12 +4,37 @@ export type ShotLite = {
   pins_standing: number[] | null;
   strike: boolean;
   spare: boolean;
+  foul?: boolean;
 };
 
 export type FrameLite = {
   frame_number: number;
   shots: ShotLite[];
 };
+
+/** Knocked-pin count for a roll plus whether the delivery was fouled. */
+export type Roll = { knocked: number; foul: boolean };
+
+/**
+ * Per-roll pinfall for a single frame's shots, derived from per-shot pin state.
+ * Pinfall for a roll is (pins standing before) - (pins standing after); the rack
+ * resets to 10 after any roll that clears it. A fouled delivery counts zero
+ * regardless of pins knocked down (USBC), and respots the full rack for the next
+ * ball in the frame -- so a first-ball foul leaves 10 standing for ball 2.
+ */
+function frameRollsDetailed(shots: ShotLite[]): Roll[] {
+  const rolls: Roll[] = [];
+  let priorStanding = 10;
+  for (const shot of shots) {
+    const standingAfter = shot.pins_standing?.length ?? 0;
+    const foul = shot.foul ?? false;
+    const knocked = foul ? 0 : shot.strike ? 10 : Math.max(0, Math.min(10, priorStanding - standingAfter));
+    rolls.push({ knocked, foul });
+    // a foul respots the rack (pins knocked by a foul ball don't stay down)
+    priorStanding = foul || standingAfter === 0 ? 10 : standingAfter;
+  }
+  return rolls;
+}
 
 /**
  * Derives a standard ten-pin score from per-shot pin state. Each shot's
@@ -35,16 +60,7 @@ export function computeDerivedScore(frames: FrameLite[]): number | null {
 
   for (let n = 1; n <= 10; n++) {
     const frame = byNumber.get(n)!;
-    const rolls: number[] = [];
-    let priorStanding = 10;
-
-    for (const shot of frame.shots) {
-      const standingAfter = shot.pins_standing?.length ?? 0;
-      const knocked = shot.strike ? 10 : Math.max(0, Math.min(10, priorStanding - standingAfter));
-      rolls.push(knocked);
-      priorStanding = standingAfter === 0 ? 10 : standingAfter;
-    }
-
+    const rolls = frameRollsDetailed(frame.shots).map((r) => r.knocked);
     frameRolls.push(rolls);
     flatRolls.push(...rolls);
   }
@@ -100,7 +116,7 @@ export async function fetchDerivedScoreForGame(
 ): Promise<number | null> {
   const { data: frames } = await supabase
     .from('frames')
-    .select('frame_number, shots(pins_standing, strike, spare, created_at)')
+    .select('frame_number, shots(pins_standing, strike, spare, foul, created_at)')
     .eq('game_id', gameId)
     .order('frame_number', { ascending: true })
     .order('created_at', { foreignTable: 'shots', ascending: true });
@@ -112,19 +128,11 @@ export async function fetchDerivedScoreForGame(
 /**
  * Knocked-pin count for each roll in a single frame, derived from per-shot
  * pin state (the same rule computeScoresheet uses). The rack resets to 10
- * after any roll that clears it, which only matters for the 10th frame's
- * bonus balls.
+ * after any roll that clears it (or is fouled), which only matters for the
+ * 10th frame's bonus balls. A fouled delivery counts zero.
  */
 export function computeFrameRolls(shots: ShotLite[]): number[] {
-  const rolls: number[] = [];
-  let priorStanding = 10;
-  for (const shot of shots) {
-    const standingAfter = shot.pins_standing?.length ?? 0;
-    const knocked = shot.strike ? 10 : Math.max(0, Math.min(10, priorStanding - standingAfter));
-    rolls.push(knocked);
-    priorStanding = standingAfter === 0 ? 10 : standingAfter;
-  }
-  return rolls;
+  return frameRollsDetailed(shots).map((r) => r.knocked);
 }
 
 export type FrameProgress = {
@@ -160,7 +168,7 @@ export function frameProgress(frameNumber: number, shots: ShotLite[]): FrameProg
   return { count, complete, canAdd: !complete, nextBall: complete ? null : count + 1 };
 }
 
-export type BallKind = 'strike' | 'spare' | 'pins' | 'empty';
+export type BallKind = 'strike' | 'spare' | 'pins' | 'foul' | 'empty';
 export type BallMark = { text: string; kind: BallKind };
 export type FrameCell = {
   frameNumber: number;
@@ -179,21 +187,14 @@ export type FrameCell = {
 export function computeScoresheet(frames: FrameLite[]): FrameCell[] {
   const byNumber = new Map(frames.map((f) => [f.frame_number, f]));
 
-  // knocked-pin count per roll, per frame 1..10 (empty if frame not bowled)
+  // knocked-pin count + foul flag per roll, per frame 1..10 (empty if not bowled)
   const frameRolls: number[][] = [];
+  const frameFouls: boolean[][] = [];
   for (let n = 1; n <= 10; n++) {
     const frame = byNumber.get(n);
-    const rolls: number[] = [];
-    if (frame) {
-      let priorStanding = 10;
-      for (const shot of frame.shots) {
-        const standingAfter = shot.pins_standing?.length ?? 0;
-        const knocked = shot.strike ? 10 : Math.max(0, Math.min(10, priorStanding - standingAfter));
-        rolls.push(knocked);
-        priorStanding = standingAfter === 0 ? 10 : standingAfter;
-      }
-    }
-    frameRolls.push(rolls);
+    const detailed = frame ? frameRollsDetailed(frame.shots) : [];
+    frameRolls.push(detailed.map((r) => r.knocked));
+    frameFouls.push(detailed.map((r) => r.foul));
   }
 
   // flattened rolls (in frame order) + each frame's start index, for bonus lookups
@@ -206,30 +207,37 @@ export function computeScoresheet(frames: FrameLite[]): FrameCell[] {
 
   const ball = (text: string, kind: BallKind): BallMark => ({ text, kind });
   const pinBall = (n: number) => ball(n === 0 ? '-' : String(n), 'pins');
+  const foulBall = ball('F', 'foul');
   const empty = ball('', 'empty');
 
   function marks(n: number): BallMark[] {
     const r = frameRolls[n - 1];
+    const f = frameFouls[n - 1];
     if (n < 10) {
       if (r.length === 0) return [empty, empty];
-      if (r[0] === 10) return [ball('X', 'strike'), empty];
-      const m0 = pinBall(r[0]);
+      if (!f[0] && r[0] === 10) return [ball('X', 'strike'), empty];
+      const m0 = f[0] ? foulBall : pinBall(r[0]);
       if (r.length < 2) return [m0, empty];
-      if (r[0] + r[1] === 10) return [m0, ball('/', 'spare')];
-      return [m0, pinBall(r[1])];
+      // a first-ball foul respots the rack, so ball 2 clearing all 10 is a spare (0 + 10)
+      const m1 = f[1] ? foulBall : r[0] + r[1] === 10 ? ball('/', 'spare') : pinBall(r[1]);
+      return [m0, m1];
     }
-    // tenth frame: up to three balls, rack resets after each strike/spare
+    // tenth frame: up to three balls; a strike or foul respots a fresh rack for
+    // the next ball. Spare notation uses the two balls sharing a rack.
     const out: BallMark[] = [empty, empty, empty];
     const [r0, r1, r2] = r;
-    if (r0 !== undefined) out[0] = r0 === 10 ? ball('X', 'strike') : pinBall(r0);
+    if (r0 !== undefined) out[0] = f[0] ? foulBall : r0 === 10 ? ball('X', 'strike') : pinBall(r0);
     if (r1 !== undefined) {
-      if (r0 === 10) out[1] = r1 === 10 ? ball('X', 'strike') : pinBall(r1);
-      else out[1] = r0 + r1 === 10 ? ball('/', 'spare') : pinBall(r1);
+      if (f[1]) out[1] = foulBall;
+      else if (r0 === 10) out[1] = r1 === 10 ? ball('X', 'strike') : pinBall(r1); // fresh rack after ball 1 strike
+      else out[1] = r0 + r1 === 10 ? ball('/', 'spare') : pinBall(r1); // completes (or fails) the opening pair
     }
     if (r2 !== undefined) {
-      if (r1 === 10) out[2] = r2 === 10 ? ball('X', 'strike') : pinBall(r2);
-      else if (r0 === 10) out[2] = r1 + r2 === 10 ? ball('/', 'spare') : pinBall(r2);
-      else out[2] = r2 === 10 ? ball('X', 'strike') : pinBall(r2);
+      if (f[2]) out[2] = foulBall;
+      // ball 2 left a fresh rack (its own strike, or a foul respot) -> ball 3 stands alone
+      else if (r1 === 10 || f[1]) out[2] = r2 === 10 ? ball('X', 'strike') : pinBall(r2);
+      else if (r0 === 10) out[2] = r1 + r2 === 10 ? ball('/', 'spare') : pinBall(r2); // ball 2 opened after a strike
+      else out[2] = r2 === 10 ? ball('X', 'strike') : pinBall(r2); // fresh rack after an opening-pair spare
     }
     return out;
   }
@@ -287,7 +295,7 @@ export async function fetchScoresheetForGame(
 ): Promise<FrameCell[]> {
   const { data: frames } = await supabase
     .from('frames')
-    .select('frame_number, shots(pins_standing, strike, spare, created_at)')
+    .select('frame_number, shots(pins_standing, strike, spare, foul, created_at)')
     .eq('game_id', gameId)
     .order('frame_number', { ascending: true })
     .order('created_at', { foreignTable: 'shots', ascending: true });
