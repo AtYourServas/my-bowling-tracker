@@ -15,8 +15,39 @@ const { title } = Astro.props;
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="generator" content={Astro.generator} />
     <title>{title} · MyBowlingTracker</title>
+    <script is:inline>
+      // Apply saved theme before first paint to avoid a flash of the wrong theme.
+      (function () {
+        try {
+          var t = localStorage.getItem('theme');
+          if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t);
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
+    <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle light or dark theme">
+      ☾
+    </button>
     <slot />
+    <script is:inline>
+      (function () {
+        var root = document.documentElement;
+        var btn = document.getElementById('theme-toggle');
+        if (!btn) return;
+        function isDark() {
+          var t = root.getAttribute('data-theme');
+          return t ? t === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+        }
+        function render() { btn.textContent = isDark() ? '☀' : '☾'; }
+        btn.addEventListener('click', function () {
+          var next = isDark() ? 'light' : 'dark';
+          root.setAttribute('data-theme', next);
+          try { localStorage.setItem('theme', next); } catch (e) {}
+          render();
+        });
+        render();
+      })();
+    </script>
   </body>
 </html>

@@ -48,7 +48,7 @@ const bestSeries = await fetchBestSeriesStats(supabase, allGamesEver);
   <p class="empty">Every game and session ever logged, practice included — not affected by the filter below.</p>
 
   <div class="best-stats-grid">
-    <div class="best-stat">
+    <div class:list={['best-stat', { highlight: !!bestGame.scratch }]}>
       <span class="best-stat-label">Best game (scratch)</span>
       <span class="best-stat-value">{bestGame.scratch ? bestGame.scratch.value : '—'}</span>
       {bestGame.scratch && <span class="best-stat-date">{bestGame.scratch.date}</span>}
