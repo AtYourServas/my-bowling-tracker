@@ -9,6 +9,7 @@ type Props = {
   handicappedAverage: number | null;
   byLaneCondition: BarDatum[];
   byBall: BarDatum[];
+  byLeague: BarDatum[];
   averageOverTime: TimeDatum[];
 };
 
@@ -194,6 +195,7 @@ export default function StatsCharts({
   handicappedAverage,
   byLaneCondition,
   byBall,
+  byLeague,
   averageOverTime,
 }: Props) {
   return (
@@ -211,6 +213,7 @@ export default function StatsCharts({
       )}
 
       <LineChart title="Average over time" data={averageOverTime} />
+      <BarChart title="Average by league" data={byLeague} unit="avg score" />
       <BarChart title="Average by lane condition" data={byLaneCondition} unit="avg score" />
       <BarChart title="Avg pins per shot, by ball" data={byBall} unit="pins/shot" />
     </div>

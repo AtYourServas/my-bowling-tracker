@@ -1,7 +1,14 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import StatsCharts from '../components/StatsCharts';
-import { fetchScoredGames, fetchBallStats, groupByLaneCondition, average, fetchHandicappedAverage } from '../lib/stats';
+import {
+  fetchScoredGames,
+  fetchBallStats,
+  groupByLaneCondition,
+  fetchLeagueStats,
+  average,
+  fetchHandicappedAverage,
+} from '../lib/stats';
 
 const { supabase } = Astro.locals;
 
@@ -15,6 +22,7 @@ const overallAverage = average(scoredGames.map((g) => g.score));
 const handicappedAverage = await fetchHandicappedAverage(supabase, scoredGames);
 const byLaneCondition = groupByLaneCondition(scoredGames);
 const byBall = ballStats.map((b) => ({ label: b.ballName, value: b.avgPinsPerShot, count: b.shotCount }));
+const byLeague = await fetchLeagueStats(supabase, scoredGames);
 
 let runningSum = 0;
 const averageOverTime = scoredGames.map((g, i) => {
@@ -50,6 +58,7 @@ const heroLabel = includePracticeSessions ? 'Overall average' : 'League-only ave
       handicappedAverage={handicappedAverage}
       byLaneCondition={byLaneCondition}
       byBall={byBall}
+      byLeague={byLeague}
       averageOverTime={averageOverTime}
     />
   )}

@@ -125,6 +125,31 @@ export function average(values: number[]): number | null {
   return values.reduce((a, b) => a + b, 0) / values.length;
 }
 
+/** Scratch average per league, for league games only (sessions with a league assigned). */
+export async function fetchLeagueStats(
+  supabase: SupabaseClient,
+  games: ScoredGame[],
+): Promise<{ label: string; value: number; count: number }[]> {
+  const leagueGames = games.filter((g) => g.sessionType === 'league' && g.leagueId);
+  if (leagueGames.length === 0) return [];
+
+  const leagueIds = Array.from(new Set(leagueGames.map((g) => g.leagueId!)));
+  const { data: leagues } = await supabase.from('leagues').select('id, name').in('id', leagueIds);
+  const nameById = new Map((leagues ?? []).map((l) => [l.id, l.name]));
+
+  const groups = new Map<string, number[]>();
+  for (const game of leagueGames) {
+    const name = nameById.get(game.leagueId!) ?? 'Unknown league';
+    const list = groups.get(name) ?? [];
+    list.push(game.score);
+    groups.set(name, list);
+  }
+
+  return Array.from(groups.entries())
+    .map(([label, scores]) => ({ label, value: average(scores)!, count: scores.length }))
+    .sort((a, b) => b.value - a.value);
+}
+
 export function groupByLaneCondition(games: ScoredGame[]): { label: string; value: number; count: number }[] {
   const groups = new Map<string, number[]>();
   for (const game of games) {
