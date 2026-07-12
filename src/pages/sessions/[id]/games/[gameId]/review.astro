@@ -1,11 +1,16 @@
 ---
 import Layout from '../../../../../layouts/Layout.astro';
 import { fetchDerivedScoreForGame } from '../../../../../lib/scoring';
+import { laneForFrame, laneConfigFromSession } from '../../../../../lib/lanes';
 
 const { supabase } = Astro.locals;
 const { id: sessionId, gameId } = Astro.params;
 
-const { data: game } = await supabase.from('games').select('*').eq('id', gameId).maybeSingle();
+const { data: game } = await supabase
+  .from('games')
+  .select('*, sessions(lane_number, second_lane_number)')
+  .eq('id', gameId)
+  .maybeSingle();
 
 if (!game) {
   return Astro.redirect(`/sessions/${sessionId}`);
@@ -26,6 +31,9 @@ const framesByNumber = new Map((frames ?? []).map((f: any) => [f.frame_number, f
 
 const gameLabel = game.is_practice ? 'Practice' : game.game_number ? `Game ${game.game_number}` : 'Game';
 const effectiveScore = game.final_score ?? derivedScore;
+
+const laneConfig = laneConfigFromSession(game.sessions ?? { lane_number: null, second_lane_number: null });
+const showLane = laneConfig.secondLaneNumber != null;
 ---
 
 <Layout title={`${gameLabel} review`}>
@@ -47,7 +55,7 @@ const effectiveScore = game.final_score ?? derivedScore;
     const shots = frame?.shots ?? [];
     return (
       <div class="review-frame">
-        <h2>Frame {n}</h2>
+        <h2>Frame {n}{showLane && ` · Lane ${laneForFrame(n, laneConfig)}`}</h2>
         {shots.length > 0 ? (
           <ul>
             {shots.map((shot: any) => (

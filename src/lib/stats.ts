@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { fetchDerivedScoreForGame } from './scoring';
 import { fetchSessionHandicap } from './handicap';
+import { laneForFrame, type LaneConfig } from './lanes';
 
 export type ScoredGame = {
   gameId: string;
@@ -283,6 +284,57 @@ export async function fetchLeagueStats(
   return Array.from(groups.entries())
     .map(([label, scores]) => ({ label, value: average(scores)!, count: scores.length }))
     .sort((a, b) => b.value - a.value);
+}
+
+export type SessionLaneStat = { lane: number; frames: number; strikes: number; firstBallAvg: number | null };
+
+/**
+ * Per-lane breakdown for one session's alternating pair: frames bowled on each
+ * lane, first-ball strikes, and average first-ball (fresh-rack) pinfall. Each
+ * frame's lane is derived from its number's parity + the session's starting lane
+ * (via laneForFrame). Practice-segment games are excluded. Returns [] when the
+ * session has no lane pair or no logged frames.
+ */
+export async function fetchSessionLaneStats(
+  supabase: SupabaseClient,
+  sessionId: string,
+  config: LaneConfig,
+): Promise<SessionLaneStat[]> {
+  const { data: frames } = await supabase
+    .from('frames')
+    .select('frame_number, games!inner(session_id, is_practice), shots(pins_standing, strike, created_at)')
+    .eq('games.session_id', sessionId)
+    .eq('games.is_practice', false)
+    .order('created_at', { foreignTable: 'shots', ascending: true });
+
+  if (!frames) return [];
+
+  type Acc = { frames: number; strikes: number; sum: number; count: number };
+  const byLane = new Map<number, Acc>();
+
+  for (const frame of frames as any[]) {
+    const lane = laneForFrame(frame.frame_number, config);
+    if (lane == null) continue;
+
+    const shots = frame.shots ?? [];
+    if (shots.length === 0) continue;
+
+    const acc = byLane.get(lane) ?? { frames: 0, strikes: 0, sum: 0, count: 0 };
+    acc.frames += 1;
+
+    // first ball is always thrown at a fresh rack of 10
+    const first = shots[0];
+    const standingAfter = first.strike ? 0 : first.pins_standing?.length ?? 0;
+    acc.sum += first.strike ? 10 : Math.max(0, Math.min(10, 10 - standingAfter));
+    acc.count += 1;
+    if (first.strike) acc.strikes += 1;
+
+    byLane.set(lane, acc);
+  }
+
+  return Array.from(byLane.entries())
+    .map(([lane, a]) => ({ lane, frames: a.frames, strikes: a.strikes, firstBallAvg: a.count ? a.sum / a.count : null }))
+    .sort((a, b) => a.lane - b.lane);
 }
 
 export function groupByLaneCondition(games: ScoredGame[]): { label: string; value: number; count: number }[] {

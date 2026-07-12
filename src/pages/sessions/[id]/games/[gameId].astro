@@ -4,6 +4,7 @@ import ShotForm from '../../../../components/ShotForm';
 import { fetchScoresheetForGame, frameProgress, computeFrameRolls } from '../../../../lib/scoring';
 import type { ShotLite } from '../../../../lib/scoring';
 import { fetchSessionHandicap } from '../../../../lib/handicap';
+import { laneForFrame, laneConfigFromSession } from '../../../../lib/lanes';
 
 const { supabase } = Astro.locals;
 const { id: sessionId, gameId } = Astro.params;
@@ -117,7 +118,7 @@ if (Astro.request.method === 'POST') {
 
 const { data: game } = await supabase
   .from('games')
-  .select('*, sessions(alley_name, session_date, session_type, league_id, manual_handicap)')
+  .select('*, sessions(alley_name, session_date, session_type, league_id, manual_handicap, lane_number, second_lane_number)')
   .eq('id', gameId)
   .maybeSingle();
 
@@ -167,6 +168,11 @@ const { data: approaches } = await supabase
   .order('name');
 
 const gameLabel = game.is_practice ? 'Practice' : game.game_number ? `Game ${game.game_number}` : 'Game';
+
+// under a two-lane pair, strict alternation puts each frame on a derived lane
+const laneConfig = laneConfigFromSession(game.sessions ?? { lane_number: null, second_lane_number: null });
+const frameLane = laneForFrame(frameNumber, laneConfig);
+const showFrameLane = laneConfig.secondLaneNumber != null && frameLane != null;
 
 // current-frame state (reuses the scoresheet's roll + completeness logic)
 const frameShots = (shots ?? []) as any[];
@@ -275,7 +281,7 @@ function ballResult(i: number): string {
     {prevFrame
       ? <a class="framenav" href={frameHref(prevFrame)} aria-label={`Frame ${prevFrame}`} rel="prev">&larr;</a>
       : <span class="framenav disabled" aria-hidden="true">&larr;</span>}
-    <div class="sechead"><span class="chev"><i></i><i></i><i></i></span><h2>Now bowling &middot; Frame {frameNumber}</h2></div>
+    <div class="sechead"><span class="chev"><i></i><i></i><i></i></span><h2>Now bowling &middot; Frame {frameNumber}{showFrameLane && ` · Lane ${frameLane}`}</h2></div>
     {nextFrame
       ? <a class="framenav" href={frameHref(nextFrame)} aria-label={`Frame ${nextFrame}`} rel="next">&rarr;</a>
       : <span class="framenav disabled" aria-hidden="true">&rarr;</span>}
