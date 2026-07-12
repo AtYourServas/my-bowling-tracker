@@ -120,6 +120,30 @@
    ============================================================ */
 * { box-sizing: border-box; }
 
+/* fixed light/dark toggle, top-right corner */
+.theme-toggle {
+  position: fixed;
+  top: var(--s3);
+  right: var(--s3);
+  z-index: 50;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  line-height: 1;
+  background: var(--surface);
+  color: var(--text-primary);
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+}
+.theme-toggle:hover { background: var(--surface-sunk); filter: none; }
+.theme-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
 body {
   margin: 0;
   padding: var(--s5) var(--s4) var(--s6);
@@ -229,6 +253,27 @@ a.card:hover { text-decoration: none; box-shadow: var(--shadow-md); border-color
 .card span { display: block; font-size: var(--text-sm); color: var(--text-muted); margin-top: 2px; }
 
 .review-link { display: block; font-size: var(--text-xs); margin: var(--s1) 0 0; text-align: right; }
+
+/* game row: title + detail on the left, big score on the right */
+.card.game-card { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); }
+.game-card-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.game-card-detail { font-size: var(--text-sm); color: var(--text-muted); }
+.game-card-score {
+  flex: none;
+  font-size: var(--text-2xl);
+  font-weight: var(--fw-semi);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  color: var(--text-primary);
+}
+.game-card-score.none { font-size: var(--text-xl); color: var(--border-strong); }
+/* paired scratch / handicap readout with a divider */
+.game-card-scores { display: flex; align-items: stretch; gap: var(--s3); flex: none; }
+.score-stat { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+.score-stat + .score-stat { border-left: 1px solid var(--border); padding-left: var(--s3); }
+.score-stat-label { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+.score-stat-value { font-size: var(--text-xl); font-weight: var(--fw-semi); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; line-height: 1; color: var(--text-primary); }
 
 .row-actions { display: flex; gap: var(--s3); margin-top: var(--s5); }
 .row-actions button, .row-actions a { flex: 1; text-align: center; }
@@ -481,6 +526,7 @@ a.card:hover { text-decoration: none; box-shadow: var(--shadow-md); border-color
 
 .best-stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s3); margin-top: var(--s3); }
 .best-stat {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--s1);
@@ -493,8 +539,18 @@ a.card:hover { text-decoration: none; box-shadow: var(--shadow-md); border-color
 .best-stat-label { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
 .best-stat-value { font-size: var(--text-xl); font-weight: var(--fw-semi); font-variant-numeric: tabular-nums; }
 .best-stat-date { font-size: var(--text-xs); color: var(--text-muted); font-variant-numeric: tabular-nums; }
-/* retro signature: a personal-best card can opt into the mustard highlight */
+/* retro signature: the headline personal-best card gets the mustard highlight + star */
 .best-stat.highlight { border-color: var(--mustard); background: var(--mustard-weak); }
+.best-stat.highlight .best-stat-value { color: var(--text-primary); }
+.best-stat.highlight::after {
+  content: "★";
+  position: absolute;
+  top: var(--s2);
+  right: var(--s3);
+  font-size: var(--text-sm);
+  line-height: 1;
+  color: var(--mustard);
+}
 
 .chart-card {
   padding: var(--s3);

@@ -1,5 +1,6 @@
 ---
 import Layout from '../../layouts/Layout.astro';
+import GameScoreValue from '../../components/GameScoreValue.astro';
 import { fetchDerivedScoreForGame } from '../../lib/scoring';
 import { fetchSessionHandicap } from '../../lib/handicap';
 
@@ -87,24 +88,24 @@ const derivedScores = new Map<string, number | null>(
   ),
 );
 
-function scoreLabel(game: { id: string; final_score: number | null }) {
+function gameScore(game: { id: string; final_score: number | null }) {
   const derived = derivedScores.get(game.id) ?? null;
   const scratch = game.final_score ?? derived;
 
-  let label: string;
-  if (game.final_score != null) {
-    label = derived != null && derived !== game.final_score
-      ? `Score: ${game.final_score} (derived: ${derived})`
-      : `Score: ${game.final_score}`;
-  } else {
-    label = derived != null ? `Score: ${derived} (derived)` : 'No score entered yet';
+  if (scratch == null) {
+    return { primary: null as number | null, handicap: null as number | null, detail: 'No score yet' };
   }
 
-  if (scratch != null && sessionHandicap != null) {
-    label += ` · with hdcp: ${scratch + sessionHandicap}`;
+  let detail = '';
+  if (game.final_score != null && derived != null && derived !== game.final_score) {
+    detail = `derived ${derived}`;
+  } else if (game.final_score == null && derived != null) {
+    detail = 'derived';
   }
 
-  return label;
+  const handicap = sessionHandicap != null ? scratch + sessionHandicap : null;
+
+  return { primary: scratch, handicap, detail };
 }
 
 const practiceGame = games?.find((g) => g.is_practice);
@@ -162,38 +163,50 @@ const leagueSlots = [
 
   {session.session_type === 'league' ? (
     <ul class="list">
-      {leagueSlots.map((slot) => (
-        <li>
-          {slot.game ? (
-            <>
-              <a class="card" href={`/sessions/${id}/games/${slot.game.id}`}>
-                <strong>{slot.label}</strong>
-                <span>{scoreLabel(slot.game)}</span>
-              </a>
-              <a href={`/sessions/${id}/games/${slot.game.id}/review`} class="review-link">Review scorecard &rarr;</a>
-            </>
-          ) : (
-            <form method="POST">
-              <input type="hidden" name="slot" value={slot.key} />
-              <button type="submit">Add {slot.label}</button>
-            </form>
-          )}
-        </li>
-      ))}
+      {leagueSlots.map((slot) => {
+        const score = slot.game ? gameScore(slot.game) : null;
+        return (
+          <li>
+            {slot.game && score ? (
+              <>
+                <a class="card game-card" href={`/sessions/${id}/games/${slot.game.id}`}>
+                  <div class="game-card-main">
+                    <strong>{slot.label}</strong>
+                    {score.detail && <div class="game-card-detail">{score.detail}</div>}
+                  </div>
+                  <GameScoreValue primary={score.primary} handicap={score.handicap} />
+                </a>
+                <a href={`/sessions/${id}/games/${slot.game.id}/review`} class="review-link">Review scorecard &rarr;</a>
+              </>
+            ) : (
+              <form method="POST">
+                <input type="hidden" name="slot" value={slot.key} />
+                <button type="submit">Add {slot.label}</button>
+              </form>
+            )}
+          </li>
+        );
+      })}
     </ul>
   ) : (
     <>
       {games && games.length > 0 ? (
         <ul class="list">
-          {games.map((game, i) => (
-            <li>
-              <a class="card" href={`/sessions/${id}/games/${game.id}`}>
-                <strong>Game {i + 1}</strong>
-                <span>{scoreLabel(game)}</span>
-              </a>
-              <a href={`/sessions/${id}/games/${game.id}/review`} class="review-link">Review scorecard &rarr;</a>
-            </li>
-          ))}
+          {games.map((game, i) => {
+            const score = gameScore(game);
+            return (
+              <li>
+                <a class="card game-card" href={`/sessions/${id}/games/${game.id}`}>
+                  <div class="game-card-main">
+                    <strong>Game {i + 1}</strong>
+                    {score.detail && <div class="game-card-detail">{score.detail}</div>}
+                  </div>
+                  <GameScoreValue primary={score.primary} handicap={score.handicap} />
+                </a>
+                <a href={`/sessions/${id}/games/${game.id}/review`} class="review-link">Review scorecard &rarr;</a>
+              </li>
+            );
+          })}
         </ul>
       ) : (
         <p class="empty">No games yet — add one below.</p>
