@@ -105,3 +105,74 @@ export async function fetchSessionHandicap(
 ): Promise<number | null> {
   return (await fetchSessionHandicapDetail(supabase, session)).effective;
 }
+
+export type SessionHandicapResolver = (session: SessionForHandicap) => number | null;
+
+/** A league's scored games, for computing prior-league averages in memory. */
+export type LeagueGameForHandicap = {
+  score: number;
+  sessionDate: string;
+  leagueId: string | null;
+  isPractice: boolean;
+};
+
+/**
+ * Builds a synchronous, batched handicap resolver for many sessions. Unlike
+ * fetchSessionHandicap (one league query + a nested per-game derived-score loop
+ * *per call*), this loads every referenced league config in a single query and
+ * computes rolling prior-league averages from an already-fetched game list --
+ * so resolving each session's handicap costs zero further round-trips. Matches
+ * fetchSessionHandicapDetail's rules exactly (override wins; book_average and
+ * manual leagues; prior average = that league's non-practice games strictly
+ * before the session date).
+ */
+export async function buildSessionHandicapResolver(
+  supabase: SupabaseClient,
+  games: LeagueGameForHandicap[],
+): Promise<SessionHandicapResolver> {
+  const leagueIds = Array.from(new Set(games.map((g) => g.leagueId).filter((id): id is string => !!id)));
+
+  const leagueById = new Map<string, any>();
+  if (leagueIds.length > 0) {
+    const { data: leagues } = await supabase.from('leagues').select('*').in('id', leagueIds);
+    for (const league of leagues ?? []) leagueById.set(league.id, league);
+  }
+
+  // per-league non-practice scores, for the rolling prior-week average
+  const scoresByLeague = new Map<string, { date: string; score: number }[]>();
+  for (const g of games) {
+    if (!g.leagueId || g.isPractice) continue;
+    const list = scoresByLeague.get(g.leagueId) ?? [];
+    list.push({ date: g.sessionDate, score: g.score });
+    scoresByLeague.set(g.leagueId, list);
+  }
+
+  function priorAverage(leagueId: string, beforeDate: string): number | null {
+    const scores = (scoresByLeague.get(leagueId) ?? []).filter((x) => x.date < beforeDate).map((x) => x.score);
+    if (scores.length === 0) return null;
+    return scores.reduce((a, b) => a + b, 0) / scores.length;
+  }
+
+  return (session) => {
+    const override = session.manual_handicap ?? null;
+    if (session.session_type !== 'league' || !session.league_id) return null;
+
+    const league = leagueById.get(session.league_id);
+    if (!league) return override;
+
+    let calculated: number | null;
+    if (league.handicap_type === 'manual') {
+      calculated = null;
+    } else if (league.handicap_type === 'book_average') {
+      calculated =
+        league.book_average == null
+          ? null
+          : computeHandicapFromAverage(league.handicap_basis, league.handicap_percent, league.book_average);
+    } else {
+      const avg = priorAverage(league.id, session.session_date);
+      calculated = avg == null ? null : computeHandicapFromAverage(league.handicap_basis, league.handicap_percent, avg);
+    }
+
+    return override ?? calculated;
+  };
+}

@@ -2,8 +2,8 @@
 import Layout from '../layouts/Layout.astro';
 import StatsCharts from '../components/StatsCharts';
 import {
-  fetchScoredGames,
-  fetchAllScoredGames,
+  fetchAllGamesWithScores,
+  filterScoredGames,
   fetchBallStats,
   groupByLaneCondition,
   fetchLeagueStats,
@@ -12,17 +12,28 @@ import {
   fetchBestGameStats,
   fetchBestSeriesStats,
 } from '../lib/stats';
+import { buildSessionHandicapResolver } from '../lib/handicap';
 
 const { supabase } = Astro.locals;
 
 const includePracticeSessions = Astro.url.searchParams.get('practice') !== 'exclude';
 const filter = { includePracticeSessions };
 
-const scoredGames = await fetchScoredGames(supabase, filter);
-const ballStats = await fetchBallStats(supabase, filter);
+// Fetch every game (with a bulk-derived score) and the ball-carry data in
+// parallel, then compute every stat below in memory -- no per-game or
+// per-session round-trips. The handicap resolver batches league configs and
+// derives rolling prior-week averages from allGamesEver (one more query).
+const [allGamesEver, ballStats] = await Promise.all([
+  fetchAllGamesWithScores(supabase),
+  fetchBallStats(supabase, filter),
+]);
+
+const handicapOf = await buildSessionHandicapResolver(supabase, allGamesEver);
+
+const scoredGames = filterScoredGames(allGamesEver, filter);
 
 const overallAverage = average(scoredGames.map((g) => g.score));
-const handicappedAverage = await fetchHandicappedAverage(supabase, scoredGames);
+const handicappedAverage = fetchHandicappedAverage(scoredGames, handicapOf);
 const byLaneCondition = groupByLaneCondition(scoredGames);
 const byBall = ballStats.map((b) => ({ label: b.ballName, value: b.avgPinsPerShot, count: b.shotCount }));
 const byLeague = await fetchLeagueStats(supabase, scoredGames);
@@ -35,9 +46,8 @@ const averageOverTime = scoredGames.map((g, i) => {
 
 const heroLabel = includePracticeSessions ? 'Overall average' : 'League-only average';
 
-const allGamesEver = await fetchAllScoredGames(supabase);
-const bestGame = await fetchBestGameStats(supabase, allGamesEver);
-const bestSeries = await fetchBestSeriesStats(supabase, allGamesEver);
+const bestGame = fetchBestGameStats(allGamesEver, handicapOf);
+const bestSeries = fetchBestSeriesStats(allGamesEver, handicapOf);
 ---
 
 <Layout title="Stats">
