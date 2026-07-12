@@ -12,7 +12,15 @@ if (Astro.request.method === 'POST') {
   const formData = await Astro.request.formData();
   const intent = formData.get('intent')?.toString();
 
-  if (intent === 'set_league') {
+  if (intent === 'delete_session') {
+    const { error: deleteError } = await supabase.from('sessions').delete().eq('id', id);
+
+    if (deleteError) {
+      error = deleteError.message;
+    } else {
+      return Astro.redirect('/sessions');
+    }
+  } else if (intent === 'set_league') {
     const league_id = formData.get('league_id')?.toString() || null;
     const manualHandicapRaw = formData.get('manual_handicap')?.toString().trim();
     const manual_handicap = manualHandicapRaw ? Number(manualHandicapRaw) : null;
@@ -196,4 +204,11 @@ const leagueSlots = [
       </form>
     </>
   )}
+
+  <hr />
+
+  <form method="POST" class="row-actions">
+    <input type="hidden" name="intent" value="delete_session" />
+    <button type="submit" class="danger">Delete session</button>
+  </form>
 </Layout>
