@@ -35,6 +35,11 @@
   --strike-ink: var(--text-primary);
   --spare-ink:  var(--text-primary);
 
+  /* ---- lane wood (reference-mark picker) ---- */
+  --lane-wood:      #ecd8ad;
+  --lane-wood-line: #d2b785;
+  --lane-wood-edge: #b89a63;
+
   /* ---- chart tokens (folded into the shared root) ---- */
   --gridline: var(--border);
   --axis:     var(--border-strong);
@@ -86,6 +91,10 @@
     --strike-ink: var(--coral);
     --spare-ink:  var(--mustard);
 
+    --lane-wood:      #4a3c26;
+    --lane-wood-line: #5f4d31;
+    --lane-wood-edge: #6f5a39;
+
     --shadow-sm: 0 1px 2px rgba(0,0,0,.4), 0 1px 3px rgba(0,0,0,.5);
     --shadow-md: 0 2px 6px rgba(0,0,0,.4), 0 6px 16px rgba(0,0,0,.55);
   }
@@ -100,6 +109,7 @@
   --pin-up-fill:#d94a34; --pin-up-stroke:#d94a34; --pin-up-stripe:#fcfcfb;
   --pin-down-fill:#efece4; --pin-down-stroke:#c3c2b7; --pin-down-stripe:#d8cfc4;
   --strike-ink:var(--text-primary); --spare-ink:var(--text-primary);
+  --lane-wood:#ecd8ad; --lane-wood-line:#d2b785; --lane-wood-edge:#b89a63;
   --shadow-sm:0 1px 2px rgba(20,20,18,.06),0 1px 3px rgba(20,20,18,.08);
   --shadow-md:0 2px 6px rgba(20,20,18,.08),0 6px 16px rgba(20,20,18,.10);
 }
@@ -111,6 +121,7 @@
   --pin-up-fill:#ef6a52; --pin-up-stroke:#ff8b78; --pin-up-stripe:#1a1a1a;
   --pin-down-fill:#343431; --pin-down-stroke:#57574f; --pin-down-stripe:#47473f;
   --strike-ink:var(--coral); --spare-ink:var(--mustard);
+  --lane-wood:#4a3c26; --lane-wood-line:#5f4d31; --lane-wood-edge:#6f5a39;
   --shadow-sm:0 1px 2px rgba(0,0,0,.4),0 1px 3px rgba(0,0,0,.5);
   --shadow-md:0 2px 6px rgba(0,0,0,.4),0 6px 16px rgba(0,0,0,.55);
 }
@@ -598,14 +609,66 @@ a.ball-row:hover { text-decoration: none; box-shadow: var(--shadow-md); border-c
 }
 .reference-box strong { font-size: var(--text-sm); color: var(--text-primary); }
 
-.target-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s3); }
-
 .pin-shortcuts { display: flex; gap: var(--s3); margin-top: var(--s2); }
 .pin-shortcuts button { flex: 1; background: var(--surface); color: var(--text-primary); border-color: var(--border-strong); }
 .pin-shortcuts button:hover { background: var(--surface-sunk); filter: none; }
 .pin-shortcuts button.active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 
 .pin-hint { font-size: var(--text-xs); color: var(--text-muted); margin: var(--s2) 0 var(--s1); text-align: center; }
+
+/* ============================================================
+   Lane reference-mark picker (LanePicker) — horizontal lane strips
+   ============================================================ */
+.sechead-mini { display: flex; align-items: center; gap: var(--s2); margin: var(--s4) 0 var(--s2); }
+.sechead-mini h3 { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); font-weight: var(--fw-semi); margin: 0; }
+
+.lane-picker { display: flex; flex-direction: column; gap: var(--s3); }
+.lane-hint { font-size: var(--text-xs); color: var(--text-muted); margin: 0; }
+
+.lane-strip { display: flex; flex-direction: column; gap: var(--s1); }
+.lane-strip-head { display: flex; align-items: center; gap: var(--s2); font-size: var(--text-sm); }
+.lane-swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.lane-strip-stance     .lane-swatch { background: var(--accent); }
+.lane-strip-target     .lane-swatch { background: var(--coral); }
+.lane-strip-breakpoint .lane-swatch { background: var(--mustard); }
+.lane-strip-slide      .lane-swatch { background: var(--good); }
+.lane-strip-label { font-weight: var(--fw-semi); color: var(--text-secondary); }
+.lane-strip-value { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.lane-clear {
+  margin-left: auto; padding: 2px 10px; font-size: var(--text-xs);
+  background: var(--surface); color: var(--text-secondary); border-color: var(--border-strong);
+}
+.lane-clear:hover { background: var(--surface-sunk); filter: none; }
+
+.lane-strip-body { display: flex; align-items: center; gap: var(--s2); }
+.lane-nudge {
+  flex: none; width: 2rem; height: 2rem; padding: 0;
+  display: flex; align-items: center; justify-content: center; font-size: var(--text-xs);
+  background: var(--surface); color: var(--text-primary); border-color: var(--border-strong);
+}
+.lane-nudge:hover { background: var(--surface-sunk); filter: none; }
+.lane-svg {
+  flex: 1 1 auto; min-width: 0; height: auto; display: block;
+  aspect-ratio: 5 / 1; border-radius: var(--radius-sm);
+  cursor: pointer; touch-action: manipulation;
+}
+
+.lane-bed { fill: var(--lane-wood); stroke: var(--lane-wood-edge); stroke-width: 1; }
+.lane-board { stroke: var(--lane-wood-line); stroke-width: 0.5; }
+.lane-board-center { stroke: var(--lane-wood-edge); stroke-width: 1; }
+.lane-arrow { fill: var(--text-secondary); opacity: 0.75; }
+.lane-dot { fill: var(--text-secondary); opacity: 0.7; }
+.lane-mark { stroke: rgba(0, 0, 0, 0.28); stroke-width: 1; }
+.lane-strip-stance     .lane-mark { fill: var(--accent); }
+.lane-strip-target     .lane-mark { fill: var(--coral); }
+.lane-strip-breakpoint .lane-mark { fill: var(--mustard); }
+.lane-strip-slide      .lane-mark { fill: var(--good); }
+
+.lane-drift {
+  display: flex; align-items: baseline; gap: var(--s2); margin: var(--s1) 0 0;
+  font-size: var(--text-xs); color: var(--text-muted);
+}
+.lane-drift b { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 
 /* ============================================================
    Pin picker (circles; SVG-pin upgrade is a later step)
