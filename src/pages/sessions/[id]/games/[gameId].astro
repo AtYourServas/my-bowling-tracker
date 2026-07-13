@@ -1,22 +1,32 @@
 ---
 import Layout from '../../../../layouts/Layout.astro';
 import ShotForm from '../../../../components/ShotForm';
-import { fetchScoresheetForGame, frameProgress, computeFrameRolls, allowedMarks, pinsStandingBefore, fetchEarliestIncompleteFrame } from '../../../../lib/scoring';
+import { fetchScoresheetForGame, frameProgress, computeFrameRolls, allowedMarks, pinsStandingBefore, parseShotShorthand, fetchEarliestIncompleteFrame } from '../../../../lib/scoring';
 import type { ShotLite } from '../../../../lib/scoring';
 import { fetchSessionHandicap } from '../../../../lib/handicap';
 import { laneForFrame, laneConfigFromSession } from '../../../../lib/lanes';
 
-const { supabase } = Astro.locals;
+const { supabase, user } = Astro.locals;
 const { id: sessionId, gameId } = Astro.params;
 
 let error: string | null = null;
+
+// Score-entry mode: an explicit ?mode= (set by the on-page toggle) wins and
+// sticks frame-to-frame; otherwise fall back to the profile's saved default.
+const urlMode = Astro.url.searchParams.get('mode');
+let mode: 'pick' | 'type' = urlMode === 'type' ? 'type' : 'pick';
+if (urlMode !== 'type' && urlMode !== 'pick') {
+  const { data: prof } = await supabase.from('profiles').select('default_entry_mode').eq('id', user!.id).maybeSingle();
+  mode = prof?.default_entry_mode === 'type' ? 'type' : 'pick';
+}
+const modeQ = `&mode=${mode}`;
 
 // Opening a game with no explicit frame lands on the earliest unfinished frame,
 // so you resume where you left off instead of always starting at frame 1.
 const frameParam = Astro.url.searchParams.get('frame');
 if (Astro.request.method === 'GET' && frameParam == null) {
   const resume = await fetchEarliestIncompleteFrame(supabase, gameId!);
-  return Astro.redirect(`/sessions/${sessionId}/games/${gameId}?frame=${resume}`);
+  return Astro.redirect(`/sessions/${sessionId}/games/${gameId}?frame=${resume}${modeQ}`);
 }
 
 const frameNumber = Math.min(10, Math.max(1, Number(frameParam) || 1));
@@ -24,6 +34,9 @@ const frameNumber = Math.min(10, Math.max(1, Number(frameParam) || 1));
 if (Astro.request.method === 'POST') {
   const formData = await Astro.request.formData();
   const intent = formData.get('intent')?.toString();
+  // echoed back by every entry form so the chosen mode persists across frames
+  const postMode = formData.get('mode')?.toString() === 'type' ? 'type' : 'pick';
+  const postModeQ = `&mode=${postMode}`;
 
   if (intent === 'delete_game') {
     const { error: deleteError } = await supabase.from('games').delete().eq('id', gameId);
@@ -42,9 +55,9 @@ if (Astro.request.method === 'POST') {
     if (scoreError) {
       error = scoreError.message;
     } else {
-      return Astro.redirect(`/sessions/${sessionId}/games/${gameId}?frame=${frameNumber}`);
+      return Astro.redirect(`/sessions/${sessionId}/games/${gameId}?frame=${frameNumber}${postModeQ}`);
     }
-  } else {
+  } else if (intent === 'log_shot' || intent === 'log_shorthand') {
     let { data: frame } = await supabase
       .from('frames')
       .select('id')
@@ -77,7 +90,49 @@ if (Astro.request.method === 'POST') {
 
       if (!frameProgress(frameNumber, existingShots).canAdd) {
         error = `Frame ${frameNumber} already has all of its shots.`;
+      } else if (intent === 'log_shorthand') {
+        // typed straight into the scoresheet frame: parse the shorthand into the
+        // same pin state the picker produces. An empty box is a gutter (0 down),
+        // never a strike. Quick entry uses the session's default ball for the ball.
+        const ballIndex = existingShots.length;
+        const rawShort = formData.get('shorthand')?.toString().trim() || 'G';
+        const parsed = parseShotShorthand(rawShort, {
+          priorStanding: pinsStandingBefore(existingShots),
+          ballIndex,
+          frameNumber,
+        });
+
+        if (!parsed.ok) {
+          error = parsed.error;
+        } else {
+          const { data: sess } = await supabase
+            .from('games')
+            .select('sessions(default_ball_id, default_spare_ball_id)')
+            .eq('id', gameId)
+            .maybeSingle();
+          const s = (sess?.sessions ?? {}) as { default_ball_id?: string | null; default_spare_ball_id?: string | null };
+          const ball_id = ballIndex === 0 ? s.default_ball_id ?? null : s.default_spare_ball_id ?? s.default_ball_id ?? null;
+          const { standing, strike, spare, foul } = parsed.result;
+
+          const { error: insertError } = await supabase.from('shots').insert({
+            frame_id: frame.id,
+            ball_id,
+            pins_standing: standing,
+            strike,
+            spare,
+            foul,
+          });
+
+          if (insertError) {
+            error = insertError.message;
+          } else {
+            const after = frameProgress(frameNumber, [...existingShots, { pins_standing: standing, strike, spare, foul }]);
+            const target = after.complete && frameNumber < 10 ? frameNumber + 1 : frameNumber;
+            return Astro.redirect(`/sessions/${sessionId}/games/${gameId}?frame=${target}${postModeQ}`);
+          }
+        }
       } else {
+        // log_shot: full detail entry from the pin-diagram form
         const pinsRaw = formData.get('pins_standing')?.toString() ?? '';
         const pins_standing = pinsRaw
           ? pinsRaw
@@ -127,7 +182,7 @@ if (Astro.request.method === 'POST') {
           // one stays put so the form reappears for the next ball
           const after = frameProgress(frameNumber, [...existingShots, { pins_standing, strike, spare, foul }]);
           const target = after.complete && frameNumber < 10 ? frameNumber + 1 : frameNumber;
-          return Astro.redirect(`/sessions/${sessionId}/games/${gameId}?frame=${target}`);
+          return Astro.redirect(`/sessions/${sessionId}/games/${gameId}?frame=${target}${postModeQ}`);
         }
       }
     }
@@ -202,9 +257,6 @@ const ordinals = ['First', 'Second', 'Third'];
 
 // pins left standing after the last logged ball seed the next ball's picker
 const startingPins = frameShots.length ? frameShots[frameShots.length - 1].pins_standing ?? [] : [];
-// pins the next ball faces (10 = fresh rack) + its 0-based index, for the type entry
-const priorStanding = pinsStandingBefore(frameShots as ShotLite[]);
-const ballIndex = frameShots.length;
 
 // pre-select the session's default ball on the first ball of a frame and the
 // spare ball on later balls; each shot's ball can still be changed manually
@@ -218,7 +270,10 @@ const strikeLockShot = frameNumber < 10 && progress.complete && frameShots.lengt
 
 const prevFrame = frameNumber > 1 ? frameNumber - 1 : null;
 const nextFrame = frameNumber < 10 ? frameNumber + 1 : null;
-const frameHref = (n: number) => `/sessions/${sessionId}/games/${gameId}?frame=${n}`;
+const frameHref = (n: number, m: 'pick' | 'type' = mode) => `/sessions/${sessionId}/games/${gameId}?frame=${n}&mode=${m}`;
+
+// the ball box (0-based) awaiting entry in the active frame, when typing
+const activeBox = progress.nextBall != null ? progress.nextBall - 1 : -1;
 
 function ballResult(i: number): string {
   if (frameShots[i]?.foul) return 'Foul — counts 0';
@@ -239,48 +294,71 @@ function ballResult(i: number): string {
 
   <div class="sechead"><span class="chev"><i></i><i></i><i></i></span><h2>Scoresheet</h2></div>
 
-  <div class="sheetwrap">
-    <div class="sheet" role="group" aria-label="Frames">
-      {cells.map((cell) => (
-        <a
-          class:list={[
-            'cell',
-            {
-              active: cell.frameNumber === frameNumber,
-              future: !cell.bowled && cell.frameNumber !== frameNumber,
-              f10: cell.frameNumber === 10,
-            },
-          ]}
-          href={`/sessions/${sessionId}/games/${gameId}?frame=${cell.frameNumber}`}
-          aria-current={cell.frameNumber === frameNumber ? 'true' : undefined}
-          aria-label={`Frame ${cell.frameNumber}${cell.cumulative != null ? `, ${cell.cumulative}` : ''}`}
-        >
-          <span class="fnum">{cell.frameNumber}</span>
-          <span class="balls">
-            {cell.balls.map((b) => (
-              <span
-                class:list={[
-                  'bbox',
-                  {
-                    mark: b.kind === 'strike' || b.kind === 'spare',
-                    strike: b.kind === 'strike',
-                    spare: b.kind === 'spare',
-                    foul: b.kind === 'foul',
-                    empty: b.kind === 'empty',
-                  },
-                ]}
-              >
-                {b.text}
-              </span>
-            ))}
-          </span>
-          <span class:list={['total', { blank: cell.cumulative == null }]}>
-            {cell.cumulative == null ? '—' : cell.cumulative}
-          </span>
-        </a>
-      ))}
-    </div>
+  <div class="entry-toggle" role="group" aria-label="Score entry mode">
+    <a class:list={['seg', { active: mode === 'pick' }]} href={frameHref(frameNumber, 'pick')} aria-current={mode === 'pick' ? 'true' : undefined}>Pick pins</a>
+    <a class:list={['seg', { active: mode === 'type' }]} href={frameHref(frameNumber, 'type')} aria-current={mode === 'type' ? 'true' : undefined}>Type</a>
   </div>
+
+  <form method="POST">
+    <input type="hidden" name="intent" value="log_shorthand" />
+    <input type="hidden" name="frame_number" value={frameNumber} />
+    <input type="hidden" name="mode" value={mode} />
+    <div class="sheetwrap">
+      <div class="sheet" role="group" aria-label="Frames">
+        {cells.map((cell) => {
+          const isActive = cell.frameNumber === frameNumber;
+          const typeHere = mode === 'type' && isActive && progress.nextBall != null;
+          const cls = ['cell', { active: isActive, future: !cell.bowled && !isActive, f10: cell.frameNumber === 10 }];
+          return typeHere ? (
+            <div class:list={cls} aria-current="true" aria-label={`Frame ${cell.frameNumber}, entering ball ${progress.nextBall}`}>
+              <span class="fnum">{cell.frameNumber}</span>
+              <span class="balls">
+                {cell.balls.map((b, i) => (
+                  i === activeBox ? (
+                    <input
+                      class="bbox bbox-input"
+                      type="text"
+                      name="shorthand"
+                      value=""
+                      maxlength="2"
+                      autocomplete="off"
+                      autocapitalize="characters"
+                      autofocus
+                      aria-label={`Frame ${frameNumber}, ball ${progress.nextBall}`}
+                    />
+                  ) : (
+                    <span class:list={['bbox', { mark: b.kind === 'strike' || b.kind === 'spare', strike: b.kind === 'strike', spare: b.kind === 'spare', foul: b.kind === 'foul', empty: b.kind === 'empty' }]}>{b.text}</span>
+                  )
+                ))}
+              </span>
+              <span class:list={['total', { blank: cell.cumulative == null }]}>{cell.cumulative == null ? '—' : cell.cumulative}</span>
+            </div>
+          ) : (
+            <a
+              class:list={cls}
+              href={frameHref(cell.frameNumber)}
+              aria-current={isActive ? 'true' : undefined}
+              aria-label={`Frame ${cell.frameNumber}${cell.cumulative != null ? `, ${cell.cumulative}` : ''}`}
+            >
+              <span class="fnum">{cell.frameNumber}</span>
+              <span class="balls">
+                {cell.balls.map((b) => (
+                  <span class:list={['bbox', { mark: b.kind === 'strike' || b.kind === 'spare', strike: b.kind === 'strike', spare: b.kind === 'spare', foul: b.kind === 'foul', empty: b.kind === 'empty' }]}>{b.text}</span>
+                ))}
+              </span>
+              <span class:list={['total', { blank: cell.cumulative == null }]}>{cell.cumulative == null ? '—' : cell.cumulative}</span>
+            </a>
+          );
+        })}
+      </div>
+    </div>
+    {mode === 'type' && progress.nextBall != null && (
+      <div class="type-controls">
+        <span class="type-help">Type X &middot; / &middot; number &middot; F &middot; G, then Enter</span>
+        <button type="submit" class="secondary">Log ball {progress.nextBall}</button>
+      </div>
+    )}
+  </form>
 
   <div class="scorecard">
     <div class="scorenow">
@@ -294,6 +372,7 @@ function ballResult(i: number): string {
     </div>
     <form class="finalscore" method="POST">
       <input type="hidden" name="intent" value="set_score" />
+      <input type="hidden" name="mode" value={mode} />
       <label for="final_score">Final Score</label>
       <input
         id="final_score"
@@ -322,7 +401,7 @@ function ballResult(i: number): string {
     <ul class="ball-log">
       {frameShots.map((shot: any, i: number) => (
         <li>
-          <a class="ball-row" href={`/sessions/${sessionId}/games/${gameId}/shots/${shot.id}`}>
+          <a class="ball-row" href={`/sessions/${sessionId}/games/${gameId}/shots/${shot.id}?mode=${mode}`}>
             <span class="ball-ord">{ordinals[i] ?? `Ball ${i + 1}`} ball</span>
             <span class="ball-result">{ballResult(i)}</span>
             <span class="ball-detail">
@@ -337,26 +416,29 @@ function ballResult(i: number): string {
   )}
 
   {progress.nextBall != null ? (
-    <>
-      <p class="logball">+ Log ball {progress.nextBall}</p>
-      <ShotForm
-        client:load
-        balls={balls ?? []}
-        approaches={approaches ?? []}
-        frameNumber={frameNumber}
-        startingPins={startingPins}
-        allowStrike={marks.strike}
-        allowSpare={marks.spare}
-        priorStanding={priorStanding}
-        ballIndex={ballIndex}
-        defaultBallId={defaultBallId}
-        submitLabel={`Log ball ${progress.nextBall}`}
-      />
-    </>
+    mode === 'pick' ? (
+      <>
+        <p class="logball">+ Log ball {progress.nextBall}</p>
+        <ShotForm
+          client:load
+          balls={balls ?? []}
+          approaches={approaches ?? []}
+          frameNumber={frameNumber}
+          startingPins={startingPins}
+          allowStrike={marks.strike}
+          allowSpare={marks.spare}
+          defaultBallId={defaultBallId}
+          mode={mode}
+          submitLabel={`Log ball ${progress.nextBall}`}
+        />
+      </>
+    ) : (
+      <p class="logball">Type ball {progress.nextBall} into frame {frameNumber} above, then press Enter.</p>
+    )
   ) : strikeLockShot ? (
     <p class="framedone">
       Strike &mdash; frame {frameNumber} complete. To add a second ball,{' '}
-      <a href={`/sessions/${sessionId}/games/${gameId}/shots/${strikeLockShot.id}`}>edit the strike</a> first.
+      <a href={`/sessions/${sessionId}/games/${gameId}/shots/${strikeLockShot.id}?mode=${mode}`}>edit the strike</a> first.
     </p>
   ) : (
     <p class="framedone">

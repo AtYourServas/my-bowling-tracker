@@ -11,10 +11,11 @@ if (Astro.request.method === 'POST') {
   const display_name = formData.get('display_name')?.toString().trim() || null;
   const default_ball_id = formData.get('default_ball_id')?.toString() || null;
   const default_spare_ball_id = formData.get('default_spare_ball_id')?.toString() || null;
+  const default_entry_mode = formData.get('default_entry_mode')?.toString() === 'type' ? 'type' : 'pick';
 
   const { error: updateError } = await supabase
     .from('profiles')
-    .update({ display_name, default_ball_id, default_spare_ball_id })
+    .update({ display_name, default_ball_id, default_spare_ball_id, default_entry_mode })
     .eq('id', user!.id);
 
   if (updateError) {
@@ -26,9 +27,11 @@ if (Astro.request.method === 'POST') {
 
 const { data: profile } = await supabase
   .from('profiles')
-  .select('display_name, default_ball_id, default_spare_ball_id')
+  .select('display_name, default_ball_id, default_spare_ball_id, default_entry_mode')
   .eq('id', user!.id)
   .maybeSingle();
+
+const entryMode = profile?.default_entry_mode === 'type' ? 'type' : 'pick';
 
 const { data: balls } = await supabase.from('balls').select('id, name').order('name');
 const hasBalls = (balls?.length ?? 0) > 0;
@@ -45,6 +48,16 @@ const hasBalls = (balls?.length ?? 0) > 0;
     <label>
       Display Name
       <input type="text" name="display_name" value={profile?.display_name ?? ''} />
+    </label>
+
+    <div class="sechead"><span class="chev"><i></i><i></i><i></i></span><h2>Score Entry</h2></div>
+    <p class="empty">How a game opens for logging. You can switch modes any time with the toggle above the scoresheet.</p>
+    <label>
+      Default entry mode
+      <select name="default_entry_mode">
+        <option value="pick" selected={entryMode === 'pick'}>Pick pins — tap the pin diagram</option>
+        <option value="type" selected={entryMode === 'type'}>Type — type the result into the frame</option>
+      </select>
     </label>
 
     <div class="sechead"><span class="chev"><i></i><i></i><i></i></span><h2>Default Balls</h2></div>

@@ -1,11 +1,16 @@
 ---
 import Layout from '../../../../../../layouts/Layout.astro';
 import ShotForm from '../../../../../../components/ShotForm';
-import { allowedMarks, pinsStandingBefore } from '../../../../../../lib/scoring';
+import { allowedMarks } from '../../../../../../lib/scoring';
 import type { ShotLite } from '../../../../../../lib/scoring';
 
 const { supabase } = Astro.locals;
 const { id: sessionId, gameId, shotId } = Astro.params;
+
+// carried through from the game page so editing a shot returns you to the same
+// score-entry mode (see PR 12)
+const mode = Astro.url.searchParams.get('mode') === 'type' ? 'type' : 'pick';
+const modeQ = `&mode=${mode}`;
 
 let error: string | null = null;
 
@@ -30,7 +35,7 @@ if (Astro.request.method === 'POST') {
     if (deleteError) {
       error = deleteError.message;
     } else {
-      return Astro.redirect(`/sessions/${sessionId}/games/${gameId}?frame=${frameNumber}`);
+      return Astro.redirect(`/sessions/${sessionId}/games/${gameId}?frame=${frameNumber}${modeQ}`);
     }
   } else {
     const pinsRaw = formData.get('pins_standing')?.toString() ?? '';
@@ -80,7 +85,7 @@ if (Astro.request.method === 'POST') {
     if (updateError) {
       error = updateError.message;
     } else {
-      return Astro.redirect(`/sessions/${sessionId}/games/${gameId}?frame=${frameNumber}`);
+      return Astro.redirect(`/sessions/${sessionId}/games/${gameId}?frame=${frameNumber}${modeQ}`);
     }
   }
 }
@@ -100,13 +105,10 @@ const { data: siblingShots } = await supabase
   .order('created_at', { ascending: true });
 const priorShots = (siblingShots ?? []).filter((s) => s.created_at < shot.created_at) as ShotLite[];
 const marks = allowedMarks(frameNumber, priorShots);
-// pins this shot faced (10 = fresh rack) + its 0-based index, for the type entry
-const priorStanding = pinsStandingBefore(priorShots);
-const ballIndex = priorShots.length;
 ---
 
 <Layout title={`Frame ${frameNumber} shot`}>
-  <nav class="top"><a href={`/sessions/${sessionId}/games/${gameId}?frame=${frameNumber}`}>&larr; Frame {frameNumber}</a></nav>
+  <nav class="top"><a href={`/sessions/${sessionId}/games/${gameId}?frame=${frameNumber}${modeQ}`}>&larr; Frame {frameNumber}</a></nav>
   <h1>Edit shot</h1>
 
   {error && <p class="error">{error}</p>}
@@ -119,8 +121,7 @@ const ballIndex = priorShots.length;
     submitLabel="Save Changes"
     allowStrike={marks.strike}
     allowSpare={marks.spare}
-    priorStanding={priorStanding}
-    ballIndex={ballIndex}
+    mode={mode}
     initial={{
       approach_id: shot.approach_id,
       ball_id: shot.ball_id,
