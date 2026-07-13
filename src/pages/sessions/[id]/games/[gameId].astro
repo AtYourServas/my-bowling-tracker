@@ -136,7 +136,7 @@ if (Astro.request.method === 'POST') {
 
 const { data: game } = await supabase
   .from('games')
-  .select('*, sessions(alley_name, session_date, session_type, league_id, manual_handicap, lane_number, second_lane_number)')
+  .select('*, sessions(alley_name, session_date, session_type, league_id, manual_handicap, lane_number, second_lane_number, default_ball_id, default_spare_ball_id)')
   .eq('id', gameId)
   .maybeSingle();
 
@@ -202,6 +202,13 @@ const ordinals = ['First', 'Second', 'Third'];
 
 // pins left standing after the last logged ball seed the next ball's picker
 const startingPins = frameShots.length ? frameShots[frameShots.length - 1].pins_standing ?? [] : [];
+
+// pre-select the session's default ball on the first ball of a frame and the
+// spare ball on later balls; each shot's ball can still be changed manually
+const defaultBallId =
+  progress.nextBall === 1
+    ? game.sessions?.default_ball_id ?? null
+    : game.sessions?.default_spare_ball_id ?? game.sessions?.default_ball_id ?? null;
 
 // frames 1-9 that completed on a lone strike: a 2nd ball needs the strike edited away
 const strikeLockShot = frameNumber < 10 && progress.complete && frameShots.length === 1 ? frameShots[0] : null;
@@ -337,6 +344,7 @@ function ballResult(i: number): string {
         startingPins={startingPins}
         allowStrike={marks.strike}
         allowSpare={marks.spare}
+        defaultBallId={defaultBallId}
         submitLabel={`Log ball ${progress.nextBall}`}
       />
     </>

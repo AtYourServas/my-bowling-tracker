@@ -19,6 +19,8 @@ if (Astro.request.method === 'POST') {
   const league_id = formData.get('league_id')?.toString() || null;
   const manualHandicapRaw = formData.get('manual_handicap')?.toString().trim();
   const manual_handicap = manualHandicapRaw ? Number(manualHandicapRaw) : null;
+  const default_ball_id = formData.get('default_ball_id')?.toString() || null;
+  const default_spare_ball_id = formData.get('default_spare_ball_id')?.toString() || null;
 
   if (session_type !== 'league' && session_type !== 'practice') {
     error = 'Session type is required.';
@@ -47,6 +49,8 @@ if (Astro.request.method === 'POST') {
         league_team_name: effectiveTeamName,
         league_id: session_type === 'league' ? league_id : null,
         manual_handicap: session_type === 'league' ? manual_handicap : null,
+        default_ball_id,
+        default_spare_ball_id,
       })
       .select('id')
       .single();
@@ -60,6 +64,12 @@ if (Astro.request.method === 'POST') {
 }
 
 const { data: leagues } = await supabase.from('leagues').select('id, name, team_name').order('name');
+const { data: balls } = await supabase.from('balls').select('id, name').order('name');
+const { data: profile } = await supabase
+  .from('profiles')
+  .select('default_ball_id, default_spare_ball_id')
+  .eq('id', user!.id)
+  .maybeSingle();
 ---
 
 <Layout title="Start a session">
@@ -109,6 +119,28 @@ const { data: leagues } = await supabase.from('leagues').select('id, name, team_
       Handicap Override (optional — overrides the league's calculated handicap)
       <input type="number" name="manual_handicap" />
     </label>
+    {balls && balls.length > 0 && (
+      <>
+        <label>
+          Default Ball (pre-fills each throw)
+          <select name="default_ball_id">
+            <option value="">None</option>
+            {balls.map((ball) => (
+              <option value={ball.id} selected={ball.id === profile?.default_ball_id}>{ball.name}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Default Spare Ball
+          <select name="default_spare_ball_id">
+            <option value="">None</option>
+            {balls.map((ball) => (
+              <option value={ball.id} selected={ball.id === profile?.default_spare_ball_id}>{ball.name}</option>
+            ))}
+          </select>
+        </label>
+      </>
+    )}
     <label>
       Lane Condition Notes
       <textarea name="lane_condition_notes" rows="2" placeholder="e.g. fresh oil, breaking down"></textarea>

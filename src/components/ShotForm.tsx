@@ -40,6 +40,8 @@ type Props = {
   /** Whether the Strike / Spare shortcuts are legal for this ball (see allowedMarks). */
   allowStrike?: boolean;
   allowSpare?: boolean;
+  /** Ball to pre-select when logging a new shot (session default / spare ball). */
+  defaultBallId?: string | null;
 };
 
 export default function ShotForm({
@@ -51,6 +53,7 @@ export default function ShotForm({
   startingPins,
   allowStrike = true,
   allowSpare = true,
+  defaultBallId,
 }: Props) {
   const [approachId, setApproachId] = useState(initial?.approach_id ?? '');
 
@@ -101,7 +104,7 @@ export default function ShotForm({
 
       <label>
         Ball
-        <select name="ball_id" defaultValue={initial?.ball_id ?? ''}>
+        <select name="ball_id" defaultValue={initial?.ball_id ?? defaultBallId ?? ''}>
           <option value="">None</option>
           {balls.map((ball) => (
             <option key={ball.id} value={ball.id}>
