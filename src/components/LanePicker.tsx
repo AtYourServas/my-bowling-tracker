@@ -29,9 +29,9 @@ const BW = LANE_W / BOARDS;
 
 type Mark = 'stance' | 'target' | 'breakpoint' | 'slide';
 
-// rendered top-to-bottom: where you start, where you aim, where the ball goes,
-// where you finish.
-const ORDER: Mark[] = ['stance', 'target', 'breakpoint', 'slide'];
+// rendered top-to-bottom: where you start, where you aim, where you finish,
+// where the ball breaks.
+const ORDER: Mark[] = ['stance', 'target', 'slide', 'breakpoint'];
 
 const META: Record<Mark, { label: string; arrows: boolean; dots: boolean }> = {
   stance: { label: 'Stance', arrows: false, dots: true },
