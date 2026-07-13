@@ -1,0 +1,80 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import LanePicker from '../../components/LanePicker';
+
+const APPROACH_NAMES = {
+  lineup: 'reference_lineup',
+  targetType: 'reference_target_type',
+  targetValue: 'reference_target_value',
+  slide: 'reference_slide',
+};
+const APPROACH_MARKS = ['stance', 'target', 'slide'] as const;
+
+const { supabase, user } = Astro.locals;
+
+let error: string | null = null;
+
+if (Astro.request.method === 'POST') {
+  const formData = await Astro.request.formData();
+  const name = formData.get('name')?.toString().trim() ?? '';
+  const reference_ball_id = formData.get('reference_ball_id')?.toString() || null;
+  const reference_lineup = formData.get('reference_lineup')?.toString().trim() || null;
+  const reference_slide = formData.get('reference_slide')?.toString().trim() || null;
+  const reference_target_type = formData.get('reference_target_type')?.toString() || null;
+  const targetValueRaw = formData.get('reference_target_value')?.toString().trim();
+  const reference_target_value = targetValueRaw ? Number(targetValueRaw) : null;
+  const notes = formData.get('notes')?.toString().trim() || null;
+
+  if (!name) {
+    error = 'Approach name is required.';
+  } else {
+    const { error: insertError } = await supabase.from('approaches').insert({
+      user_id: user!.id,
+      name,
+      reference_ball_id,
+      reference_lineup,
+      reference_slide,
+      reference_target_type,
+      reference_target_value,
+      notes,
+    });
+
+    if (insertError) {
+      error = insertError.message;
+    } else {
+      return Astro.redirect('/approaches');
+    }
+  }
+}
+
+const { data: balls } = await supabase.from('balls').select('id, name').order('name');
+---
+
+<Layout title="Add an approach">
+  <nav class="top"><a href="/approaches">&larr; My Approaches</a></nav>
+  <h1>Add an approach</h1>
+
+  {error && <p class="error">{error}</p>}
+
+  <form method="POST">
+    <label>
+      Name
+      <input type="text" name="name" required placeholder="e.g. Strike ball" />
+    </label>
+    <label>
+      Reference ball
+      <select name="reference_ball_id">
+        <option value="">None</option>
+        {balls?.map((ball) => <option value={ball.id}>{ball.name}</option>)}
+      </select>
+    </label>
+    <div class="sechead-mini"><span class="chev"><i></i><i></i><i></i></span><h3>Reference marks</h3></div>
+    <LanePicker client:load names={APPROACH_NAMES} marks={[...APPROACH_MARKS]} />
+
+    <label>
+      Notes
+      <textarea name="notes" rows="3"></textarea>
+    </label>
+    <button type="submit">Add approach</button>
+  </form>
+</Layout>
