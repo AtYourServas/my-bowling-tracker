@@ -1,51 +1,7 @@
 ---
 import Layout from '../../layouts/Layout.astro';
-import LanePicker from '../../components/LanePicker';
 
-const APPROACH_NAMES = {
-  lineup: 'reference_lineup',
-  targetType: 'reference_target_type',
-  targetValue: 'reference_target_value',
-  slide: 'reference_slide',
-};
-const APPROACH_MARKS = ['stance', 'target', 'slide'] as const;
-
-const { supabase, user } = Astro.locals;
-
-let error: string | null = null;
-
-if (Astro.request.method === 'POST') {
-  const formData = await Astro.request.formData();
-  const name = formData.get('name')?.toString().trim() ?? '';
-  const reference_ball_id = formData.get('reference_ball_id')?.toString() || null;
-  const reference_lineup = formData.get('reference_lineup')?.toString().trim() || null;
-  const reference_slide = formData.get('reference_slide')?.toString().trim() || null;
-  const reference_target_type = formData.get('reference_target_type')?.toString() || null;
-  const targetValueRaw = formData.get('reference_target_value')?.toString().trim();
-  const reference_target_value = targetValueRaw ? Number(targetValueRaw) : null;
-  const notes = formData.get('notes')?.toString().trim() || null;
-
-  if (!name) {
-    error = 'Approach name is required.';
-  } else {
-    const { error: insertError } = await supabase.from('approaches').insert({
-      user_id: user!.id,
-      name,
-      reference_ball_id,
-      reference_lineup,
-      reference_slide,
-      reference_target_type,
-      reference_target_value,
-      notes,
-    });
-
-    if (insertError) {
-      error = insertError.message;
-    } else {
-      return Astro.redirect('/approaches');
-    }
-  }
-}
+const { supabase } = Astro.locals;
 
 const filterBall = Astro.url.searchParams.get('ball') ?? '';
 
@@ -65,9 +21,10 @@ const { data: balls } = await supabase.from('balls').select('id, name').order('n
 
 <Layout title="My Approaches">
   <nav class="top"><a href="/dashboard">&larr; Dashboard</a></nav>
-  <h1>My Approaches</h1>
-
-  {error && <p class="error">{error}</p>}
+  <div class="page-head">
+    <h1>My Approaches</h1>
+    <a class="button" href="/approaches/new">+ Add approach</a>
+  </div>
 
   {balls && balls.length > 0 && (
     <form method="GET" class="filter-form">
@@ -103,32 +60,7 @@ const { data: balls } = await supabase.from('balls').select('id, name').order('n
     </ul>
   ) : (
     <p class="empty">
-      {filterBall ? 'No approaches use that ball.' : 'No approaches yet — add your first one below.'}
+      {filterBall ? 'No approaches use that ball.' : 'No approaches yet.'} <a href="/approaches/new">Add an approach</a>.
     </p>
   )}
-
-  <hr />
-
-  <h1>Add an approach</h1>
-  <form method="POST">
-    <label>
-      Name
-      <input type="text" name="name" required placeholder="e.g. Strike ball" />
-    </label>
-    <label>
-      Reference ball
-      <select name="reference_ball_id">
-        <option value="">None</option>
-        {balls?.map((ball) => <option value={ball.id}>{ball.name}</option>)}
-      </select>
-    </label>
-    <div class="sechead-mini"><span class="chev"><i></i><i></i><i></i></span><h3>Reference marks</h3></div>
-    <LanePicker client:load names={APPROACH_NAMES} marks={[...APPROACH_MARKS]} />
-
-    <label>
-      Notes
-      <textarea name="notes" rows="3"></textarea>
-    </label>
-    <button type="submit">Add approach</button>
-  </form>
 </Layout>
