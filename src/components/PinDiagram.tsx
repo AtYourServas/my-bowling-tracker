@@ -28,6 +28,9 @@ type Props = {
   initialStrike?: boolean;
   initialSpare?: boolean;
   initialFoul?: boolean;
+  /** Whether the Strike / Spare shortcuts are legal for this ball (see allowedMarks). */
+  allowStrike?: boolean;
+  allowSpare?: boolean;
 };
 
 export default function PinDiagram({
@@ -35,6 +38,8 @@ export default function PinDiagram({
   initialStrike = false,
   initialSpare = false,
   initialFoul = false,
+  allowStrike = true,
+  allowSpare = true,
 }: Props) {
   const [standing, setStanding] = useState<Set<number>>(new Set(initialStanding));
   const [strike, setStrike] = useState(initialStrike);
@@ -88,6 +93,11 @@ export default function PinDiagram({
 
   const gutter = !strike && !spare && !foul && standing.size === 10;
 
+  // show a mark only when it's legal for this ball, or already set (editing an
+  // existing shot) so the current value is never hidden
+  const showStrike = allowStrike || strike;
+  const showSpare = allowSpare || spare;
+
   return (
     <div>
       <input type="hidden" name="pins_standing" value={Array.from(standing).join(',')} />
@@ -96,12 +106,16 @@ export default function PinDiagram({
       <input type="hidden" name="foul" value={foul ? 'true' : 'false'} />
 
       <div className="pin-shortcuts">
-        <button type="button" className={strike ? 'active' : ''} onClick={markStrike}>
-          Strike
-        </button>
-        <button type="button" className={spare ? 'active' : ''} onClick={markSpare}>
-          Spare
-        </button>
+        {showStrike && (
+          <button type="button" className={strike ? 'active' : ''} onClick={markStrike}>
+            Strike
+          </button>
+        )}
+        {showSpare && (
+          <button type="button" className={spare ? 'active' : ''} onClick={markSpare}>
+            Spare
+          </button>
+        )}
         <button type="button" className={gutter ? 'active' : ''} onClick={markGutter}>
           Gutter
         </button>

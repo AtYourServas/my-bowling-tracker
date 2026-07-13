@@ -1,6 +1,8 @@
 ---
 import Layout from '../../../../../../layouts/Layout.astro';
 import ShotForm from '../../../../../../components/ShotForm';
+import { allowedMarks } from '../../../../../../lib/scoring';
+import type { ShotLite } from '../../../../../../lib/scoring';
 
 const { supabase } = Astro.locals;
 const { id: sessionId, gameId, shotId } = Astro.params;
@@ -88,6 +90,16 @@ const { data: approaches } = await supabase
   .from('approaches')
   .select('id, name, reference_lineup, reference_slide, reference_target_type, reference_target_value')
   .order('name');
+
+// which marks are legal for this ball, based on the shots thrown before it in
+// the frame (so editing ball 2 of a normal frame won't offer Strike, etc.)
+const { data: siblingShots } = await supabase
+  .from('shots')
+  .select('pins_standing, strike, spare, foul, created_at')
+  .eq('frame_id', shot.frame_id)
+  .order('created_at', { ascending: true });
+const priorShots = (siblingShots ?? []).filter((s) => s.created_at < shot.created_at) as ShotLite[];
+const marks = allowedMarks(frameNumber, priorShots);
 ---
 
 <Layout title={`Frame ${frameNumber} shot`}>
@@ -101,7 +113,9 @@ const { data: approaches } = await supabase
     balls={balls ?? []}
     approaches={approaches ?? []}
     frameNumber={frameNumber}
-    submitLabel="Save changes"
+    submitLabel="Save Changes"
+    allowStrike={marks.strike}
+    allowSpare={marks.spare}
     initial={{
       approach_id: shot.approach_id,
       ball_id: shot.ball_id,
@@ -120,8 +134,8 @@ const { data: approaches } = await supabase
     }}
   />
 
-  <form method="POST" class="row-actions">
+  <form method="POST" class="row-actions" onsubmit="return confirm('Delete this shot?');">
     <input type="hidden" name="intent" value="delete" />
-    <button type="submit" class="danger">Delete shot</button>
+    <button type="submit" class="danger">Delete Shot</button>
   </form>
 </Layout>

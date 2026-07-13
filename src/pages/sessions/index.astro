@@ -70,7 +70,7 @@ const alleyOptions = Array.from(new Set((alleyRows ?? []).map((r) => r.alley_nam
       <input type="date" name="to" value={filterTo} />
     </label>
     <button type="submit">Filter</button>
-    {hasFilters && <a href="/sessions">Clear filters</a>}
+    {hasFilters && <a href="/sessions">Clear Filters</a>}
   </form>
 
   {sessions && sessions.length > 0 ? (

@@ -209,6 +209,62 @@ export function frameProgress(frameNumber: number, shots: ShotLite[]): FrameProg
   return { count, complete, canAdd: !complete, nextBall: complete ? null : count + 1 };
 }
 
+export type AllowedMarks = { strike: boolean; spare: boolean };
+
+/**
+ * Which of the Strike / Spare shortcuts are legal for the *next* ball in a frame,
+ * given the shots logged so far. A strike is clearing a full fresh rack, so it is
+ * only offered on the frame's first ball -- or, in the 10th, on a later ball that
+ * faces a respotted fresh rack (after a strike, spare, or foul). A spare is
+ * clearing pins a previous ball in the frame left standing, so it needs a prior
+ * ball and is never the first ball (a gutter-then-clear still counts as a spare).
+ * Mirrors the rack-reset rule in frameRollsDetailed / computeScoresheet.
+ */
+export function allowedMarks(frameNumber: number, shots: ShotLite[]): AllowedMarks {
+  // pins the next ball will face (10 = fresh rack), applying the respot rule
+  let priorStanding = 10;
+  for (const shot of shots) {
+    const standingAfter = shot.pins_standing?.length ?? 0;
+    const cleared = (shot.foul ?? false) || shot.strike || standingAfter === 0;
+    priorStanding = cleared ? 10 : standingAfter;
+  }
+
+  const ballIndex = shots.length; // 0-based index of the ball about to be thrown
+  const freshRack = priorStanding === 10;
+
+  const strike = freshRack && (ballIndex === 0 || frameNumber === 10);
+  const spare = ballIndex >= 1 && !strike;
+
+  return { strike, spare };
+}
+
+/**
+ * The earliest frame (1-10) that is not yet fully bowled, so opening a game lands
+ * you where you left off. Falls back to 10 once every frame is complete.
+ */
+export function earliestIncompleteFrame(frames: FrameLite[]): number {
+  const byNumber = new Map(frames.map((f) => [f.frame_number, f]));
+  for (let n = 1; n <= 10; n++) {
+    const shots = byNumber.get(n)?.shots ?? [];
+    if (!frameProgress(n, shots).complete) return n;
+  }
+  return 10;
+}
+
+export async function fetchEarliestIncompleteFrame(
+  supabase: SupabaseClient,
+  gameId: string,
+): Promise<number> {
+  const { data: frames } = await supabase
+    .from('frames')
+    .select('frame_number, shots(pins_standing, strike, spare, foul, created_at)')
+    .eq('game_id', gameId)
+    .order('frame_number', { ascending: true })
+    .order('created_at', { foreignTable: 'shots', ascending: true });
+
+  return earliestIncompleteFrame((frames ?? []) as unknown as FrameLite[]);
+}
+
 export type BallKind = 'strike' | 'spare' | 'pins' | 'foul' | 'empty';
 export type BallMark = { text: string; kind: BallKind };
 export type FrameCell = {
