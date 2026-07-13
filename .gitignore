@@ -26,3 +26,8 @@ pnpm-debug.log*
 
 # local Claude Code settings
 .claude/
+
+# personal notes & office temp/lock files kept in the project folder
+*.docx
+*.doc
+~$*
