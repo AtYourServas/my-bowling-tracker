@@ -47,10 +47,18 @@ if (Astro.request.method === 'POST') {
   }
 }
 
-const { data: approaches } = await supabase
+const filterBall = Astro.url.searchParams.get('ball') ?? '';
+
+let approachesQuery = supabase
   .from('approaches')
   .select('*, balls(name)')
   .order('created_at', { ascending: false });
+
+if (filterBall) {
+  approachesQuery = approachesQuery.eq('reference_ball_id', filterBall);
+}
+
+const { data: approaches } = await approachesQuery;
 
 const { data: balls } = await supabase.from('balls').select('id, name').order('name');
 ---
@@ -61,6 +69,22 @@ const { data: balls } = await supabase.from('balls').select('id, name').order('n
 
   {error && <p class="error">{error}</p>}
 
+  {balls && balls.length > 0 && (
+    <form method="GET" class="filter-form">
+      <label>
+        Ball
+        <select name="ball">
+          <option value="">All</option>
+          {balls.map((ball) => (
+            <option value={ball.id} selected={ball.id === filterBall}>{ball.name}</option>
+          ))}
+        </select>
+      </label>
+      <button type="submit">Filter</button>
+      {filterBall && <a href="/approaches">Clear Filter</a>}
+    </form>
+  )}
+
   {approaches && approaches.length > 0 ? (
     <ul class="list">
       {approaches.map((approach: any) => (
@@ -68,15 +92,19 @@ const { data: balls } = await supabase.from('balls').select('id, name').order('n
           <a class="card" href={`/approaches/${approach.id}`}>
             <strong>{approach.name}</strong>
             {approach.balls?.name && <span>Ball: {approach.balls.name}</span>}
-            {approach.reference_target_type && approach.reference_target_value && (
+            {approach.reference_lineup && <span>Stance: {approach.reference_lineup}</span>}
+            {approach.reference_target_type && approach.reference_target_value != null && (
               <span>Target: {approach.reference_target_type} {approach.reference_target_value}</span>
             )}
+            {approach.reference_slide && <span>Slide: {approach.reference_slide}</span>}
           </a>
         </li>
       ))}
     </ul>
   ) : (
-    <p class="empty">No approaches yet — add your first one below.</p>
+    <p class="empty">
+      {filterBall ? 'No approaches use that ball.' : 'No approaches yet — add your first one below.'}
+    </p>
   )}
 
   <hr />
