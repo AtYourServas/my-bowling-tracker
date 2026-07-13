@@ -240,6 +240,14 @@ const { data: approaches } = await supabase
   .select('id, name, reference_lineup, reference_slide, reference_target_type, reference_target_value')
   .order('name');
 
+// profile preference: optional shot-logger fields the bowler has hidden
+const { data: prefRow } = await supabase
+  .from('profiles')
+  .select('hidden_shot_fields')
+  .eq('id', user!.id)
+  .maybeSingle();
+const hiddenShotFields = prefRow?.hidden_shot_fields ?? [];
+
 const gameLabel = game.is_practice ? 'Practice' : game.game_number ? `Game ${game.game_number}` : 'Game';
 
 // under a two-lane pair, strict alternation puts each frame on a derived lane
@@ -440,6 +448,7 @@ function ballResult(i: number): string {
           allowSpare={marks.spare}
           defaultBallId={defaultBallId}
           mode={mode}
+          hiddenFields={hiddenShotFields}
           submitLabel={`Log ball ${progress.nextBall}`}
         />
       </>
