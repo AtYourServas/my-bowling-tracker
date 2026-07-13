@@ -42,6 +42,8 @@ type Props = {
   allowSpare?: boolean;
   /** Ball to pre-select when logging a new shot (session default / spare ball). */
   defaultBallId?: string | null;
+  /** Current score-entry mode, echoed back on submit so it persists across frames. */
+  mode?: 'pick' | 'type';
 };
 
 export default function ShotForm({
@@ -54,6 +56,7 @@ export default function ShotForm({
   allowStrike = true,
   allowSpare = true,
   defaultBallId,
+  mode = 'pick',
 }: Props) {
   const [approachId, setApproachId] = useState(initial?.approach_id ?? '');
 
@@ -66,6 +69,7 @@ export default function ShotForm({
     <form method="POST">
       <input type="hidden" name="frame_number" value={frameNumber} />
       <input type="hidden" name="intent" value="log_shot" />
+      <input type="hidden" name="mode" value={mode} />
 
       <PinDiagram
         initialStanding={initial?.pins_standing ?? startingPins ?? []}

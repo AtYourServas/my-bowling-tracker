@@ -7,6 +7,11 @@ import type { ShotLite } from '../../../../../../lib/scoring';
 const { supabase } = Astro.locals;
 const { id: sessionId, gameId, shotId } = Astro.params;
 
+// carried through from the game page so editing a shot returns you to the same
+// score-entry mode (see PR 12)
+const mode = Astro.url.searchParams.get('mode') === 'type' ? 'type' : 'pick';
+const modeQ = `&mode=${mode}`;
+
 let error: string | null = null;
 
 const { data: shot } = await supabase
@@ -30,7 +35,7 @@ if (Astro.request.method === 'POST') {
     if (deleteError) {
       error = deleteError.message;
     } else {
-      return Astro.redirect(`/sessions/${sessionId}/games/${gameId}?frame=${frameNumber}`);
+      return Astro.redirect(`/sessions/${sessionId}/games/${gameId}?frame=${frameNumber}${modeQ}`);
     }
   } else {
     const pinsRaw = formData.get('pins_standing')?.toString() ?? '';
@@ -80,7 +85,7 @@ if (Astro.request.method === 'POST') {
     if (updateError) {
       error = updateError.message;
     } else {
-      return Astro.redirect(`/sessions/${sessionId}/games/${gameId}?frame=${frameNumber}`);
+      return Astro.redirect(`/sessions/${sessionId}/games/${gameId}?frame=${frameNumber}${modeQ}`);
     }
   }
 }
@@ -103,7 +108,7 @@ const marks = allowedMarks(frameNumber, priorShots);
 ---
 
 <Layout title={`Frame ${frameNumber} shot`}>
-  <nav class="top"><a href={`/sessions/${sessionId}/games/${gameId}?frame=${frameNumber}`}>&larr; Frame {frameNumber}</a></nav>
+  <nav class="top"><a href={`/sessions/${sessionId}/games/${gameId}?frame=${frameNumber}${modeQ}`}>&larr; Frame {frameNumber}</a></nav>
   <h1>Edit shot</h1>
 
   {error && <p class="error">{error}</p>}
@@ -116,6 +121,7 @@ const marks = allowedMarks(frameNumber, priorShots);
     submitLabel="Save Changes"
     allowStrike={marks.strike}
     allowSpare={marks.spare}
+    mode={mode}
     initial={{
       approach_id: shot.approach_id,
       ball_id: shot.ball_id,
