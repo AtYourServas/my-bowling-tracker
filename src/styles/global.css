@@ -511,6 +511,17 @@ details.collapsible[open] > summary { margin-bottom: var(--s3); }
 .entry-toggle .seg:hover { text-decoration: none; color: var(--text-primary); }
 .entry-toggle .seg.active { background: var(--surface); color: var(--text-primary); box-shadow: var(--shadow-sm); }
 
+/* shorthand key shown above the sheet while typing */
+.type-legend { margin: var(--s1) 0 var(--s2); }
+.type-legend .type-instruction { margin: 0 0 var(--s2); font-size: var(--text-sm); color: var(--text-secondary); }
+.type-legend .legend { display: flex; flex-wrap: wrap; gap: var(--s2) var(--s3); list-style: none; padding: 0; margin: 0; }
+.type-legend .legend li { display: flex; align-items: center; gap: 6px; font-size: var(--text-xs); color: var(--text-muted); }
+.type-legend .legend .k {
+  min-width: 18px; height: 18px; padding: 0 5px; display: inline-flex; align-items: center; justify-content: center;
+  font-family: var(--font-mono); font-size: 0.72rem; font-weight: var(--fw-semi); color: var(--text-primary);
+  background: var(--surface-sunk); border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+}
+
 /* type-into-the-frame: the active ball box becomes a text input */
 .bbox-input {
   width: 17px; height: 17px; padding: 0; border: 1px solid var(--accent); border-radius: 0;
@@ -520,8 +531,14 @@ details.collapsible[open] > summary { margin-bottom: var(--s3); }
 .bbox-input:focus { outline: none; box-shadow: 0 0 0 2px var(--accent-weak); }
 .f10 .bbox-input { width: 17px; }
 
-.type-controls { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); margin: var(--s2) 0 var(--s3); }
-.type-controls .type-help { margin: 0; font-size: var(--text-xs); color: var(--text-muted); }
+/* the frame you're typing into gets a bigger, easier-to-tap cell + input */
+.cell.typing { width: 82px; grid-template-rows: 44px 1fr; }
+.cell.typing.f10 { width: 108px; }
+.cell.typing .balls { align-items: center; padding-top: 4px; }
+.cell.typing .bbox { width: 26px; height: 26px; font-size: 0.9rem; }
+.cell.typing .bbox-input { width: 34px; height: 34px; font-size: 1.05rem; border-radius: var(--radius-sm); }
+
+.type-controls { display: flex; align-items: center; gap: var(--s3); margin: var(--s2) 0 var(--s3); }
 .type-controls button { padding: 6px 14px; font-size: var(--text-sm); white-space: nowrap; }
 
 .scorecard {

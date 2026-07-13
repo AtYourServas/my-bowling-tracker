@@ -299,6 +299,18 @@ function ballResult(i: number): string {
     <a class:list={['seg', { active: mode === 'type' }]} href={frameHref(frameNumber, 'type')} aria-current={mode === 'type' ? 'true' : undefined}>Type</a>
   </div>
 
+  {mode === 'type' && progress.nextBall != null && (
+    <div class="type-legend">
+      <p class="type-instruction">Type into the highlighted frame, then press Enter.</p>
+      <ul class="legend" aria-label="Shorthand key">
+        <li><span class="k">X</span> strike</li>
+        <li><span class="k">/</span> spare</li>
+        <li><span class="k">G 0 -</span> gutter / miss</li>
+        <li><span class="k">F</span> foul</li>
+      </ul>
+    </div>
+  )}
+
   <form method="POST">
     <input type="hidden" name="intent" value="log_shorthand" />
     <input type="hidden" name="frame_number" value={frameNumber} />
@@ -310,7 +322,7 @@ function ballResult(i: number): string {
           const typeHere = mode === 'type' && isActive && progress.nextBall != null;
           const cls = ['cell', { active: isActive, future: !cell.bowled && !isActive, f10: cell.frameNumber === 10 }];
           return typeHere ? (
-            <div class:list={cls} aria-current="true" aria-label={`Frame ${cell.frameNumber}, entering ball ${progress.nextBall}`}>
+            <div class:list={[...cls, 'typing']} aria-current="true" aria-label={`Frame ${cell.frameNumber}, entering ball ${progress.nextBall}`}>
               <span class="fnum">{cell.frameNumber}</span>
               <span class="balls">
                 {cell.balls.map((b, i) => (
@@ -354,7 +366,6 @@ function ballResult(i: number): string {
     </div>
     {mode === 'type' && progress.nextBall != null && (
       <div class="type-controls">
-        <span class="type-help">Type X &middot; / &middot; number &middot; F &middot; G, then Enter</span>
         <button type="submit" class="secondary">Log ball {progress.nextBall}</button>
       </div>
     )}
