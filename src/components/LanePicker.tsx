@@ -27,12 +27,17 @@ const LANE_RIGHT = SW - PAD;
 const LANE_W = LANE_RIGHT - LANE_LEFT;
 const BW = LANE_W / BOARDS;
 
-type Mark = 'breakpoint' | 'target' | 'stance';
+type Mark = 'stance' | 'target' | 'breakpoint' | 'slide';
+
+// rendered top-to-bottom: where you start, where you aim, where the ball goes,
+// where you finish.
+const ORDER: Mark[] = ['stance', 'target', 'breakpoint', 'slide'];
 
 const META: Record<Mark, { label: string; arrows: boolean; dots: boolean }> = {
-  breakpoint: { label: 'Breakpoint', arrows: false, dots: false },
-  target: { label: 'Target', arrows: true, dots: false },
   stance: { label: 'Stance', arrows: false, dots: true },
+  target: { label: 'Target', arrows: true, dots: false },
+  breakpoint: { label: 'Breakpoint', arrows: false, dots: false },
+  slide: { label: 'Slide', arrows: false, dots: true },
 };
 
 function xForBoard(b: number): number {
@@ -93,11 +98,11 @@ function LaneStrip({
   }
 
   const mx = value != null ? xForBoard(value) : null;
-  const arrow = value != null ? arrowNumber(value) : null;
+  const arrow = value != null && meta.arrows ? arrowNumber(value) : null;
   const detail = value == null
     ? '—'
     : value === 20
-      ? `${fmt(value)} · centre`
+      ? `${fmt(value)} · center`
       : arrow
         ? `${fmt(value)} · ${ordinal(arrow)} arrow`
         : fmt(value);
@@ -182,18 +187,25 @@ type Props = {
   initialLineup?: number | null;
   initialTarget?: number | null;
   initialBreakpoint?: number | null;
+  initialSlide?: number | null;
 };
 
-export default function LanePicker({ initialLineup, initialTarget, initialBreakpoint }: Props) {
+export default function LanePicker({ initialLineup, initialTarget, initialBreakpoint, initialSlide }: Props) {
   const [stance, setStance] = useState<number | null>(initialLineup ?? null);
   const [target, setTarget] = useState<number | null>(initialTarget ?? null);
   const [breakpoint, setBreakpoint] = useState<number | null>(initialBreakpoint ?? null);
+  const [slide, setSlide] = useState<number | null>(initialSlide ?? null);
 
   const state: Record<Mark, [number | null, (v: number | null) => void]> = {
-    breakpoint: [breakpoint, setBreakpoint],
-    target: [target, setTarget],
     stance: [stance, setStance],
+    target: [target, setTarget],
+    breakpoint: [breakpoint, setBreakpoint],
+    slide: [slide, setSlide],
   };
+
+  // drift = how far the slide foot finishes from the stance (positive = toward
+  // board 1 / the right for a right-hander).
+  const drift = stance != null && slide != null ? stance - slide : null;
 
   return (
     <div className="lane-picker">
@@ -201,10 +213,11 @@ export default function LanePicker({ initialLineup, initialTarget, initialBreakp
       <input type="hidden" name="target_type" value={target != null ? 'board' : ''} />
       <input type="hidden" name="target_value" value={target != null ? String(target) : ''} />
       <input type="hidden" name="breakpoint_board" value={breakpoint != null ? String(breakpoint) : ''} />
+      <input type="hidden" name="slide_position" value={slide != null ? String(slide) : ''} />
 
-      <p className="lane-hint">Tap a strip or use the arrows to set each mark. Board 1 is on the right, 20 is centre.</p>
+      <p className="lane-hint">Tap a strip or use the arrows to set each mark. Board 1 is on the right, 20 is center.</p>
 
-      {(['breakpoint', 'target', 'stance'] as Mark[]).map((mark) => {
+      {ORDER.map((mark) => {
         const [value, setValue] = state[mark];
         return (
           <LaneStrip
@@ -217,6 +230,14 @@ export default function LanePicker({ initialLineup, initialTarget, initialBreakp
           />
         );
       })}
+
+      {drift != null && (
+        <p className="lane-drift">
+          Drift
+          <b>{drift === 0 ? 'none' : `${fmt(Math.abs(drift))} ${drift > 0 ? 'right' : 'left'}`}</b>
+          <span>(stance {fmt(stance!)} → slide {fmt(slide!)})</span>
+        </p>
+      )}
     </div>
   );
 }

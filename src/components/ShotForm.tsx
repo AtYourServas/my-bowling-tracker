@@ -128,6 +128,7 @@ export default function ShotForm({
         initialLineup={toBoard(initial?.lineup_position)}
         initialTarget={initialTarget}
         initialBreakpoint={toBoard(initial?.breakpoint_board)}
+        initialSlide={toBoard(initial?.slide_position)}
       />
 
       <label>
@@ -140,11 +141,6 @@ export default function ShotForm({
             </option>
           ))}
         </select>
-      </label>
-
-      <label>
-        Slide position
-        <input type="text" name="slide_position" defaultValue={initial?.slide_position ?? ''} />
       </label>
 
       <label>
