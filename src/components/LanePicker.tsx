@@ -183,18 +183,51 @@ function LaneStrip({
   );
 }
 
+/** Hidden-input field names the picker posts. Defaults target the `shots` table;
+ *  pass overrides (e.g. the approaches `reference_*` columns) to reuse the picker
+ *  on another form. */
+type FieldNames = {
+  lineup: string;
+  targetType: string;
+  targetValue: string;
+  breakpoint: string;
+  slide: string;
+};
+
+const SHOT_NAMES: FieldNames = {
+  lineup: 'lineup_position',
+  targetType: 'target_type',
+  targetValue: 'target_value',
+  breakpoint: 'breakpoint_board',
+  slide: 'slide_position',
+};
+
 type Props = {
   initialLineup?: number | null;
   initialTarget?: number | null;
   initialBreakpoint?: number | null;
   initialSlide?: number | null;
+  /** Override the hidden-input field names (defaults to the shot columns). */
+  names?: Partial<FieldNames>;
+  /** Which marks to render + post. Defaults to all four; approaches omit breakpoint. */
+  marks?: Mark[];
 };
 
-export default function LanePicker({ initialLineup, initialTarget, initialBreakpoint, initialSlide }: Props) {
+export default function LanePicker({
+  initialLineup,
+  initialTarget,
+  initialBreakpoint,
+  initialSlide,
+  names,
+  marks = ORDER,
+}: Props) {
   const [stance, setStance] = useState<number | null>(initialLineup ?? null);
   const [target, setTarget] = useState<number | null>(initialTarget ?? null);
   const [breakpoint, setBreakpoint] = useState<number | null>(initialBreakpoint ?? null);
   const [slide, setSlide] = useState<number | null>(initialSlide ?? null);
+
+  const field = { ...SHOT_NAMES, ...names };
+  const shown = ORDER.filter((m) => marks.includes(m));
 
   const state: Record<Mark, [number | null, (v: number | null) => void]> = {
     stance: [stance, setStance],
@@ -205,19 +238,32 @@ export default function LanePicker({ initialLineup, initialTarget, initialBreakp
 
   // drift = how far the slide foot finishes from the stance (positive = toward
   // board 1 / the right for a right-hander).
-  const drift = stance != null && slide != null ? stance - slide : null;
+  const drift =
+    shown.includes('stance') && shown.includes('slide') && stance != null && slide != null
+      ? stance - slide
+      : null;
 
   return (
     <div className="lane-picker">
-      <input type="hidden" name="lineup_position" value={stance != null ? String(stance) : ''} />
-      <input type="hidden" name="target_type" value={target != null ? 'board' : ''} />
-      <input type="hidden" name="target_value" value={target != null ? String(target) : ''} />
-      <input type="hidden" name="breakpoint_board" value={breakpoint != null ? String(breakpoint) : ''} />
-      <input type="hidden" name="slide_position" value={slide != null ? String(slide) : ''} />
+      {shown.includes('stance') && (
+        <input type="hidden" name={field.lineup} value={stance != null ? String(stance) : ''} />
+      )}
+      {shown.includes('target') && (
+        <>
+          <input type="hidden" name={field.targetType} value={target != null ? 'board' : ''} />
+          <input type="hidden" name={field.targetValue} value={target != null ? String(target) : ''} />
+        </>
+      )}
+      {shown.includes('breakpoint') && (
+        <input type="hidden" name={field.breakpoint} value={breakpoint != null ? String(breakpoint) : ''} />
+      )}
+      {shown.includes('slide') && (
+        <input type="hidden" name={field.slide} value={slide != null ? String(slide) : ''} />
+      )}
 
       <p className="lane-hint">Tap a strip or use the arrows to set each mark. Board 1 is on the right, 20 is center.</p>
 
-      {ORDER.map((mark) => {
+      {shown.map((mark) => {
         const [value, setValue] = state[mark];
         return (
           <LaneStrip

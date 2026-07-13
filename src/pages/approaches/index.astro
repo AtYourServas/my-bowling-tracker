@@ -1,5 +1,14 @@
 ---
 import Layout from '../../layouts/Layout.astro';
+import LanePicker from '../../components/LanePicker';
+
+const APPROACH_NAMES = {
+  lineup: 'reference_lineup',
+  targetType: 'reference_target_type',
+  targetValue: 'reference_target_value',
+  slide: 'reference_slide',
+};
+const APPROACH_MARKS = ['stance', 'target', 'slide'] as const;
 
 const { supabase, user } = Astro.locals;
 
@@ -85,27 +94,9 @@ const { data: balls } = await supabase.from('balls').select('id, name').order('n
         {balls?.map((ball) => <option value={ball.id}>{ball.name}</option>)}
       </select>
     </label>
-    <label>
-      Reference lineup / stance
-      <input type="text" name="reference_lineup" />
-    </label>
-    <label>
-      Reference slide position
-      <input type="text" name="reference_slide" />
-    </label>
-    <label>
-      Target type
-      <select name="reference_target_type">
-        <option value="">None</option>
-        <option value="board">Board</option>
-        <option value="arrow">Arrow</option>
-        <option value="pin">Pin</option>
-      </select>
-    </label>
-    <label>
-      Target value
-      <input type="number" name="reference_target_value" />
-    </label>
+    <div class="sechead-mini"><span class="chev"><i></i><i></i><i></i></span><h3>Reference marks</h3></div>
+    <LanePicker client:load names={APPROACH_NAMES} marks={[...APPROACH_MARKS]} />
+
     <label>
       Notes
       <textarea name="notes" rows="3"></textarea>
