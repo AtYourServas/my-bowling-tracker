@@ -40,6 +40,10 @@ type Props = {
   /** Whether the Strike / Spare shortcuts are legal for this ball (see allowedMarks). */
   allowStrike?: boolean;
   allowSpare?: boolean;
+  /** Pins this ball faces (10 = fresh rack); lets the type entry parse pin counts. */
+  priorStanding?: number;
+  /** 0-based ordinal of this ball within the frame; used by the type entry. */
+  ballIndex?: number;
   /** Ball to pre-select when logging a new shot (session default / spare ball). */
   defaultBallId?: string | null;
 };
@@ -53,6 +57,8 @@ export default function ShotForm({
   startingPins,
   allowStrike = true,
   allowSpare = true,
+  priorStanding = 10,
+  ballIndex = 0,
   defaultBallId,
 }: Props) {
   const [approachId, setApproachId] = useState(initial?.approach_id ?? '');
@@ -74,6 +80,9 @@ export default function ShotForm({
         initialFoul={initial?.foul ?? false}
         allowStrike={allowStrike}
         allowSpare={allowSpare}
+        priorStanding={priorStanding}
+        ballIndex={ballIndex}
+        frameNumber={frameNumber}
       />
 
       <label>

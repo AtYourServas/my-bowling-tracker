@@ -209,6 +209,21 @@ export function frameProgress(frameNumber: number, shots: ShotLite[]): FrameProg
   return { count, complete, canAdd: !complete, nextBall: complete ? null : count + 1 };
 }
 
+/**
+ * How many pins the next ball in a frame will face -- 10 for a fresh, full rack.
+ * Applies the same respot rule as frameRollsDetailed: a cleared rack (a strike, a
+ * ball that knocks down the last standing pins, or a foul) respots to 10.
+ */
+export function pinsStandingBefore(shots: ShotLite[]): number {
+  let priorStanding = 10;
+  for (const shot of shots) {
+    const standingAfter = shot.pins_standing?.length ?? 0;
+    const cleared = (shot.foul ?? false) || shot.strike || standingAfter === 0;
+    priorStanding = cleared ? 10 : standingAfter;
+  }
+  return priorStanding;
+}
+
 export type AllowedMarks = { strike: boolean; spare: boolean };
 
 /**
@@ -221,14 +236,7 @@ export type AllowedMarks = { strike: boolean; spare: boolean };
  * Mirrors the rack-reset rule in frameRollsDetailed / computeScoresheet.
  */
 export function allowedMarks(frameNumber: number, shots: ShotLite[]): AllowedMarks {
-  // pins the next ball will face (10 = fresh rack), applying the respot rule
-  let priorStanding = 10;
-  for (const shot of shots) {
-    const standingAfter = shot.pins_standing?.length ?? 0;
-    const cleared = (shot.foul ?? false) || shot.strike || standingAfter === 0;
-    priorStanding = cleared ? 10 : standingAfter;
-  }
-
+  const priorStanding = pinsStandingBefore(shots);
   const ballIndex = shots.length; // 0-based index of the ball about to be thrown
   const freshRack = priorStanding === 10;
 
@@ -236,6 +244,79 @@ export function allowedMarks(frameNumber: number, shots: ShotLite[]): AllowedMar
   const spare = ballIndex >= 1 && !strike;
 
   return { strike, spare };
+}
+
+export type ParsedShot = { standing: number[]; strike: boolean; spare: boolean; foul: boolean };
+
+export type ShorthandContext = {
+  /** Pins this ball faces (10 = fresh rack); see pinsStandingBefore. */
+  priorStanding: number;
+  /** 0-based ordinal of this ball within the frame. */
+  ballIndex: number;
+  frameNumber: number;
+};
+
+export type ParseResult =
+  | { ok: true; result: ParsedShot }
+  | { ok: false; error: string };
+
+// Deterministic placeholder pin identities for a typed *count*. Typing records how
+// many pins are left, not which -- so scoring (which is count-based) is exact while
+// the specific pins are just a stand-in until picked on the diagram.
+const CANON_STANDING = [10, 9, 8, 7, 6, 5, 4, 3, 2, 1];
+function canonicalStanding(count: number): number[] {
+  return CANON_STANDING.slice(0, Math.max(0, count)).sort((a, b) => a - b);
+}
+
+const SHORTHAND_HELP = 'Type X, /, a number 0–10, F, or G.';
+
+/**
+ * Parses bowling shorthand for a single ball into the same
+ * {standing, strike, spare, foul} shape the pin picker produces, so typed and
+ * tapped entry share one code path. Accepts (case-insensitive): X (strike),
+ * / (spare), F (foul), G or - (gutter / miss = 0 down), and a number 0-10 (pins
+ * knocked down on *this* ball). Strike vs. spare is inferred from frame context
+ * when a number clears the rack -- clearing a fresh rack on the first delivery
+ * (or any 10th-frame bonus ball) is a strike, clearing leftovers is a spare --
+ * mirroring allowedMarks. Returns an error for tokens illegal on this ball.
+ */
+export function parseShotShorthand(raw: string, ctx: ShorthandContext): ParseResult {
+  const token = raw.trim().toUpperCase();
+  const { priorStanding, ballIndex, frameNumber } = ctx;
+  const freshRack = priorStanding === 10;
+  const strikeCtx = freshRack && (ballIndex === 0 || frameNumber === 10);
+  const spareCtx = ballIndex >= 1 && !strikeCtx;
+
+  if (token === '') return { ok: false, error: SHORTHAND_HELP };
+  if (token === 'F') return { ok: true, result: { standing: [], strike: false, spare: false, foul: true } };
+  if (token === 'G' || token === '-') {
+    // gutter / miss: nothing knocked down this ball, the whole rack still stands
+    return { ok: true, result: { standing: canonicalStanding(priorStanding), strike: false, spare: false, foul: false } };
+  }
+  if (token === 'X') {
+    if (!strikeCtx) return { ok: false, error: 'A strike isn’t available on this ball.' };
+    return { ok: true, result: { standing: [], strike: true, spare: false, foul: false } };
+  }
+  if (token === '/') {
+    if (!spareCtx) return { ok: false, error: 'A spare isn’t available on this ball.' };
+    return { ok: true, result: { standing: [], strike: false, spare: true, foul: false } };
+  }
+  if (/^\d{1,2}$/.test(token)) {
+    const n = Number(token);
+    if (n > priorStanding) {
+      return {
+        ok: false,
+        error: priorStanding === 10 ? 'Only 10 pins to knock down.' : `Only ${priorStanding} pin${priorStanding === 1 ? '' : 's'} standing.`,
+      };
+    }
+    const standingCount = priorStanding - n;
+    if (standingCount === 0) {
+      // cleared the rack: a strike on a fresh full rack, otherwise a spare
+      return { ok: true, result: { standing: [], strike: strikeCtx, spare: !strikeCtx, foul: false } };
+    }
+    return { ok: true, result: { standing: canonicalStanding(standingCount), strike: false, spare: false, foul: false } };
+  }
+  return { ok: false, error: SHORTHAND_HELP };
 }
 
 /**

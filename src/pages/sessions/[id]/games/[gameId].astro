@@ -1,7 +1,7 @@
 ---
 import Layout from '../../../../layouts/Layout.astro';
 import ShotForm from '../../../../components/ShotForm';
-import { fetchScoresheetForGame, frameProgress, computeFrameRolls, allowedMarks, fetchEarliestIncompleteFrame } from '../../../../lib/scoring';
+import { fetchScoresheetForGame, frameProgress, computeFrameRolls, allowedMarks, pinsStandingBefore, fetchEarliestIncompleteFrame } from '../../../../lib/scoring';
 import type { ShotLite } from '../../../../lib/scoring';
 import { fetchSessionHandicap } from '../../../../lib/handicap';
 import { laneForFrame, laneConfigFromSession } from '../../../../lib/lanes';
@@ -202,6 +202,9 @@ const ordinals = ['First', 'Second', 'Third'];
 
 // pins left standing after the last logged ball seed the next ball's picker
 const startingPins = frameShots.length ? frameShots[frameShots.length - 1].pins_standing ?? [] : [];
+// pins the next ball faces (10 = fresh rack) + its 0-based index, for the type entry
+const priorStanding = pinsStandingBefore(frameShots as ShotLite[]);
+const ballIndex = frameShots.length;
 
 // pre-select the session's default ball on the first ball of a frame and the
 // spare ball on later balls; each shot's ball can still be changed manually
@@ -344,6 +347,8 @@ function ballResult(i: number): string {
         startingPins={startingPins}
         allowStrike={marks.strike}
         allowSpare={marks.spare}
+        priorStanding={priorStanding}
+        ballIndex={ballIndex}
         defaultBallId={defaultBallId}
         submitLabel={`Log ball ${progress.nextBall}`}
       />
