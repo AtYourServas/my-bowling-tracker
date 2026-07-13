@@ -52,6 +52,8 @@ type Props = {
   defaultBallId?: string | null;
   /** Current score-entry mode, echoed back on submit so it persists across frames. */
   mode?: 'pick' | 'type';
+  /** Whether the collapsible detail sections start expanded (profile preference). */
+  detailsOpen?: boolean;
 };
 
 export default function ShotForm({
@@ -65,6 +67,7 @@ export default function ShotForm({
   allowSpare = true,
   defaultBallId,
   mode = 'pick',
+  detailsOpen = false,
 }: Props) {
   const [approachId, setApproachId] = useState(initial?.approach_id ?? '');
 
@@ -98,40 +101,6 @@ export default function ShotForm({
       />
 
       <label>
-        Reference approach
-        <select name="approach_id" value={approachId} onChange={(e) => setApproachId(e.target.value)}>
-          <option value="">None</option>
-          {approaches.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.name}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      {selectedApproach && (
-        <div className="reference-box">
-          <strong>{selectedApproach.name} (reference)</strong>
-          <span>Lineup: {selectedApproach.reference_lineup || '—'}</span>
-          <span>Slide: {selectedApproach.reference_slide || '—'}</span>
-          <span>
-            Target:{' '}
-            {selectedApproach.reference_target_type && selectedApproach.reference_target_value != null
-              ? `${selectedApproach.reference_target_type} ${selectedApproach.reference_target_value}`
-              : '—'}
-          </span>
-        </div>
-      )}
-
-      <div className="sechead-mini"><span className="chev"><i></i><i></i><i></i></span><h3>Reference marks</h3></div>
-      <LanePicker
-        initialLineup={toBoard(initial?.lineup_position)}
-        initialTarget={initialTarget}
-        initialBreakpoint={toBoard(initial?.breakpoint_board)}
-        initialSlide={toBoard(initial?.slide_position)}
-      />
-
-      <label>
         Ball
         <select name="ball_id" defaultValue={initial?.ball_id ?? defaultBallId ?? ''}>
           <option value="">None</option>
@@ -143,32 +112,75 @@ export default function ShotForm({
         </select>
       </label>
 
-      <label>
-        Hook timing
-        <select name="hook_timing" defaultValue={initial?.hook_timing ?? ''}>
-          <option value="">None</option>
-          <option value="early">Early</option>
-          <option value="on-time">On-time</option>
-          <option value="late">Late</option>
-          <option value="none">No hook</option>
-        </select>
-      </label>
+      <details className="form-section" open={detailsOpen}>
+        <summary>Reference approach &amp; marks</summary>
+        <div className="section-body">
+          <label>
+            Reference approach
+            <select name="approach_id" value={approachId} onChange={(e) => setApproachId(e.target.value)}>
+              <option value="">None</option>
+              {approaches.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </select>
+          </label>
 
-      <label>
-        Miss direction
-        <select name="miss_direction" defaultValue={initial?.miss_direction ?? ''}>
-          <option value="">None</option>
-          <option value="high">High</option>
-          <option value="low">Low</option>
-          <option value="flush">Flush</option>
-          <option value="pocket">Pocket</option>
-        </select>
-      </label>
+          {selectedApproach && (
+            <div className="reference-box">
+              <strong>{selectedApproach.name} (reference)</strong>
+              <span>Lineup: {selectedApproach.reference_lineup || '—'}</span>
+              <span>Slide: {selectedApproach.reference_slide || '—'}</span>
+              <span>
+                Target:{' '}
+                {selectedApproach.reference_target_type && selectedApproach.reference_target_value != null
+                  ? `${selectedApproach.reference_target_type} ${selectedApproach.reference_target_value}`
+                  : '—'}
+              </span>
+            </div>
+          )}
 
-      <label>
-        Note
-        <textarea name="note" rows={2} defaultValue={initial?.note ?? ''}></textarea>
-      </label>
+          <LanePicker
+            initialLineup={toBoard(initial?.lineup_position)}
+            initialTarget={initialTarget}
+            initialBreakpoint={toBoard(initial?.breakpoint_board)}
+            initialSlide={toBoard(initial?.slide_position)}
+          />
+        </div>
+      </details>
+
+      <details className="form-section" open={detailsOpen}>
+        <summary>Hook, miss &amp; note</summary>
+        <div className="section-body">
+          <label>
+            Hook timing
+            <select name="hook_timing" defaultValue={initial?.hook_timing ?? ''}>
+              <option value="">None</option>
+              <option value="early">Early</option>
+              <option value="on-time">On-time</option>
+              <option value="late">Late</option>
+              <option value="none">No hook</option>
+            </select>
+          </label>
+
+          <label>
+            Miss direction
+            <select name="miss_direction" defaultValue={initial?.miss_direction ?? ''}>
+              <option value="">None</option>
+              <option value="high">High</option>
+              <option value="low">Low</option>
+              <option value="flush">Flush</option>
+              <option value="pocket">Pocket</option>
+            </select>
+          </label>
+
+          <label>
+            Note
+            <textarea name="note" rows={2} defaultValue={initial?.note ?? ''}></textarea>
+          </label>
+        </div>
+      </details>
 
       <button type="submit">{submitLabel}</button>
     </form>

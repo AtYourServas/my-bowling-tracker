@@ -12,10 +12,11 @@ if (Astro.request.method === 'POST') {
   const default_ball_id = formData.get('default_ball_id')?.toString() || null;
   const default_spare_ball_id = formData.get('default_spare_ball_id')?.toString() || null;
   const default_entry_mode = formData.get('default_entry_mode')?.toString() === 'type' ? 'type' : 'pick';
+  const shot_details_expanded = formData.get('shot_details_expanded') === 'on';
 
   const { error: updateError } = await supabase
     .from('profiles')
-    .update({ display_name, default_ball_id, default_spare_ball_id, default_entry_mode })
+    .update({ display_name, default_ball_id, default_spare_ball_id, default_entry_mode, shot_details_expanded })
     .eq('id', user!.id);
 
   if (updateError) {
@@ -27,11 +28,12 @@ if (Astro.request.method === 'POST') {
 
 const { data: profile } = await supabase
   .from('profiles')
-  .select('display_name, default_ball_id, default_spare_ball_id, default_entry_mode')
+  .select('display_name, default_ball_id, default_spare_ball_id, default_entry_mode, shot_details_expanded')
   .eq('id', user!.id)
   .maybeSingle();
 
 const entryMode = profile?.default_entry_mode === 'type' ? 'type' : 'pick';
+const detailsExpanded = profile?.shot_details_expanded ?? false;
 
 const { data: balls } = await supabase.from('balls').select('id, name').order('name');
 const hasBalls = (balls?.length ?? 0) > 0;
@@ -59,6 +61,11 @@ const hasBalls = (balls?.length ?? 0) > 0;
         <option value="type" selected={entryMode === 'type'}>Type — type the result into the frame</option>
       </select>
     </label>
+    <label class="check">
+      <input type="checkbox" name="shot_details_expanded" checked={detailsExpanded} />
+      Expand shot detail sections by default
+    </label>
+    <p class="empty">When picking pins, the reference-marks and hook/miss/note sections can start open or collapsed. Editing an existing shot always opens them.</p>
 
     <div class="sechead"><span class="chev"><i></i><i></i><i></i></span><h2>Default Balls</h2></div>
     <p class="empty">Used to pre-fill the ball for each throw when you start a new session. You can override it per session and per shot.</p>

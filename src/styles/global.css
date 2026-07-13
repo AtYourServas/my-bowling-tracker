@@ -402,6 +402,25 @@ details.collapsible > summary::after {
 details.collapsible[open] > summary::after { content: 'Close'; color: var(--text-muted); }
 details.collapsible[open] > summary { margin-bottom: var(--s3); }
 
+/* Checkbox row: a label with an inline checkbox instead of a stacked field. */
+label.check { flex-direction: row; align-items: center; gap: var(--s2); color: var(--text-primary); }
+label.check input[type="checkbox"] { width: auto; flex: none; padding: 0; margin: 0; }
+
+/* Collapsible shot-logger sections (reference marks; hook/miss/note). */
+details.form-section { border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); }
+details.form-section > summary {
+  display: flex; align-items: center; gap: var(--s2); cursor: pointer; list-style: none;
+  padding: var(--s3); font-weight: var(--fw-semi); font-size: var(--text-sm); color: var(--text-primary);
+}
+details.form-section > summary::-webkit-details-marker { display: none; }
+details.form-section > summary::after {
+  content: 'Show'; margin-left: auto; font-size: var(--text-xs);
+  text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent);
+}
+details.form-section[open] > summary::after { content: 'Hide'; color: var(--text-muted); }
+details.form-section[open] > summary { border-bottom: 1px solid var(--border); }
+details.form-section > .section-body { display: flex; flex-direction: column; gap: var(--s3); padding: var(--s3); }
+
 /* ============================================================
    Frame picker (interim; scoresheet component supersedes this)
    ============================================================ */
