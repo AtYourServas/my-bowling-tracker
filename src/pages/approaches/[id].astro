@@ -17,6 +17,15 @@ function toBoard(v: string | number | null | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** Interpret a legacy 'arrow' target value as a board. Bowlers name arrows by
+ *  the board they sit on (the 5th arrow is board 25), so a value over 7 is
+ *  already a board; only a small arrow index (1-7) is scaled up (arrow N = board 5N). */
+function arrowToBoard(v: string | number | null | undefined): number | null {
+  const n = toBoard(v);
+  if (n == null) return null;
+  return n <= 7 ? n * 5 : n;
+}
+
 const { supabase } = Astro.locals;
 const { id } = Astro.params;
 
@@ -77,12 +86,12 @@ if (!approach) {
 const { data: balls } = await supabase.from('balls').select('id, name').order('name');
 
 // seed the lane picker from the stored approach. An older 'arrow' target maps to
-// its board (arrow N sits on board 5N); a 'pin' target can't be placed.
+// its board via arrowToBoard; a 'pin' target can't be placed.
 const initialTarget =
   approach.reference_target_type === 'board'
     ? toBoard(approach.reference_target_value)
     : approach.reference_target_type === 'arrow'
-      ? toBoard(approach.reference_target_value != null ? approach.reference_target_value * 5 : null)
+      ? arrowToBoard(approach.reference_target_value)
       : null;
 ---
 

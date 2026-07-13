@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { forwardRef, useImperativeHandle, useRef, useState } from 'react';
 
 /**
  * Visual reference-mark picker, modelled on the reference app's lane strips.
@@ -213,14 +213,17 @@ type Props = {
   marks?: Mark[];
 };
 
-export default function LanePicker({
-  initialLineup,
-  initialTarget,
-  initialBreakpoint,
-  initialSlide,
-  names,
-  marks = ORDER,
-}: Props) {
+/** Imperative API for seeding marks from outside (e.g. the "Apply to my
+ *  approach" button copies a reference approach's marks in). Only the marks
+ *  present in the object change; omit one to leave it untouched. */
+export type LanePickerHandle = {
+  apply: (marks: Partial<Record<Mark, number | null>>) => void;
+};
+
+const LanePicker = forwardRef<LanePickerHandle, Props>(function LanePicker(
+  { initialLineup, initialTarget, initialBreakpoint, initialSlide, names, marks = ORDER },
+  ref,
+) {
   const [stance, setStance] = useState<number | null>(initialLineup ?? null);
   const [target, setTarget] = useState<number | null>(initialTarget ?? null);
   const [breakpoint, setBreakpoint] = useState<number | null>(initialBreakpoint ?? null);
@@ -235,6 +238,15 @@ export default function LanePicker({
     breakpoint: [breakpoint, setBreakpoint],
     slide: [slide, setSlide],
   };
+
+  useImperativeHandle(ref, () => ({
+    apply(seed) {
+      (Object.keys(seed) as Mark[]).forEach((mark) => {
+        const [, setValue] = state[mark];
+        setValue(seed[mark] ?? null);
+      });
+    },
+  }));
 
   // drift = how far the slide foot finishes from the stance (positive = toward
   // board 1 / the right for a right-hander).
@@ -286,4 +298,6 @@ export default function LanePicker({
       )}
     </div>
   );
-}
+});
+
+export default LanePicker;

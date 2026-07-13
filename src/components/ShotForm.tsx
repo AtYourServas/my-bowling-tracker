@@ -1,12 +1,37 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import PinDiagram from './PinDiagram';
-import LanePicker from './LanePicker';
+import LanePicker, { type LanePickerHandle } from './LanePicker';
 
 /** Parse a stored mark (text or numeric) into a board number for the picker. */
 function toBoard(v: string | number | null | undefined): number | null {
   if (v == null || v === '') return null;
   const n = typeof v === 'number' ? v : Number(v);
   return Number.isFinite(n) ? n : null;
+}
+
+/** Interpret a legacy 'arrow' target value as a board. Bowlers name arrows by
+ *  the board they sit on (the 5th arrow is board 25), so a value over 7 is
+ *  already a board; only a small arrow index (1-7) is scaled up (arrow N = board 5N). */
+function arrowToBoard(v: string | number | null | undefined): number | null {
+  const n = toBoard(v);
+  if (n == null) return null;
+  return n <= 7 ? n * 5 : n;
+}
+
+/** A reference approach's stored marks as picker board numbers. Mirrors the
+ *  edit-seed logic (board straight through, legacy arrow via arrowToBoard). */
+function approachBoards(a: Approach) {
+  const target =
+    a.reference_target_type === 'board'
+      ? toBoard(a.reference_target_value)
+      : a.reference_target_type === 'arrow'
+        ? arrowToBoard(a.reference_target_value)
+        : null;
+  return {
+    stance: toBoard(a.reference_lineup),
+    target,
+    slide: toBoard(a.reference_slide),
+  };
 }
 
 type Ball = { id: string; name: string };
@@ -74,19 +99,37 @@ export default function ShotForm({
   const show = (key: string) => !hiddenFields.includes(key);
   const shownMarks = (['stance', 'target', 'slide', 'breakpoint'] as const).filter(show);
   const [approachId, setApproachId] = useState(initial?.approach_id ?? '');
+  const [applied, setApplied] = useState(false);
+  const laneRef = useRef<LanePickerHandle>(null);
 
   const selectedApproach = useMemo(
     () => approaches.find((a) => a.id === approachId) ?? null,
     [approachId, approaches],
   );
 
+  // Which of the reference marks the picker is currently showing (stance/target/slide).
+  const applicableMarks = shownMarks.filter((m) => m === 'stance' || m === 'target' || m === 'slide');
+
+  // Copy the selected reference approach's marks into the LanePicker as a
+  // starting point to adjust from. Only seeds the marks currently shown.
+  function applyReference() {
+    if (!selectedApproach) return;
+    const b = approachBoards(selectedApproach);
+    const seed: { stance?: number | null; target?: number | null; slide?: number | null } = {};
+    if (applicableMarks.includes('stance')) seed.stance = b.stance;
+    if (applicableMarks.includes('target')) seed.target = b.target;
+    if (applicableMarks.includes('slide')) seed.slide = b.slide;
+    laneRef.current?.apply(seed);
+    setApplied(true);
+  }
+
   // seed the lane picker from an existing shot. An older 'arrow' target maps to
-  // its board (arrow N sits on board 5N); a 'pin' target can't be placed.
+  // its board via arrowToBoard; a 'pin' target can't be placed.
   const initialTarget =
     initial?.target_type === 'board'
       ? toBoard(initial.target_value)
       : initial?.target_type === 'arrow'
-        ? toBoard(initial.target_value != null ? initial.target_value * 5 : null)
+        ? arrowToBoard(initial.target_value)
         : null;
 
   return (
@@ -120,7 +163,14 @@ export default function ShotForm({
         <>
           <label>
             Reference approach
-            <select name="approach_id" value={approachId} onChange={(e) => setApproachId(e.target.value)}>
+            <select
+              name="approach_id"
+              value={approachId}
+              onChange={(e) => {
+                setApproachId(e.target.value);
+                setApplied(false);
+              }}
+            >
               <option value="">None</option>
               {approaches.map((a) => (
                 <option key={a.id} value={a.id}>
@@ -133,14 +183,19 @@ export default function ShotForm({
           {selectedApproach && (
             <div className="reference-box">
               <strong>{selectedApproach.name} (reference)</strong>
-              <span>Lineup: {selectedApproach.reference_lineup || '—'}</span>
-              <span>Slide: {selectedApproach.reference_slide || '—'}</span>
+              <span>Stance: {selectedApproach.reference_lineup || '—'}</span>
               <span>
                 Target:{' '}
                 {selectedApproach.reference_target_type && selectedApproach.reference_target_value != null
                   ? `${selectedApproach.reference_target_type} ${selectedApproach.reference_target_value}`
                   : '—'}
               </span>
+              <span>Slide: {selectedApproach.reference_slide || '—'}</span>
+              {applicableMarks.length > 0 && (
+                <button type="button" className="apply-approach" onClick={applyReference}>
+                  {applied ? '✓ Applied to my approach' : 'Apply to my approach'}
+                </button>
+              )}
             </div>
           )}
         </>
@@ -150,6 +205,7 @@ export default function ShotForm({
         <>
           <div className="sechead-mini"><span className="chev"><i></i><i></i><i></i></span><h3>Reference marks</h3></div>
           <LanePicker
+            ref={laneRef}
             initialLineup={toBoard(initial?.lineup_position)}
             initialTarget={initialTarget}
             initialBreakpoint={toBoard(initial?.breakpoint_board)}
