@@ -54,6 +54,20 @@ if (Astro.request.method === 'POST') {
     } else {
       return Astro.redirect(`/sessions/${id}`);
     }
+  } else if (intent === 'edit_balls') {
+    const default_ball_id = formData.get('default_ball_id')?.toString() || null;
+    const default_spare_ball_id = formData.get('default_spare_ball_id')?.toString() || null;
+
+    const { error: ballError } = await supabase
+      .from('sessions')
+      .update({ default_ball_id, default_spare_ball_id })
+      .eq('id', id);
+
+    if (ballError) {
+      error = ballError.message;
+    } else {
+      return Astro.redirect(`/sessions/${id}`);
+    }
   } else if (intent === 'set_game_score') {
     const gameId = formData.get('game_id')?.toString();
     const raw = formData.get('final_score')?.toString().trim();
@@ -119,6 +133,12 @@ const leagueName = session.leagues?.name ?? null;
 const laneConfig = laneConfigFromSession(session);
 const laneStats = hasLanePair(laneConfig) ? await fetchSessionLaneStats(supabase, id!, laneConfig) : [];
 const { data: leagues } = await supabase.from('leagues').select('id, name').order('name');
+const { data: balls } = await supabase.from('balls').select('id, name').order('name');
+const ballName = (ballId: string | null) => balls?.find((b) => b.id === ballId)?.name ?? null;
+const defaultBallSummary =
+  [ballName(session.default_ball_id), ballName(session.default_spare_ball_id) && `spare ${ballName(session.default_spare_ball_id)}`]
+    .filter(Boolean)
+    .join(' · ') || 'Not set';
 
 const { data: games } = await supabase
   .from('games')
@@ -234,6 +254,38 @@ const leagueSlots = [
       </p>
     )}
   </details>
+
+  {balls && balls.length > 0 && (
+    <details class="score-box collapsible" open={session.default_ball_id == null && session.default_spare_ball_id == null}>
+      <summary>
+        <span class="sum-label">Default Balls</span>
+        <span class="sum-value">{defaultBallSummary}</span>
+      </summary>
+      <form method="POST">
+        <input type="hidden" name="intent" value="edit_balls" />
+        <label>
+          Default Ball (pre-fills each throw)
+          <select name="default_ball_id">
+            <option value="">None</option>
+            {balls.map((ball) => (
+              <option value={ball.id} selected={ball.id === session.default_ball_id}>{ball.name}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Default Spare Ball
+          <select name="default_spare_ball_id">
+            <option value="">None</option>
+            {balls.map((ball) => (
+              <option value={ball.id} selected={ball.id === session.default_spare_ball_id}>{ball.name}</option>
+            ))}
+          </select>
+        </label>
+        <button type="submit">Save Balls</button>
+      </form>
+      <p class="empty">Ball 1 of each frame pre-fills your default ball; later balls pre-fill the spare ball. You can still change the ball on any shot.</p>
+    </details>
+  )}
 
   {laneStats.length > 0 && (
     <div class="score-box">
