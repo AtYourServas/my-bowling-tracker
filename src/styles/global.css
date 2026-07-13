@@ -328,7 +328,10 @@ a.card:hover { text-decoration: none; box-shadow: var(--shadow-md); border-color
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-sm);
 }
-.filter-form label { font-size: var(--text-xs); }
+/* grid items default to min-width:auto, so a long alley name in the select (or
+   the date inputs) can't shrink and spills past the card — let them shrink */
+.filter-form label { font-size: var(--text-xs); min-width: 0; }
+.filter-form select, .filter-form input { width: 100%; min-width: 0; }
 .filter-form button { grid-column: span 2; }
 .filter-form a { grid-column: span 2; text-align: center; font-size: var(--text-sm); }
 
