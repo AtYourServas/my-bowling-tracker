@@ -1,5 +1,21 @@
 ---
 import Layout from '../../layouts/Layout.astro';
+import LanePicker from '../../components/LanePicker';
+
+const APPROACH_NAMES = {
+  lineup: 'reference_lineup',
+  targetType: 'reference_target_type',
+  targetValue: 'reference_target_value',
+  slide: 'reference_slide',
+};
+const APPROACH_MARKS = ['stance', 'target', 'slide'] as const;
+
+/** Parse a stored mark (text or numeric) into a board number for the picker. */
+function toBoard(v: string | number | null | undefined): number | null {
+  if (v == null || v === '') return null;
+  const n = typeof v === 'number' ? v : Number(v);
+  return Number.isFinite(n) ? n : null;
+}
 
 const { supabase } = Astro.locals;
 const { id } = Astro.params;
@@ -59,6 +75,15 @@ if (!approach) {
 }
 
 const { data: balls } = await supabase.from('balls').select('id, name').order('name');
+
+// seed the lane picker from the stored approach. An older 'arrow' target maps to
+// its board (arrow N sits on board 5N); a 'pin' target can't be placed.
+const initialTarget =
+  approach.reference_target_type === 'board'
+    ? toBoard(approach.reference_target_value)
+    : approach.reference_target_type === 'arrow'
+      ? toBoard(approach.reference_target_value != null ? approach.reference_target_value * 5 : null)
+      : null;
 ---
 
 <Layout title={approach.name}>
@@ -83,27 +108,16 @@ const { data: balls } = await supabase.from('balls').select('id, name').order('n
         ))}
       </select>
     </label>
-    <label>
-      Reference lineup / stance
-      <input type="text" name="reference_lineup" value={approach.reference_lineup ?? ''} />
-    </label>
-    <label>
-      Reference slide position
-      <input type="text" name="reference_slide" value={approach.reference_slide ?? ''} />
-    </label>
-    <label>
-      Target type
-      <select name="reference_target_type">
-        <option value="" selected={!approach.reference_target_type}>None</option>
-        <option value="board" selected={approach.reference_target_type === 'board'}>Board</option>
-        <option value="arrow" selected={approach.reference_target_type === 'arrow'}>Arrow</option>
-        <option value="pin" selected={approach.reference_target_type === 'pin'}>Pin</option>
-      </select>
-    </label>
-    <label>
-      Target value
-      <input type="number" name="reference_target_value" value={approach.reference_target_value ?? ''} />
-    </label>
+    <div class="sechead-mini"><span class="chev"><i></i><i></i><i></i></span><h3>Reference marks</h3></div>
+    <LanePicker
+      client:load
+      names={APPROACH_NAMES}
+      marks={[...APPROACH_MARKS]}
+      initialLineup={toBoard(approach.reference_lineup)}
+      initialTarget={initialTarget}
+      initialSlide={toBoard(approach.reference_slide)}
+    />
+
     <label>
       Notes
       <textarea name="notes" rows="3">{approach.notes ?? ''}</textarea>
