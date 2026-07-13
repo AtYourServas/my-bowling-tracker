@@ -1,5 +1,13 @@
 import { useMemo, useState } from 'react';
 import PinDiagram from './PinDiagram';
+import LanePicker from './LanePicker';
+
+/** Parse a stored mark (text or numeric) into a board number for the picker. */
+function toBoard(v: string | number | null | undefined): number | null {
+  if (v == null || v === '') return null;
+  const n = typeof v === 'number' ? v : Number(v);
+  return Number.isFinite(n) ? n : null;
+}
 
 type Ball = { id: string; name: string };
 type Approach = {
@@ -65,6 +73,15 @@ export default function ShotForm({
     [approachId, approaches],
   );
 
+  // seed the lane picker from an existing shot. An older 'arrow' target maps to
+  // its board (arrow N sits on board 5N); a 'pin' target can't be placed.
+  const initialTarget =
+    initial?.target_type === 'board'
+      ? toBoard(initial.target_value)
+      : initial?.target_type === 'arrow'
+        ? toBoard(initial.target_value != null ? initial.target_value * 5 : null)
+        : null;
+
   return (
     <form method="POST">
       <input type="hidden" name="frame_number" value={frameNumber} />
@@ -106,6 +123,13 @@ export default function ShotForm({
         </div>
       )}
 
+      <div className="sechead-mini"><span className="chev"><i></i><i></i><i></i></span><h3>Reference marks</h3></div>
+      <LanePicker
+        initialLineup={toBoard(initial?.lineup_position)}
+        initialTarget={initialTarget}
+        initialBreakpoint={toBoard(initial?.breakpoint_board)}
+      />
+
       <label>
         Ball
         <select name="ball_id" defaultValue={initial?.ball_id ?? defaultBallId ?? ''}>
@@ -119,30 +143,9 @@ export default function ShotForm({
       </label>
 
       <label>
-        Lineup / stance position
-        <input type="text" name="lineup_position" defaultValue={initial?.lineup_position ?? ''} />
-      </label>
-
-      <label>
         Slide position
         <input type="text" name="slide_position" defaultValue={initial?.slide_position ?? ''} />
       </label>
-
-      <div className="target-row">
-        <label>
-          Target type
-          <select name="target_type" defaultValue={initial?.target_type ?? ''}>
-            <option value="">None</option>
-            <option value="board">Board</option>
-            <option value="arrow">Arrow</option>
-            <option value="pin">Pin</option>
-          </select>
-        </label>
-        <label>
-          Target value
-          <input type="number" name="target_value" defaultValue={initial?.target_value ?? ''} />
-        </label>
-      </div>
 
       <label>
         Hook timing
@@ -164,11 +167,6 @@ export default function ShotForm({
           <option value="flush">Flush</option>
           <option value="pocket">Pocket</option>
         </select>
-      </label>
-
-      <label>
-        Breakpoint board
-        <input type="number" name="breakpoint_board" defaultValue={initial?.breakpoint_board ?? ''} />
       </label>
 
       <label>
