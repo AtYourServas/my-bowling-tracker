@@ -497,3 +497,53 @@ export async function fetchScoresheetForGame(
 
   return computeScoresheet((frames ?? []) as unknown as FrameLite[]);
 }
+
+/** Pins left standing after ball 1 / ball 2 of a frame (null = that ball wasn't thrown). */
+export type FramePinfall = { leave1: number[] | null; leave2: number[] | null };
+
+export type MiniSheet = {
+  cells: FrameCell[];
+  /** Per frame (1..10) pinfall leaves, so the summary can colour ball-1 vs ball-2 pinfall. */
+  pinfall: FramePinfall[];
+};
+
+/**
+ * Scoresheet cells + first-ball pinfall leave for several games in ONE query,
+ * for the session screen's per-game summary strips.
+ */
+export async function fetchMiniScoresheets(
+  supabase: SupabaseClient,
+  gameIds: string[],
+): Promise<Map<string, MiniSheet>> {
+  const out = new Map<string, MiniSheet>();
+  if (gameIds.length === 0) return out;
+
+  const { data: frames } = await supabase
+    .from('frames')
+    .select('game_id, frame_number, shots(pins_standing, strike, spare, foul, created_at)')
+    .in('game_id', gameIds)
+    .order('frame_number', { ascending: true })
+    .order('created_at', { foreignTable: 'shots', ascending: true });
+
+  const byGame = new Map<string, FrameLite[]>();
+  for (const f of (frames ?? []) as any[]) {
+    const list = byGame.get(f.game_id) ?? [];
+    list.push({ frame_number: f.frame_number, shots: (f.shots ?? []) as ShotLite[] });
+    byGame.set(f.game_id, list);
+  }
+
+  for (const gameId of gameIds) {
+    const gframes = byGame.get(gameId) ?? [];
+    const byNumber = new Map(gframes.map((f) => [f.frame_number, f]));
+    const pinfall = Array.from({ length: 10 }, (_, i) => {
+      const shots = byNumber.get(i + 1)?.shots ?? [];
+      return {
+        leave1: shots[0] ? shots[0].pins_standing ?? [] : null,
+        leave2: shots[1] ? shots[1].pins_standing ?? [] : null,
+      };
+    });
+    out.set(gameId, { cells: computeScoresheet(gframes), pinfall });
+  }
+
+  return out;
+}

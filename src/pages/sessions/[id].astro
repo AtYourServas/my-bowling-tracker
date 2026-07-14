@@ -1,7 +1,8 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 import GameScoreValue from '../../components/GameScoreValue.astro';
-import { fetchDerivedScoreForGame } from '../../lib/scoring';
+import MiniScoresheet from '../../components/MiniScoresheet.astro';
+import { fetchDerivedScoreForGame, fetchMiniScoresheets } from '../../lib/scoring';
 import { fetchSessionHandicapDetail } from '../../lib/handicap';
 import { fetchSessionLaneStats } from '../../lib/stats';
 import { laneLabel, laneConfigFromSession, hasLanePair } from '../../lib/lanes';
@@ -186,6 +187,14 @@ const derivedScores = new Map<string, number | null>(
   ),
 );
 
+// per-game marks/score strips (+ first-ball pinfall) for the games list summary
+const miniSheets = await fetchMiniScoresheets(supabase, (games ?? []).map((g) => g.id));
+const miniSheet = (gameId: string) => {
+  const mini = miniSheets.get(gameId);
+  return mini && mini.cells.some((c) => c.bowled) ? mini : null;
+};
+const anyPinfall = [...miniSheets.values()].some((m) => m.cells.some((c) => c.bowled));
+
 function gameScore(game: { id: string; final_score: number | null }) {
   const derived = derivedScores.get(game.id) ?? null;
   const scratch = game.final_score ?? derived;
@@ -345,6 +354,13 @@ const leagueSlots = [
   <h1>Games</h1>
   <p class="empty">Enter a game's final score, or add &amp; log it shot-by-shot.</p>
 
+  {anyPinfall && (
+    <label class="pinfall-toggle">
+      <input type="checkbox" id="show-pinfall" />
+      Show Pinfall
+    </label>
+  )}
+
   {session.session_type === 'league' ? (
     <ul class="list">
       {leagueSlots.map((slot) => {
@@ -360,6 +376,13 @@ const leagueSlots = [
                   </div>
                   <GameScoreValue primary={score.primary} handicap={score.handicap} />
                 </a>
+                {miniSheet(slot.game.id) && (
+                  <MiniScoresheet
+                    cells={miniSheet(slot.game.id)!.cells}
+                    pinfall={miniSheet(slot.game.id)!.pinfall}
+                    label={slot.label}
+                  />
+                )}
                 {score.primary == null ? (
                   <div class="game-actions">
                     <form method="POST" class="score-inline">
@@ -406,6 +429,13 @@ const leagueSlots = [
                   </div>
                   <GameScoreValue primary={score.primary} handicap={score.handicap} />
                 </a>
+                {miniSheet(game.id) && (
+                  <MiniScoresheet
+                    cells={miniSheet(game.id)!.cells}
+                    pinfall={miniSheet(game.id)!.pinfall}
+                    label={`Game ${i + 1}`}
+                  />
+                )}
                 {score.primary == null ? (
                   <div class="game-actions">
                     <form method="POST" class="score-inline">
@@ -485,7 +515,32 @@ const leagueSlots = [
   </form>
 </Layout>
 
+<script>
+  // Session-wide "Show Pinfall" toggle — flips a root class the mini-scoresheet
+  // pinfall rows key off. Hidden by default; not persisted across loads.
+  const pinfallToggle = document.getElementById('show-pinfall');
+  if (pinfallToggle instanceof HTMLInputElement) {
+    pinfallToggle.addEventListener('change', () => {
+      document.documentElement.classList.toggle('show-pinfall', pinfallToggle.checked);
+    });
+  }
+</script>
+
 <style>
+  .pinfall-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    cursor: pointer;
+    margin: 0 0 0.75rem;
+  }
+  .pinfall-toggle input {
+    width: auto;
+    margin: 0;
+    accent-color: var(--accent);
+  }
   .lane-stats {
     list-style: none;
     margin: 0.5rem 0 0;
