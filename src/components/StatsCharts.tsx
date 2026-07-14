@@ -86,7 +86,7 @@ function BarChart({ title, data, unit }: { title: string; data: BarDatum[]; unit
           : ' '}
       </p>
       <details>
-        <summary>View as table</summary>
+        <summary>View as Table</summary>
         <table className="chart-table">
           <thead>
             <tr>
@@ -167,12 +167,12 @@ function LineChart({ title, data }: { title: string; data: TimeDatum[] }) {
         {hovered != null ? `${data[hovered].date}: average ${data[hovered].score.toFixed(1)}` : ' '}
       </p>
       <details>
-        <summary>View as table</summary>
+        <summary>View as Table</summary>
         <table className="chart-table">
           <thead>
             <tr>
               <th>Date</th>
-              <th>Running average</th>
+              <th>Running Average</th>
             </tr>
           </thead>
           <tbody>
@@ -207,15 +207,15 @@ export default function StatsCharts({
 
       {handicappedAverage != null && (
         <div className="hero-stat hero-stat-secondary">
-          <span className="hero-label">Handicapped average (league games)</span>
+          <span className="hero-label">Handicapped Average (league games)</span>
           <span className="hero-value-secondary">{handicappedAverage.toFixed(1)}</span>
         </div>
       )}
 
-      <LineChart title="Average over time" data={averageOverTime} />
-      <BarChart title="Average by league" data={byLeague} unit="avg score" />
-      <BarChart title="Average by lane condition" data={byLaneCondition} unit="avg score" />
-      <BarChart title="Avg first-ball pinfall, by ball" data={byBall} unit="pins" />
+      <LineChart title="Average Over Time" data={averageOverTime} />
+      <BarChart title="Average by League" data={byLeague} unit="avg score" />
+      <BarChart title="Average by Lane Condition" data={byLaneCondition} unit="avg score" />
+      <BarChart title="Avg First-Ball Pinfall, by Ball" data={byBall} unit="pins" />
     </div>
   );
 }

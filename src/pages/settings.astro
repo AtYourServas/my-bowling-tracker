@@ -57,7 +57,7 @@ const hasBalls = (balls?.length ?? 0) > 0;
     <div class="sechead"><span class="chev"><i></i><i></i><i></i></span><h2>Score Entry</h2></div>
     <p class="empty">How a game opens for logging. You can switch modes any time with the toggle above the scoresheet.</p>
     <label>
-      Default entry mode
+      Default Entry Mode
       <select name="default_entry_mode">
         <option value="pick" selected={entryMode === 'pick'}>Pick pins — tap the pin diagram</option>
         <option value="type" selected={entryMode === 'type'}>Type — type the result into the frame</option>
@@ -67,8 +67,8 @@ const hasBalls = (balls?.length ?? 0) > 0;
     <div class="sechead"><span class="chev"><i></i><i></i><i></i></span><h2>Shot Logger Fields</h2></div>
     <p class="empty">Choose which optional details show when logging a shot. Pins, strike/spare, and ball are always shown. Editing an existing shot always shows every field so nothing is hidden.</p>
     <div class="toggle-actions">
-      <button type="button" class="secondary" id="fields-all">Select all</button>
-      <button type="button" class="secondary" id="fields-none">Clear all</button>
+      <button type="button" class="secondary" id="fields-all">Select All</button>
+      <button type="button" class="secondary" id="fields-none">Clear All</button>
     </div>
     <div class="field-toggles">
       {SHOT_FIELDS.map((f) => (
@@ -85,7 +85,7 @@ const hasBalls = (balls?.length ?? 0) > 0;
     {hasBalls ? (
       <>
         <label>
-          Default Ball (fresh rack)
+          Default Ball (Fresh Rack)
           <select name="default_ball_id">
             <option value="">None</option>
             {balls!.map((ball) => (

@@ -6,9 +6,9 @@ const { supabase, user } = Astro.locals;
 let error: string | null = null;
 
 const HANDICAP_TYPE_LABELS: Record<string, string> = {
-  rolling: 'Rolling average',
-  book_average: 'Book average',
-  manual: 'Manual entry',
+  rolling: 'Rolling Average',
+  book_average: 'Book Average',
+  manual: 'Manual Entry',
 };
 
 if (Astro.request.method === 'POST') {
@@ -72,26 +72,26 @@ const { data: leagues } = await supabase.from('leagues').select('*').order('name
 
   <hr />
 
-  <h1>Add a league</h1>
+  <h1>Add a League</h1>
   <form method="POST">
     <label>
       Name
       <input type="text" name="name" required placeholder="e.g. Tuesday Night Mixed" />
     </label>
     <label>
-      Team name
+      Team Name
       <input type="text" name="team_name" placeholder="e.g. Gutter Gang — auto-fills new sessions" />
     </label>
     <label>
-      Handicap basis
+      Handicap Basis
       <input type="number" name="handicap_basis" value="200" />
     </label>
     <label>
-      Handicap percentage
+      Handicap Percentage
       <input type="number" name="handicap_percent" value="80" min="0" max="100" />
     </label>
     <label>
-      Handicap type
+      Handicap Type
       <select name="handicap_type">
         <option value="rolling">Rolling average (recalculated week to week from prior weeks)</option>
         <option value="book_average">Book average (fixed value I set)</option>
@@ -99,13 +99,13 @@ const { data: leagues } = await supabase.from('leagues').select('*').order('name
       </select>
     </label>
     <label>
-      Book average (only used for Book average type)
+      Book Average (only used for Book Average type)
       <input type="number" name="book_average" />
     </label>
     <label>
       Notes
       <textarea name="notes" rows="2"></textarea>
     </label>
-    <button type="submit">Add league</button>
+    <button type="submit">Add League</button>
   </form>
 </Layout>

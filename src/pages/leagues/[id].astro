@@ -55,7 +55,7 @@ if (!league) {
 
 <Layout title={league.name}>
   <nav class="top"><a href="/leagues">&larr; My Leagues</a></nav>
-  <h1>Edit league</h1>
+  <h1>Edit League</h1>
 
   {error && <p class="error">{error}</p>}
 
@@ -65,19 +65,19 @@ if (!league) {
       <input type="text" name="name" required value={league.name} />
     </label>
     <label>
-      Team name
+      Team Name
       <input type="text" name="team_name" value={league.team_name ?? ''} placeholder="auto-fills new sessions" />
     </label>
     <label>
-      Handicap basis
+      Handicap Basis
       <input type="number" name="handicap_basis" value={league.handicap_basis} />
     </label>
     <label>
-      Handicap percentage
+      Handicap Percentage
       <input type="number" name="handicap_percent" value={Math.round(league.handicap_percent * 100)} min="0" max="100" />
     </label>
     <label>
-      Handicap type
+      Handicap Type
       <select name="handicap_type">
         <option value="rolling" selected={league.handicap_type === 'rolling'}>Rolling average (recalculated week to week from prior weeks)</option>
         <option value="book_average" selected={league.handicap_type === 'book_average'}>Book average (fixed value I set)</option>
@@ -85,18 +85,18 @@ if (!league) {
       </select>
     </label>
     <label>
-      Book average (only used for Book average type)
+      Book Average (only used for Book Average type)
       <input type="number" name="book_average" value={league.book_average ?? ''} />
     </label>
     <label>
       Notes
       <textarea name="notes" rows="2">{league.notes ?? ''}</textarea>
     </label>
-    <button type="submit">Save changes</button>
+    <button type="submit">Save Changes</button>
   </form>
 
   <form method="POST" class="row-actions">
     <input type="hidden" name="intent" value="delete" />
-    <button type="submit" class="danger">Delete league</button>
+    <button type="submit" class="danger">Delete League</button>
   </form>
 </Layout>

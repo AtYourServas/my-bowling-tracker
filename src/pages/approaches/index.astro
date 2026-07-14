@@ -23,7 +23,7 @@ const { data: balls } = await supabase.from('balls').select('id, name').order('n
   <nav class="top"><a href="/dashboard">&larr; Dashboard</a></nav>
   <div class="page-head">
     <h1>My Approaches</h1>
-    <a class="button" href="/approaches/new">+ Add approach</a>
+    <a class="button" href="/approaches/new">+ Add Approach</a>
   </div>
 
   {balls && balls.length > 0 && (
@@ -60,7 +60,7 @@ const { data: balls } = await supabase.from('balls').select('id, name').order('n
     </ul>
   ) : (
     <p class="empty">
-      {filterBall ? 'No approaches use that ball.' : 'No approaches yet.'} <a href="/approaches/new">Add an approach</a>.
+      {filterBall ? 'No approaches use that ball.' : 'No approaches yet.'} <a href="/approaches/new">Add an Approach</a>.
     </p>
   )}
 </Layout>

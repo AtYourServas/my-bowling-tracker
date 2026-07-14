@@ -50,9 +50,9 @@ if (Astro.request.method === 'POST') {
 const { data: balls } = await supabase.from('balls').select('id, name').order('name');
 ---
 
-<Layout title="Add an approach">
+<Layout title="Add an Approach">
   <nav class="top"><a href="/approaches">&larr; My Approaches</a></nav>
-  <h1>Add an approach</h1>
+  <h1>Add an Approach</h1>
 
   {error && <p class="error">{error}</p>}
 
@@ -62,19 +62,19 @@ const { data: balls } = await supabase.from('balls').select('id, name').order('n
       <input type="text" name="name" required placeholder="e.g. Strike ball" />
     </label>
     <label>
-      Reference ball
+      Reference Ball
       <select name="reference_ball_id">
         <option value="">None</option>
         {balls?.map((ball) => <option value={ball.id}>{ball.name}</option>)}
       </select>
     </label>
-    <div class="sechead-mini"><span class="chev"><i></i><i></i><i></i></span><h3>Reference marks</h3></div>
+    <div class="sechead-mini"><span class="chev"><i></i><i></i><i></i></span><h3>Reference Marks</h3></div>
     <LanePicker client:load names={APPROACH_NAMES} marks={[...APPROACH_MARKS]} />
 
     <label>
       Notes
       <textarea name="notes" rows="3"></textarea>
     </label>
-    <button type="submit">Add approach</button>
+    <button type="submit">Add Approach</button>
   </form>
 </Layout>

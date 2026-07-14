@@ -97,7 +97,7 @@ const initialTarget =
 
 <Layout title={approach.name}>
   <nav class="top"><a href="/approaches">&larr; My Approaches</a></nav>
-  <h1>Edit approach</h1>
+  <h1>Edit Approach</h1>
 
   {error && <p class="error">{error}</p>}
 
@@ -107,7 +107,7 @@ const initialTarget =
       <input type="text" name="name" required value={approach.name} />
     </label>
     <label>
-      Reference ball
+      Reference Ball
       <select name="reference_ball_id">
         <option value="">None</option>
         {balls?.map((ball) => (
@@ -117,7 +117,7 @@ const initialTarget =
         ))}
       </select>
     </label>
-    <div class="sechead-mini"><span class="chev"><i></i><i></i><i></i></span><h3>Reference marks</h3></div>
+    <div class="sechead-mini"><span class="chev"><i></i><i></i><i></i></span><h3>Reference Marks</h3></div>
     <LanePicker
       client:load
       names={APPROACH_NAMES}
@@ -131,11 +131,11 @@ const initialTarget =
       Notes
       <textarea name="notes" rows="3">{approach.notes ?? ''}</textarea>
     </label>
-    <button type="submit">Save changes</button>
+    <button type="submit">Save Changes</button>
   </form>
 
   <form method="POST" class="row-actions">
     <input type="hidden" name="intent" value="delete" />
-    <button type="submit" class="danger">Delete approach</button>
+    <button type="submit" class="danger">Delete Approach</button>
   </form>
 </Layout>
