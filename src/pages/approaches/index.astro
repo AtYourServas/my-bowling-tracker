@@ -49,11 +49,11 @@ const { data: balls } = await supabase.from('balls').select('id, name').order('n
           <a class="card" href={`/approaches/${approach.id}`}>
             <strong>{approach.name}</strong>
             {approach.balls?.name && <span>Ball: {approach.balls.name}</span>}
-            {approach.reference_lineup && <span>Stance: {approach.reference_lineup}</span>}
+            {approach.reference_lineup && <span>Alignment (Starting Point): {approach.reference_lineup}</span>}
             {approach.reference_target_type && approach.reference_target_value != null && (
-              <span>Target: {approach.reference_target_type} {approach.reference_target_value}</span>
+              <span>Visual Target: {approach.reference_target_type} {approach.reference_target_value}</span>
             )}
-            {approach.reference_slide && <span>Slide: {approach.reference_slide}</span>}
+            {approach.reference_slide && <span>Slide Position (Finish): {approach.reference_slide}</span>}
           </a>
         </li>
       ))}

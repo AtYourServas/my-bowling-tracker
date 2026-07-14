@@ -162,7 +162,7 @@ export default function ShotForm({
       {show('approach') && (
         <>
           <label>
-            Reference approach
+            Saved References
             <select
               name="approach_id"
               value={approachId}
@@ -183,14 +183,14 @@ export default function ShotForm({
           {selectedApproach && (
             <div className="reference-box">
               <strong>{selectedApproach.name} (reference)</strong>
-              <span>Stance: {selectedApproach.reference_lineup || '—'}</span>
+              <span>Alignment (Starting Point): {selectedApproach.reference_lineup || '—'}</span>
               <span>
-                Target:{' '}
+                Visual Target:{' '}
                 {selectedApproach.reference_target_type && selectedApproach.reference_target_value != null
                   ? `${selectedApproach.reference_target_type} ${selectedApproach.reference_target_value}`
                   : '—'}
               </span>
-              <span>Slide: {selectedApproach.reference_slide || '—'}</span>
+              <span>Slide Position (Finish): {selectedApproach.reference_slide || '—'}</span>
               {applicableMarks.length > 0 && (
                 <button type="button" className="apply-approach" onClick={applyReference}>
                   {applied ? '✓ Applied to my approach' : 'Apply to my approach'}
@@ -217,7 +217,7 @@ export default function ShotForm({
 
       {show('hook') && (
         <label>
-          Hook timing
+          Hook Timing
           <select name="hook_timing" defaultValue={initial?.hook_timing ?? ''}>
             <option value="">None</option>
             <option value="early">Early</option>
@@ -230,7 +230,7 @@ export default function ShotForm({
 
       {show('miss') && (
         <label>
-          Miss direction
+          Miss Direction
           <select name="miss_direction" defaultValue={initial?.miss_direction ?? ''}>
             <option value="">None</option>
             <option value="high">High</option>
