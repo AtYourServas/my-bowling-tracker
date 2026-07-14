@@ -10,9 +10,10 @@ const { user } = Astro.locals;
     user ? (
       <p><a href="/dashboard">Go to Dashboard</a></p>
     ) : (
-      <p>
-        <a href="/login">Log in</a> or <a href="/signup">sign up</a>
-      </p>
+      <div class="cta-row">
+        <a class="button" href="/login">Log In</a>
+        <a class="button secondary" href="/signup">Sign Up</a>
+      </div>
     )
   }
 </Layout>
