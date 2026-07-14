@@ -1,6 +1,7 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 import LanePicker from '../../components/LanePicker';
+import LeavePicker from '../../components/LeavePicker';
 
 const APPROACH_NAMES = {
   lineup: 'reference_lineup',
@@ -23,6 +24,10 @@ if (Astro.request.method === 'POST') {
   const reference_target_type = formData.get('reference_target_type')?.toString() || null;
   const targetValueRaw = formData.get('reference_target_value')?.toString().trim();
   const reference_target_value = targetValueRaw ? Number(targetValueRaw) : null;
+  const leaveRaw = formData.get('leave')?.toString() ?? '';
+  const leave = leaveRaw
+    ? leaveRaw.split(',').map(Number).filter((n) => n >= 1 && n <= 10)
+    : [];
   const notes = formData.get('notes')?.toString().trim() || null;
 
   if (!name) {
@@ -36,6 +41,7 @@ if (Astro.request.method === 'POST') {
       reference_slide,
       reference_target_type,
       reference_target_value,
+      leave,
       notes,
     });
 
@@ -59,7 +65,7 @@ const { data: balls } = await supabase.from('balls').select('id, name').order('n
   <form method="POST">
     <label>
       Name
-      <input type="text" name="name" required placeholder="e.g. Strike ball" />
+      <input type="text" id="approach-name" name="name" required placeholder="e.g. Strike ball" />
     </label>
     <label>
       Reference Ball
@@ -68,6 +74,8 @@ const { data: balls } = await supabase.from('balls').select('id, name').order('n
         {balls?.map((ball) => <option value={ball.id}>{ball.name}</option>)}
       </select>
     </label>
+    <div class="sechead-mini"><span class="chev"><i></i><i></i><i></i></span><h3>Leave</h3></div>
+    <LeavePicker client:load />
     <div class="sechead-mini"><span class="chev"><i></i><i></i><i></i></span><h3>Reference Marks</h3></div>
     <LanePicker client:load names={APPROACH_NAMES} marks={[...APPROACH_MARKS]} />
 

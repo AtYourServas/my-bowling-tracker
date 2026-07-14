@@ -1,5 +1,6 @@
 ---
 import Layout from '../../layouts/Layout.astro';
+import { leaveLabel } from '../../lib/leaves';
 
 const { supabase } = Astro.locals;
 
@@ -48,6 +49,7 @@ const { data: balls } = await supabase.from('balls').select('id, name').order('n
         <li>
           <a class="card" href={`/approaches/${approach.id}`}>
             <strong>{approach.name}</strong>
+            <span class="leave-tag">{leaveLabel(approach.leave)}</span>
             {approach.balls?.name && <span>Ball: {approach.balls.name}</span>}
             {approach.reference_lineup && <span>Alignment (Starting Point): {approach.reference_lineup}</span>}
             {approach.reference_target_type && approach.reference_target_value != null && (
@@ -64,3 +66,11 @@ const { data: balls } = await supabase.from('balls').select('id, name').order('n
     </p>
   )}
 </Layout>
+
+<style>
+  .leave-tag {
+    font-weight: 600;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+  }
+</style>
