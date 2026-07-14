@@ -306,6 +306,14 @@ const frameHref = (n: number, m: 'pick' | 'type' = mode) => `/sessions/${session
 // the ball box (0-based) awaiting entry in the active frame, when typing
 const activeBox = progress.nextBall != null ? progress.nextBall - 1 : -1;
 
+// A struck frame (1-9) shows the X alone in the top-right corner box, the
+// traditional scoresheet look — drop the placeholder empty 2nd-ball square.
+function displayBalls(cell: (typeof cells)[number]) {
+  return cell.frameNumber < 10 && cell.balls[0]?.kind === 'strike'
+    ? cell.balls.slice(0, 1)
+    : cell.balls;
+}
+
 function ballResult(i: number): string {
   if (frameShots[i]?.foul) return 'Foul — counts 0';
   const kind = frameMarks[i]?.kind;
@@ -385,7 +393,7 @@ function ballResult(i: number): string {
             >
               <span class="fnum">{cell.frameNumber}</span>
               <span class="balls">
-                {cell.balls.map((b) => (
+                {displayBalls(cell).map((b) => (
                   <span class:list={['bbox', { mark: b.kind === 'strike' || b.kind === 'spare', strike: b.kind === 'strike', spare: b.kind === 'spare', foul: b.kind === 'foul', empty: b.kind === 'empty' }]}>{b.text}</span>
                 ))}
               </span>
@@ -521,6 +529,20 @@ function ballResult(i: number): string {
     <button type="submit" class="danger">Delete Game</button>
   </form>
 </Layout>
+
+<script>
+  // Center the active frame in the horizontally-scrolling scoresheet on load,
+  // so resuming late in a game (e.g. frame 8) doesn't leave it off-screen.
+  const wrap = document.querySelector('.sheetwrap');
+  const active = wrap?.querySelector('.cell.active');
+  if (wrap instanceof HTMLElement && active instanceof HTMLElement) {
+    const delta =
+      active.getBoundingClientRect().left -
+      wrap.getBoundingClientRect().left -
+      (wrap.clientWidth - active.offsetWidth) / 2;
+    wrap.scrollLeft += delta;
+  }
+</script>
 
 <style>
   .game-note {
