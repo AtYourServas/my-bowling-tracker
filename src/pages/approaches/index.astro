@@ -1,10 +1,18 @@
 ---
 import Layout from '../../layouts/Layout.astro';
-import { leaveLabel } from '../../lib/leaves';
+import LeavePicker from '../../components/LeavePicker';
+import { leaveLabel, isSpareLeave } from '../../lib/leaves';
 
 const { supabase } = Astro.locals;
 
-const filterBall = Astro.url.searchParams.get('ball') ?? '';
+const params = Astro.url.searchParams;
+const filterBall = params.get('ball') ?? '';
+const filterKind = params.get('kind') ?? ''; // '', 'strike', 'spare'
+const filterPins = (params.get('pins') ?? '')
+  .split(',')
+  .map(Number)
+  .filter((n) => n >= 1 && n <= 10);
+const hasFilters = Boolean(filterBall || filterKind || filterPins.length);
 
 let approachesQuery = supabase
   .from('approaches')
@@ -15,7 +23,18 @@ if (filterBall) {
   approachesQuery = approachesQuery.eq('reference_ball_id', filterBall);
 }
 
-const { data: approaches } = await approachesQuery;
+const { data: allApproaches } = await approachesQuery;
+
+// Kind (derived from leave) and the pin-selector filter run in memory: strike =
+// no leave, spare = has leave; the pin filter keeps approaches whose leave
+// includes every highlighted pin.
+const approaches = (allApproaches ?? []).filter((a: any) => {
+  const leave: number[] = a.leave ?? [];
+  if (filterKind === 'strike' && isSpareLeave(leave)) return false;
+  if (filterKind === 'spare' && !isSpareLeave(leave)) return false;
+  if (filterPins.length && !filterPins.every((p) => leave.includes(p))) return false;
+  return true;
+});
 
 const { data: balls } = await supabase.from('balls').select('id, name').order('name');
 ---
@@ -27,8 +46,8 @@ const { data: balls } = await supabase.from('balls').select('id, name').order('n
     <a class="button" href="/approaches/new">+ Add Approach</a>
   </div>
 
-  {balls && balls.length > 0 && (
-    <form method="GET" class="filter-form">
+  <form method="GET" class="filter-form">
+    {balls && balls.length > 0 && (
       <label>
         Ball
         <select name="ball">
@@ -38,12 +57,24 @@ const { data: balls } = await supabase.from('balls').select('id, name').order('n
           ))}
         </select>
       </label>
-      <button type="submit">Filter</button>
-      {filterBall && <a href="/approaches">Clear Filter</a>}
-    </form>
-  )}
+    )}
+    <label>
+      Kind
+      <select name="kind">
+        <option value="" selected={!filterKind}>All</option>
+        <option value="strike" selected={filterKind === 'strike'}>Strike</option>
+        <option value="spare" selected={filterKind === 'spare'}>Spare</option>
+      </select>
+    </label>
+    <div class="pin-filter">
+      <span class="pin-filter-label">Leave</span>
+      <LeavePicker client:load variant="filter" fieldName="pins" initialLeave={filterPins} />
+    </div>
+    <button type="submit">Filter</button>
+    {hasFilters && <a href="/approaches">Clear Filters</a>}
+  </form>
 
-  {approaches && approaches.length > 0 ? (
+  {approaches.length > 0 ? (
     <ul class="list">
       {approaches.map((approach: any) => (
         <li>
@@ -62,7 +93,7 @@ const { data: balls } = await supabase.from('balls').select('id, name').order('n
     </ul>
   ) : (
     <p class="empty">
-      {filterBall ? 'No approaches use that ball.' : 'No approaches yet.'} <a href="/approaches/new">Add an Approach</a>.
+      {hasFilters ? 'No approaches match those filters.' : 'No approaches yet.'} <a href="/approaches/new">Add an Approach</a>.
     </p>
   )}
 </Layout>
@@ -72,5 +103,15 @@ const { data: balls } = await supabase.from('balls').select('id, name').order('n
     font-weight: 600;
     color: var(--text-secondary);
     font-variant-numeric: tabular-nums;
+  }
+  .pin-filter {
+    grid-column: span 2;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+  .pin-filter-label {
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
   }
 </style>
