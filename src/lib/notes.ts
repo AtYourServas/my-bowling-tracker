@@ -41,8 +41,10 @@ function shotDetails(shot: any): NoteDetail[] {
   if (shot.balls?.name) d.push({ icon: '🎳', label: 'Ball', value: shot.balls.name });
   if (shot.target_type && shot.target_value != null)
     d.push({ icon: '🎯', label: 'Target', value: `${shot.target_type} ${shot.target_value}` });
+  if (shot.slide_position) d.push({ icon: '👟', label: 'Slide', value: shot.slide_position });
+  if (shot.breakpoint_board != null) d.push({ icon: '📍', label: 'Breakpoint', value: `board ${shot.breakpoint_board}` });
   if (shot.hook_timing) d.push({ icon: '🌀', label: 'Hook', value: HOOK_LABEL[shot.hook_timing] ?? shot.hook_timing });
-  if (shot.miss_direction) d.push({ icon: '📍', label: 'Miss', value: MISS_LABEL[shot.miss_direction] ?? shot.miss_direction });
+  if (shot.miss_direction) d.push({ icon: '💥', label: 'Miss', value: MISS_LABEL[shot.miss_direction] ?? shot.miss_direction });
   return d;
 }
 
@@ -57,7 +59,7 @@ export async function fetchSessionNotes(supabase: SupabaseClient, sessionId: str
     supabase
       .from('shots')
       .select(
-        'id, note, created_at, pins_standing, strike, spare, foul, hook_timing, miss_direction, target_type, target_value, balls(name), frames!inner(frame_number, games!inner(id, game_number, is_practice, session_id))',
+        'id, note, created_at, pins_standing, strike, spare, foul, hook_timing, miss_direction, target_type, target_value, slide_position, breakpoint_board, balls(name), frames!inner(frame_number, games!inner(id, game_number, is_practice, session_id))',
       )
       .eq('frames.games.session_id', sessionId),
   ]);
