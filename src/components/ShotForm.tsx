@@ -102,7 +102,7 @@ export default function ShotForm({
   const shownMarks = (['stance', 'target', 'slide', 'breakpoint'] as const).filter(show);
   const [approachId, setApproachId] = useState(initial?.approach_id ?? '');
   const [applied, setApplied] = useState(false);
-  const [matchPins, setMatchPins] = useState(false);
+  const [filterApproaches, setFilterApproaches] = useState(false);
   const laneRef = useRef<LanePickerHandle>(null);
 
   const selectedApproach = useMemo(
@@ -110,21 +110,25 @@ export default function ShotForm({
     [approachId, approaches],
   );
 
-  // Pins standing in front of this ball (the leave you're shooting at). Only
-  // meaningful once ball 1 has left a leave; a fresh rack has nothing to match.
+  // Pins standing in front of this ball (the leave you're shooting at). Empty =
+  // a fresh rack (the frame's first ball), where the filter instead means the
+  // strike approaches (those with no leave).
   const standingPins = startingPins ?? [];
-  const canMatchPins = standingPins.length > 0;
+  const freshRack = standingPins.length === 0;
 
-  // When "match standing pins" is on, keep only approaches whose leave covers
+  // Optional approach filter. On a leave, keep approaches whose leave covers
   // every standing pin (leave ⊇ standing pins — same rule as the approaches
-  // list filter). The currently-selected approach is never hidden, so a manual
-  // pick isn't silently dropped from the dropdown.
+  // list filter). On a fresh rack, keep the strike approaches (empty leave).
+  // The currently-selected approach is never hidden, so a manual pick isn't
+  // silently dropped from the dropdown.
   const shownApproaches = useMemo(() => {
-    if (!matchPins || !canMatchPins) return approaches;
+    if (!filterApproaches) return approaches;
     return approaches.filter(
-      (a) => a.id === approachId || standingPins.every((p) => (a.leave ?? []).includes(p)),
+      (a) =>
+        a.id === approachId ||
+        (freshRack ? (a.leave ?? []).length === 0 : standingPins.every((p) => (a.leave ?? []).includes(p))),
     );
-  }, [matchPins, canMatchPins, approaches, approachId, standingPins]);
+  }, [filterApproaches, freshRack, approaches, approachId, standingPins]);
 
   // Which of the reference marks the picker is currently showing (stance/target/slide).
   const applicableMarks = shownMarks.filter((m) => m === 'stance' || m === 'target' || m === 'slide');
@@ -199,14 +203,14 @@ export default function ShotForm({
             </select>
           </label>
 
-          {canMatchPins && (
+          {approaches.length > 0 && (
             <label className="check match-pins">
               <input
                 type="checkbox"
-                checked={matchPins}
-                onChange={(e) => setMatchPins(e.target.checked)}
+                checked={filterApproaches}
+                onChange={(e) => setFilterApproaches(e.target.checked)}
               />
-              Match standing pins ({leaveName(standingPins)})
+              {freshRack ? 'Only strike approaches' : `Match standing pins (${leaveName(standingPins)})`}
             </label>
           )}
 
