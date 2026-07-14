@@ -9,17 +9,28 @@ const params = Astro.url.searchParams;
 const view = params.get('view') === 'leave' ? 'leave' : 'session';
 const filterLeague = params.get('league') ?? '';
 const filterSession = params.get('session') ?? '';
-const hasFilters = Boolean(filterLeague || filterSession);
+const filterFrom = params.get('from') ?? '';
+const filterTo = params.get('to') ?? '';
+const hasFilters = view === 'session'
+  ? Boolean(filterLeague || filterSession)
+  : Boolean(filterLeague || filterFrom || filterTo);
 
-// By-session view keeps the league/session filters; by-leave groups every note
-// that shares an exact leave, across all sessions (filters don't apply there).
+// By-session view groups notes under their session (league / session filters);
+// by-leave groups every note under the leave its ball faced, across sessions
+// (league / date-range filters).
 const groups = view === 'session'
   ? await fetchAllNotes(supabase, {
       leagueId: filterLeague || undefined,
       sessionId: filterSession || undefined,
     })
   : [];
-const leaveGroups = view === 'leave' ? await fetchLeaveNotes(supabase) : [];
+const leaveGroups = view === 'leave'
+  ? await fetchLeaveNotes(supabase, {
+      leagueId: filterLeague || undefined,
+      from: filterFrom || undefined,
+      to: filterTo || undefined,
+    })
+  : [];
 
 // Filter dropdown options.
 const { data: leagues } = await supabase.from('leagues').select('id, name').order('name');
@@ -51,7 +62,7 @@ const groupHeading = (g: (typeof groups)[number]['session']) =>
     <a class:list={['seg', { active: view === 'leave' }]} href="/notes?view=leave" aria-current={view === 'leave' ? 'true' : undefined}>By Leave</a>
   </div>
 
-  {view === 'session' && (
+  {view === 'session' ? (
     <form method="GET" class="filter-form">
       <label>
         League
@@ -73,6 +84,29 @@ const groupHeading = (g: (typeof groups)[number]['session']) =>
       </label>
       <button type="submit">Filter</button>
       {hasFilters && <a href="/notes">Clear Filters</a>}
+    </form>
+  ) : (
+    <form method="GET" class="filter-form">
+      <input type="hidden" name="view" value="leave" />
+      <label class="wide">
+        League
+        <select name="league">
+          <option value="">All</option>
+          {leagues?.map((l) => (
+            <option value={l.id} selected={l.id === filterLeague}>{l.name}</option>
+          ))}
+        </select>
+      </label>
+      <label>
+        From
+        <input type="date" name="from" value={filterFrom} />
+      </label>
+      <label>
+        To
+        <input type="date" name="to" value={filterTo} />
+      </label>
+      <button type="submit">Filter</button>
+      {hasFilters && <a href="/notes?view=leave">Clear Filters</a>}
     </form>
   )}
 
@@ -121,6 +155,9 @@ const groupHeading = (g: (typeof groups)[number]['session']) =>
 </Layout>
 
 <style>
+  .filter-form label.wide {
+    grid-column: span 2;
+  }
   .note-groups {
     display: grid;
     gap: 1.5rem;

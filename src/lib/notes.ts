@@ -244,15 +244,38 @@ function shortDate(date: string | null | undefined): string | null {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
+export type LeaveNoteFilters = {
+  leagueId?: string;
+  from?: string; // inclusive 'YYYY-MM-DD'
+  to?: string; // inclusive 'YYYY-MM-DD'
+};
+
 // All note entries, grouped by the leave the noted ball *faced* (the pins
 // standing before it was thrown — not what it left). A first ball faces a full
 // rack. Both per-shot notes and shot-linked session_notes count; standalone
 // session_notes (no shot) are excluded. Scanned across every session the user
-// owns (RLS-scoped); groups are ordered most-noted first. Each entry carries a
-// date-prefixed deep link plus the faced leave.
-export async function fetchLeaveNotes(supabase: SupabaseClient): Promise<LeaveGroup[]> {
-  const { data: sessions } = await supabase.from('sessions').select('id, session_date');
+// owns (RLS-scoped), optionally narrowed by league / date range; groups are
+// ordered most-noted first. Each entry carries a date-prefixed deep link plus
+// the faced leave.
+export async function fetchLeaveNotes(
+  supabase: SupabaseClient,
+  filters: LeaveNoteFilters = {},
+): Promise<LeaveGroup[]> {
+  const { data: sessions } = await supabase.from('sessions').select('id, session_date, league_id');
   const dateBySession = new Map<string, string | null>((sessions ?? []).map((s: any) => [s.id, s.session_date]));
+
+  // sessions passing the league / date-range filters; a note is kept only if its
+  // shot's session is in here
+  const allowedSessions = new Set(
+    (sessions ?? [])
+      .filter((s: any) => {
+        if (filters.leagueId && s.league_id !== filters.leagueId) return false;
+        if (filters.from && (!s.session_date || s.session_date < filters.from)) return false;
+        if (filters.to && (!s.session_date || s.session_date > filters.to)) return false;
+        return true;
+      })
+      .map((s: any) => s.id),
+  );
 
   const { data: sessionNotes } = await supabase.from('session_notes').select('id, body, created_at, shot_id');
   const linkedIds = [...new Set((sessionNotes ?? []).filter((n) => n.shot_id).map((n) => n.shot_id))];
@@ -299,7 +322,7 @@ export async function fetchLeaveNotes(supabase: SupabaseClient): Promise<LeaveGr
 
   const addNote = (shot: any, id: string, kind: 'note' | 'shot', body: string, createdAt: string) => {
     const sessionId = shot.frames?.games?.session_id;
-    if (!sessionId) return;
+    if (!sessionId || !allowedSessions.has(sessionId)) return;
     const meta = shotMetaFrom(shot, sessionId);
     if (!meta) return;
     const faced = facedFor(shot);

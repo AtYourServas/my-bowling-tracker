@@ -468,8 +468,8 @@ function ballResult(i: number): string {
   )}
 
   {leaveNotes.length > 0 && (
-    <section class="leave-notes">
-      <div class="sechead-mini"><span class="chev"><i></i><i></i><i></i></span><h3>Past Notes &middot; {leaveDisplayName(facedNow)}</h3></div>
+    <details class="leave-notes" open>
+      <summary>Past Notes &middot; {leaveDisplayName(facedNow)} <span class="ln-count">({leaveNotes.length})</span></summary>
       <ul class="note-stream">
         {leaveNotesShown.map((note) => (
           <li><NoteCard note={note} /></li>
@@ -478,7 +478,7 @@ function ballResult(i: number): string {
       {leaveNotes.length > leaveNotesShown.length && (
         <a class="leave-more" href={`/notes?view=leave#${leaveAnchor(facedNow)}`}>See all {leaveNotes.length} &rarr;</a>
       )}
-    </section>
+    </details>
   )}
 
   {progress.nextBall != null ? (
@@ -542,6 +542,19 @@ function ballResult(i: number): string {
   }
   .leave-notes {
     margin: 0.5rem 0 1rem;
+  }
+  .leave-notes > summary {
+    cursor: pointer;
+    color: var(--accent);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .leave-notes .ln-count {
+    color: var(--text-muted);
+    font-weight: 400;
+  }
+  .leave-notes .note-stream {
+    margin-top: 0.6rem;
   }
   .note-stream {
     list-style: none;
