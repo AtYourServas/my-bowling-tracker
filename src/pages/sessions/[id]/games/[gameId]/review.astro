@@ -2,6 +2,7 @@
 import Layout from '../../../../../layouts/Layout.astro';
 import { fetchDerivedScoreForGame } from '../../../../../lib/scoring';
 import { laneForFrame, laneConfigFromSession } from '../../../../../lib/lanes';
+import { targetLabel } from '../../../../../lib/marks';
 
 const { supabase } = Astro.locals;
 const { id: sessionId, gameId } = Astro.params;
@@ -73,7 +74,7 @@ const showLane = laneConfig.secondLaneNumber != null;
                 {[
                   shot.balls?.name,
                   shot.approaches?.name ? `vs ${shot.approaches.name}` : null,
-                  shot.target_type && shot.target_value != null ? `${shot.target_type} ${shot.target_value}` : null,
+                  targetLabel(shot.target_type, shot.target_value),
                   shot.hook_timing,
                   shot.miss_direction,
                   shot.note,

@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { sortedLeave, leaveDisplayName } from './leaves';
 import { pinsFacedBefore } from './scoring';
+import { markLabel, targetLabel, breakpointLabel } from './marks';
 
 // A single entry in a session's notes stream. Two sources feed it: standalone
 // session_notes (a running journal for the night) and per-shot notes stored on
@@ -62,16 +63,16 @@ function shotResult(shot: any): string {
   return `Left ${[...standing].sort((a, b) => a - b).join('-')}`;
 }
 
-const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
-
 // The shot's other logged detail, one labelled + icon'd row each.
 function shotDetails(shot: any): NoteDetail[] {
   const d: NoteDetail[] = [];
   if (shot.balls?.name) d.push({ icon: '🎳', label: 'Ball', value: shot.balls.name });
-  if (shot.target_type && shot.target_value != null)
-    d.push({ icon: '🎯', label: 'Target', value: `${cap(shot.target_type)} ${shot.target_value}` });
-  if (shot.slide_position) d.push({ icon: '👟', label: 'Slide', value: shot.slide_position });
-  if (shot.breakpoint_board != null) d.push({ icon: '📍', label: 'Breakpoint', value: `Board ${shot.breakpoint_board}` });
+  const target = targetLabel(shot.target_type, shot.target_value);
+  if (target) d.push({ icon: '🎯', label: 'Target', value: target });
+  const slide = markLabel(shot.slide_position);
+  if (slide) d.push({ icon: '👟', label: 'Slide', value: slide });
+  const breakpoint = breakpointLabel(shot.breakpoint_board);
+  if (breakpoint) d.push({ icon: '📍', label: 'Breakpoint', value: breakpoint });
   if (shot.hook_timing) d.push({ icon: '🌀', label: 'Hook', value: HOOK_LABEL[shot.hook_timing] ?? shot.hook_timing });
   if (shot.miss_direction) d.push({ icon: '⚠️', label: 'Miss', value: MISS_LABEL[shot.miss_direction] ?? shot.miss_direction });
   return d;
