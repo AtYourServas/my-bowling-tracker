@@ -11,7 +11,17 @@ type Props = {
   byBall: BarDatum[];
   byLeague: BarDatum[];
   averageOverTime: TimeDatum[];
+  averageDrift: number | null;
+  driftShotCount: number;
 };
+
+/** Signed drift (stance − slide) → "Straight" or "2.3 boards right/left". */
+function formatDrift(boards: number): string {
+  const abs = Math.abs(boards);
+  if (abs < 0.05) return 'Straight';
+  const unit = abs.toFixed(1) === '1.0' ? 'board' : 'boards';
+  return `${abs.toFixed(1)} ${unit} ${boards > 0 ? 'right' : 'left'}`;
+}
 
 const WIDTH = 320;
 const HEIGHT = 180;
@@ -197,6 +207,8 @@ export default function StatsCharts({
   byBall,
   byLeague,
   averageOverTime,
+  averageDrift,
+  driftShotCount,
 }: Props) {
   return (
     <div className="stats-charts">
@@ -209,6 +221,13 @@ export default function StatsCharts({
         <div className="hero-stat hero-stat-secondary">
           <span className="hero-label">Handicapped Average (league games)</span>
           <span className="hero-value-secondary">{handicappedAverage.toFixed(1)}</span>
+        </div>
+      )}
+
+      {averageDrift != null && (
+        <div className="hero-stat hero-stat-secondary">
+          <span className="hero-label">Average Drift ({driftShotCount} shot{driftShotCount === 1 ? '' : 's'})</span>
+          <span className="hero-value-secondary">{formatDrift(averageDrift)}</span>
         </div>
       )}
 

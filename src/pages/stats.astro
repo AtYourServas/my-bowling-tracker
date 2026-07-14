@@ -5,6 +5,7 @@ import {
   fetchAllGamesWithScores,
   filterScoredGames,
   fetchBallStats,
+  fetchDriftStat,
   groupByLaneCondition,
   fetchLeagueStats,
   average,
@@ -23,9 +24,10 @@ const filter = { includePracticeSessions };
 // parallel, then compute every stat below in memory -- no per-game or
 // per-session round-trips. The handicap resolver batches league configs and
 // derives rolling prior-week averages from allGamesEver (one more query).
-const [allGamesEver, ballStats] = await Promise.all([
+const [allGamesEver, ballStats, driftStat] = await Promise.all([
   fetchAllGamesWithScores(supabase),
   fetchBallStats(supabase, filter),
+  fetchDriftStat(supabase, filter),
 ]);
 
 const handicapOf = await buildSessionHandicapResolver(supabase, allGamesEver);
@@ -105,6 +107,8 @@ const bestSeries = fetchBestSeriesStats(allGamesEver, handicapOf);
       byBall={byBall}
       byLeague={byLeague}
       averageOverTime={averageOverTime}
+      averageDrift={driftStat ? driftStat.averageBoards : null}
+      driftShotCount={driftStat ? driftStat.shotCount : 0}
     />
   )}
 </Layout>
