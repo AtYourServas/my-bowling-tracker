@@ -66,6 +66,10 @@ const hasBalls = (balls?.length ?? 0) > 0;
 
     <div class="sechead"><span class="chev"><i></i><i></i><i></i></span><h2>Shot Logger Fields</h2></div>
     <p class="empty">Choose which optional details show when logging a shot. Pins, strike/spare, and ball are always shown. Editing an existing shot always shows every field so nothing is hidden.</p>
+    <div class="toggle-actions">
+      <button type="button" class="secondary" id="fields-all">Select all</button>
+      <button type="button" class="secondary" id="fields-none">Clear all</button>
+    </div>
     <div class="field-toggles">
       {SHOT_FIELDS.map((f) => (
         <label class="check">
@@ -105,4 +109,14 @@ const hasBalls = (balls?.length ?? 0) > 0;
 
     <button type="submit">Save Settings</button>
   </form>
+
+  <script>
+    function setAllFields(checked: boolean) {
+      document
+        .querySelectorAll<HTMLInputElement>('.field-toggles input[type="checkbox"]')
+        .forEach((box) => (box.checked = checked));
+    }
+    document.getElementById('fields-all')?.addEventListener('click', () => setAllFields(true));
+    document.getElementById('fields-none')?.addEventListener('click', () => setAllFields(false));
+  </script>
 </Layout>

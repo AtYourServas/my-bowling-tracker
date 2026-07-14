@@ -226,6 +226,10 @@ label.check input[type="checkbox"] { width: auto; flex: none; padding: 0; margin
 /* Grid of shot-field show/hide toggles on the settings page. */
 .field-toggles { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s2) var(--s3); margin-top: var(--s1); }
 
+/* Select-all / Clear-all buttons above the field-toggle grid. */
+.toggle-actions { display: flex; gap: var(--s2); margin-top: var(--s2); }
+.toggle-actions button { flex: none; padding: 4px 10px; font-size: var(--text-sm); }
+
 /* Anchor styled as a primary button (e.g. "+ Start a session"). */
 a.button {
   display: inline-block;
@@ -690,10 +694,12 @@ a.ball-row:hover { text-decoration: none; box-shadow: var(--shadow-md); border-c
 }
 .reference-box .apply-approach:hover { background: var(--accent); color: var(--accent-ink); filter: none; }
 
-.pin-shortcuts { display: flex; gap: var(--s3); margin-top: var(--s2); }
+.pin-shortcuts { display: flex; flex-wrap: wrap; gap: var(--s3); margin-top: var(--s2); }
 .pin-shortcuts button { flex: 1; background: var(--surface); color: var(--text-primary); border-color: var(--border-strong); }
 .pin-shortcuts button:hover { background: var(--surface-sunk); filter: none; }
 .pin-shortcuts button.active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.pin-shortcuts button.clear { flex: none; background: transparent; color: var(--text-muted); border-color: var(--border); }
+.pin-shortcuts button.clear:hover { background: var(--surface-sunk); color: var(--text-primary); border-color: var(--border-strong); }
 
 .pin-hint { font-size: var(--text-xs); color: var(--text-muted); margin: var(--s2) 0 var(--s1); text-align: center; }
 
