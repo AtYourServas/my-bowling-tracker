@@ -4,7 +4,16 @@ import MiniScoresheet from '../components/MiniScoresheet.astro';
 import { fetchMiniScoresheets, fetchEarliestIncompleteFrame, type MiniSheet } from '../lib/scoring';
 import { fetchAllGamesWithScores, filterScoredGames, average } from '../lib/stats';
 
-const { supabase } = Astro.locals;
+const { supabase, user } = Astro.locals;
+
+// ---- Onboarding dismissal ----------------------------------------------------
+if (Astro.request.method === 'POST') {
+  const formData = await Astro.request.formData();
+  if (formData.get('intent') === 'dismiss_onboarding') {
+    await supabase.from('profiles').update({ onboarding_dismissed: true }).eq('id', user!.id);
+  }
+  return Astro.redirect('/dashboard');
+}
 
 // ---- Averages + trend -------------------------------------------------------
 // Same default slice as the stats page (practice sessions included, the
@@ -112,10 +121,50 @@ const recapStrip = (gameId: string) => {
   const sheet = recapSheets.get(gameId);
   return sheet && sheet.cells.some((c) => c.bowled) ? sheet : null;
 };
+
+// ---- First-run checklist -----------------------------------------------------
+// Steps auto-check off the data itself (head-only count queries); the card shows
+// until every step is done or the user dismisses it for good (migration 0016).
+const [{ data: onboardProfile }, { count: ballCount }, { count: leagueCount }] = await Promise.all([
+  supabase.from('profiles').select('onboarding_dismissed').eq('id', user!.id).maybeSingle(),
+  supabase.from('balls').select('id', { count: 'exact', head: true }),
+  supabase.from('leagues').select('id', { count: 'exact', head: true }),
+]);
+
+const onboardSteps = [
+  { label: 'Add a Ball', href: '/balls', done: (ballCount ?? 0) > 0 },
+  { label: 'Set Up Your League', href: '/leagues', done: (leagueCount ?? 0) > 0 },
+  { label: 'Start Your First Session', href: '/sessions/new', done: latest != null },
+];
+const showOnboarding = !onboardProfile?.onboarding_dismissed && onboardSteps.some((s) => !s.done);
 ---
 
 <Layout title="Dashboard">
   <h1>Dashboard</h1>
+
+  {showOnboarding && (
+    <section class="onboard-card">
+      <div class="onboard-head">
+        <h2>Get Set Up</h2>
+        <form method="POST">
+          <input type="hidden" name="intent" value="dismiss_onboarding" />
+          <button type="submit" class="onboard-dismiss" title="Dismiss" aria-label="Dismiss the setup checklist">&#x2715;</button>
+        </form>
+      </div>
+      <ol class="onboard-steps">
+        {onboardSteps.map((step, i) => (
+          <li class:list={['onboard-step', { done: step.done }]}>
+            <span class="onboard-mark" aria-hidden="true">{step.done ? '✓' : i + 1}</span>
+            {step.done ? (
+              <span class="onboard-label">{step.label}</span>
+            ) : (
+              <a class="onboard-label" href={step.href}>{step.label} &rarr;</a>
+            )}
+          </li>
+        ))}
+      </ol>
+    </section>
+  )}
 
   {resumeGame && latest && (
     <a class="resume-tile" href={`/sessions/${latest.id}/games/${resumeGame.id}`}>
@@ -163,7 +212,10 @@ const recapStrip = (gameId: string) => {
       })}
     </section>
   ) : (
-    <p class="empty">No sessions yet — <a href="/sessions/new">Start Your First Session</a> to see your scores here.</p>
+    // the checklist's step 3 already points at /sessions/new — don't say it twice
+    !showOnboarding && (
+      <p class="empty">No sessions yet — <a href="/sessions/new">Start Your First Session</a> to see your scores here.</p>
+    )
   )}
 
   {!resumeGame && recap && (
@@ -172,6 +224,67 @@ const recapStrip = (gameId: string) => {
 </Layout>
 
 <style>
+  .onboard-card {
+    margin-top: var(--s4);
+    padding: var(--s4);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+  }
+  .onboard-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--s3);
+  }
+  .onboard-head h2 { margin: 0; font-size: var(--text-base); }
+  .onboard-head form { margin: 0; }
+  .onboard-dismiss {
+    padding: 0 var(--s1);
+    background: none;
+    border: none;
+    box-shadow: none;
+    color: var(--text-muted);
+    font-size: var(--text-sm);
+    line-height: 1;
+    cursor: pointer;
+  }
+  .onboard-dismiss:hover { color: var(--text-primary); }
+  .onboard-steps {
+    list-style: none;
+    margin: var(--s3) 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--s2);
+  }
+  .onboard-step {
+    display: flex;
+    align-items: center;
+    gap: var(--s3);
+  }
+  .onboard-mark {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    font-size: var(--text-xs);
+    font-weight: var(--fw-semi);
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+  }
+  .onboard-step.done .onboard-mark {
+    border-color: var(--good);
+    color: var(--good);
+  }
+  .onboard-label { font-size: var(--text-sm); font-weight: var(--fw-semi); }
+  .onboard-step.done .onboard-label { color: var(--text-muted); font-weight: normal; }
+
   .resume-tile {
     display: flex;
     flex-direction: column;
