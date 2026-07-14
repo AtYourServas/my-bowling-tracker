@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { sortedLeave, leaveName } from './leaves';
 
 // A single entry in a session's notes stream. Two sources feed it: standalone
 // session_notes (a running journal for the night) and per-shot notes stored on
@@ -219,4 +220,112 @@ export async function fetchAllNotes(
     });
   }
   return groups;
+}
+
+// Notes tied to a specific pin leave, for surfacing "what I noted last time I
+// left this" both in the shot logger and grouped on the notes page.
+export type LeaveGroup = {
+  leave: number[]; // the standing pins (sorted), e.g. [3, 10]
+  name: string; // leaveName(leave)
+  notes: NoteEntry[]; // newest first
+};
+
+// Short "Jul 7" label for a session_date ('YYYY-MM-DD'), pinned to local noon so
+// it can't slip a day. Used to prefix a leave note's link so cross-session notes
+// are distinguishable.
+function shortDate(date: string | null | undefined): string | null {
+  if (!date) return null;
+  const d = new Date(`${date}T00:00:00`);
+  if (isNaN(d.getTime())) return null;
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+// All note entries tied to a shot that left pins standing, grouped by that exact
+// leave. Both per-shot notes and shot-linked session_notes count; standalone
+// session_notes (no shot) and cleared/strike shots (no leave) are excluded.
+// Scanned across every session the user owns (RLS-scoped); groups are ordered
+// most-noted first. A shot's leave note carries a date-prefixed deep link.
+export async function fetchLeaveNotes(supabase: SupabaseClient): Promise<LeaveGroup[]> {
+  const { data: sessions } = await supabase.from('sessions').select('id, session_date');
+  const dateBySession = new Map<string, string | null>((sessions ?? []).map((s: any) => [s.id, s.session_date]));
+
+  const { data: sessionNotes } = await supabase.from('session_notes').select('id, body, created_at, shot_id');
+  const linkedIds = [...new Set((sessionNotes ?? []).filter((n) => n.shot_id).map((n) => n.shot_id))];
+
+  const [notedRes, linkedRes] = await Promise.all([
+    // shots that carry their own note — bounded by how many the user wrote
+    supabase.from('shots').select(SHOT_NOTE_SELECT).not('note', 'is', null),
+    // plus shots a session_note points at, so we know that shot's leave
+    linkedIds.length
+      ? supabase.from('shots').select(SHOT_NOTE_SELECT).in('id', linkedIds)
+      : Promise.resolve({ data: [] as any[] }),
+  ]);
+
+  const shotById = new Map<string, any>();
+  for (const shot of [...(notedRes.data ?? []), ...(linkedRes.data ?? [])]) shotById.set(shot.id, shot);
+
+  const byLeave = new Map<string, { leave: number[]; notes: NoteEntry[] }>();
+
+  const add = (shot: any, entry: NoteEntry) => {
+    const standing = sortedLeave((shot.pins_standing ?? []) as number[]);
+    if (standing.length === 0) return; // only actual leaves, not strikes / clears
+    const key = standing.join('-');
+    const g = byLeave.get(key) ?? { leave: standing, notes: [] };
+    g.notes.push(entry);
+    byLeave.set(key, g);
+  };
+
+  // Build a NoteEntry from a shot, prefixing the deep-link label with the date.
+  const entryFor = (shot: any, id: string, kind: 'note' | 'shot', body: string, createdAt: string): NoteEntry | null => {
+    const sessionId = shot.frames?.games?.session_id;
+    if (!sessionId) return null;
+    const meta = shotMetaFrom(shot, sessionId);
+    if (!meta) return null;
+    const dp = shortDate(dateBySession.get(sessionId));
+    return {
+      id,
+      kind,
+      body,
+      createdAt,
+      link: { href: meta.link.href, label: dp ? `${dp} · ${meta.link.label}` : meta.link.label },
+      result: meta.result,
+      details: meta.details.length ? meta.details : undefined,
+    };
+  };
+
+  for (const shot of notedRes.data ?? []) {
+    const body = (shot.note ?? '').trim();
+    if (!body) continue;
+    const e = entryFor(shot, shot.id, 'shot', body, shot.created_at);
+    if (e) add(shot, e);
+  }
+
+  for (const note of sessionNotes ?? []) {
+    if (!note.shot_id) continue;
+    const shot = shotById.get(note.shot_id);
+    if (!shot) continue;
+    const body = (note.body ?? '').trim();
+    if (!body) continue;
+    const e = entryFor(shot, note.id, 'note', body, note.created_at);
+    if (e) add(shot, e);
+  }
+
+  const groups: LeaveGroup[] = [];
+  for (const { leave, notes } of byLeave.values()) {
+    notes.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    groups.push({ leave, name: leaveName(leave), notes });
+  }
+  groups.sort((a, b) => b.notes.length - a.notes.length || a.leave.join('-').localeCompare(b.leave.join('-')));
+  return groups;
+}
+
+// The notes for one exact leave (sorted-pin match), or [] if none.
+export function notesForLeave(groups: LeaveGroup[], leave: number[]): NoteEntry[] {
+  const key = sortedLeave(leave).join('-');
+  return groups.find((g) => g.leave.join('-') === key)?.notes ?? [];
+}
+
+// A stable anchor id for a leave group on the notes page (e.g. "leave-3-10").
+export function leaveAnchor(leave: number[]): string {
+  return `leave-${sortedLeave(leave).join('-')}`;
 }

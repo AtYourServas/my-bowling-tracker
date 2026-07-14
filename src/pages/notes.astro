@@ -1,19 +1,25 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import NoteCard from '../components/NoteCard.astro';
-import { fetchAllNotes } from '../lib/notes';
+import { fetchAllNotes, fetchLeaveNotes, leaveAnchor } from '../lib/notes';
 
 const { supabase } = Astro.locals;
 
 const params = Astro.url.searchParams;
+const view = params.get('view') === 'leave' ? 'leave' : 'session';
 const filterLeague = params.get('league') ?? '';
 const filterSession = params.get('session') ?? '';
 const hasFilters = Boolean(filterLeague || filterSession);
 
-const groups = await fetchAllNotes(supabase, {
-  leagueId: filterLeague || undefined,
-  sessionId: filterSession || undefined,
-});
+// By-session view keeps the league/session filters; by-leave groups every note
+// that shares an exact leave, across all sessions (filters don't apply there).
+const groups = view === 'session'
+  ? await fetchAllNotes(supabase, {
+      leagueId: filterLeague || undefined,
+      sessionId: filterSession || undefined,
+    })
+  : [];
+const leaveGroups = view === 'leave' ? await fetchLeaveNotes(supabase) : [];
 
 // Filter dropdown options.
 const { data: leagues } = await supabase.from('leagues').select('id, name').order('name');
@@ -22,7 +28,11 @@ const { data: sessionRows } = await supabase
   .select('id, alley_name, session_date')
   .order('session_date', { ascending: false });
 
-const noteCount = groups.reduce((n, g) => n + g.entries.length, 0);
+const noteCount = view === 'session'
+  ? groups.reduce((n, g) => n + g.entries.length, 0)
+  : leaveGroups.reduce((n, g) => n + g.notes.length, 0);
+const groupCount = view === 'session' ? groups.length : leaveGroups.length;
+const groupNoun = view === 'session' ? 'session' : 'leave';
 
 const sessionLabel = (s: { alley_name: string | null; session_date: string | null }) =>
   `${s.session_date ?? ''}${s.alley_name ? ` · ${s.alley_name}` : ''}`.trim();
@@ -34,50 +44,79 @@ const groupHeading = (g: (typeof groups)[number]['session']) =>
 <Layout title="Notes">
   <nav class="top"><a href="/dashboard">&larr; Dashboard</a></nav>
   <h1>Notes</h1>
-  <p class="meta">{noteCount} note{noteCount === 1 ? '' : 's'} across {groups.length} session{groups.length === 1 ? '' : 's'}</p>
+  <p class="meta">{noteCount} note{noteCount === 1 ? '' : 's'} across {groupCount} {groupNoun}{groupCount === 1 ? '' : 's'}</p>
 
-  <form method="GET" class="filter-form">
-    <label>
-      League
-      <select name="league">
-        <option value="">All</option>
-        {leagues?.map((l) => (
-          <option value={l.id} selected={l.id === filterLeague}>{l.name}</option>
-        ))}
-      </select>
-    </label>
-    <label>
-      Session
-      <select name="session">
-        <option value="">All</option>
-        {sessionRows?.map((s) => (
-          <option value={s.id} selected={s.id === filterSession}>{sessionLabel(s)}</option>
-        ))}
-      </select>
-    </label>
-    <button type="submit">Filter</button>
-    {hasFilters && <a href="/notes">Clear Filters</a>}
-  </form>
+  <div class="entry-toggle" role="group" aria-label="Group notes by">
+    <a class:list={['seg', { active: view === 'session' }]} href="/notes" aria-current={view === 'session' ? 'true' : undefined}>By Session</a>
+    <a class:list={['seg', { active: view === 'leave' }]} href="/notes?view=leave" aria-current={view === 'leave' ? 'true' : undefined}>By Leave</a>
+  </div>
 
-  {groups.length > 0 ? (
-    <div class="note-groups">
-      {groups.map((group) => (
-        <section class="note-group">
-          <div class="group-head">
-            <a href={`/sessions/${group.session.id}#notes`}>{groupHeading(group.session)} &rarr;</a>
-          </div>
-          <ul class="note-stream">
-            {group.entries.map((note) => (
-              <li><NoteCard note={note} /></li>
-            ))}
-          </ul>
-        </section>
-      ))}
-    </div>
+  {view === 'session' && (
+    <form method="GET" class="filter-form">
+      <label>
+        League
+        <select name="league">
+          <option value="">All</option>
+          {leagues?.map((l) => (
+            <option value={l.id} selected={l.id === filterLeague}>{l.name}</option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Session
+        <select name="session">
+          <option value="">All</option>
+          {sessionRows?.map((s) => (
+            <option value={s.id} selected={s.id === filterSession}>{sessionLabel(s)}</option>
+          ))}
+        </select>
+      </label>
+      <button type="submit">Filter</button>
+      {hasFilters && <a href="/notes">Clear Filters</a>}
+    </form>
+  )}
+
+  {view === 'session' ? (
+    groups.length > 0 ? (
+      <div class="note-groups">
+        {groups.map((group) => (
+          <section class="note-group">
+            <div class="group-head">
+              <a href={`/sessions/${group.session.id}#notes`}>{groupHeading(group.session)} &rarr;</a>
+            </div>
+            <ul class="note-stream">
+              {group.entries.map((note) => (
+                <li><NoteCard note={note} /></li>
+              ))}
+            </ul>
+          </section>
+        ))}
+      </div>
+    ) : (
+      <p class="empty">
+        {hasFilters ? 'No notes match those filters.' : 'No notes yet — jot one while bowling or on any session.'}
+      </p>
+    )
   ) : (
-    <p class="empty">
-      {hasFilters ? 'No notes match those filters.' : 'No notes yet — jot one while bowling or on any session.'}
-    </p>
+    leaveGroups.length > 0 ? (
+      <div class="note-groups">
+        {leaveGroups.map((group) => (
+          <section class="note-group" id={leaveAnchor(group.leave)}>
+            <div class="group-head">
+              <span class="leave-title">{group.name}</span>
+              <span class="leave-count">{group.notes.length} note{group.notes.length === 1 ? '' : 's'}</span>
+            </div>
+            <ul class="note-stream">
+              {group.notes.map((note) => (
+                <li><NoteCard note={note} /></li>
+              ))}
+            </ul>
+          </section>
+        ))}
+      </div>
+    ) : (
+      <p class="empty">No leave notes yet — notes you attach to a shot with pins standing show up here, grouped by leave.</p>
+    )
   )}
 </Layout>
 
@@ -87,6 +126,10 @@ const groupHeading = (g: (typeof groups)[number]['session']) =>
     gap: 1.5rem;
   }
   .group-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem;
     margin-bottom: 0.5rem;
     padding-bottom: 0.25rem;
     border-bottom: 1px solid var(--border);
@@ -94,6 +137,15 @@ const groupHeading = (g: (typeof groups)[number]['session']) =>
   .group-head a {
     font-weight: 600;
     font-variant-numeric: tabular-nums;
+  }
+  .leave-title {
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .leave-count {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+    white-space: nowrap;
   }
   .note-stream {
     list-style: none;
