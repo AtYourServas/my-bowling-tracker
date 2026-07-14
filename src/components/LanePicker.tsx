@@ -34,10 +34,10 @@ type Mark = 'stance' | 'target' | 'breakpoint' | 'slide';
 const ORDER: Mark[] = ['stance', 'target', 'slide', 'breakpoint'];
 
 const META: Record<Mark, { label: string; arrows: boolean; dots: boolean }> = {
-  stance: { label: 'Stance', arrows: false, dots: true },
-  target: { label: 'Target', arrows: true, dots: false },
+  stance: { label: 'Alignment (Starting Point)', arrows: false, dots: true },
+  target: { label: 'Visual Target', arrows: true, dots: false },
   breakpoint: { label: 'Breakpoint', arrows: false, dots: false },
-  slide: { label: 'Slide', arrows: false, dots: true },
+  slide: { label: 'Slide Position (Finish)', arrows: false, dots: true },
 };
 
 function xForBoard(b: number): number {

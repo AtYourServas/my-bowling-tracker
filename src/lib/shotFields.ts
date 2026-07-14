@@ -14,13 +14,13 @@ export type ShotFieldKey =
   | 'note';
 
 export const SHOT_FIELDS: { key: ShotFieldKey; label: string }[] = [
-  { key: 'approach', label: 'Reference approach' },
-  { key: 'stance', label: 'Stance mark' },
-  { key: 'target', label: 'Target mark' },
-  { key: 'slide', label: 'Slide mark' },
+  { key: 'approach', label: 'Saved References' },
+  { key: 'stance', label: 'Alignment (Starting Point)' },
+  { key: 'target', label: 'Visual Target' },
+  { key: 'slide', label: 'Slide Position (Finish)' },
   { key: 'breakpoint', label: 'Breakpoint mark' },
-  { key: 'hook', label: 'Hook timing' },
-  { key: 'miss', label: 'Miss direction' },
+  { key: 'hook', label: 'Hook Timing' },
+  { key: 'miss', label: 'Miss Direction' },
   { key: 'note', label: 'Note' },
 ];
 
