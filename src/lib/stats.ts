@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { fetchDerivedScoresForGames } from './scoring';
+import { fetchDerivedScoresForGames, frameProgress, computeFrameRolls, FULL_RACK } from './scoring';
+import { leaveDisplayName, sortedLeave } from './leaves';
 import type { SessionForHandicap, SessionHandicapResolver } from './handicap';
 import { laneForFrame, type LaneConfig } from './lanes';
 
@@ -148,6 +149,64 @@ export function fetchBestSeriesStats(
   return { scratch, handicapped };
 }
 
+export type StatShot = {
+  pins_standing: number[] | null;
+  strike: boolean;
+  spare: boolean;
+  foul?: boolean;
+  lineup_position: string | null;
+  slide_position: string | null;
+  balls: { name: string } | null;
+};
+
+export type StatFrame = {
+  frameNumber: number;
+  isPractice: boolean;
+  sessionType: string | null;
+  /** Shots in delivery order. */
+  shots: StatShot[];
+};
+
+/**
+ * ONE frames+shots fetch feeding every shot-level stat (ball carry, drift,
+ * strike/spare rates, conversion by leave) -- the compute* functions below all
+ * slice this in memory rather than each re-querying every frame and shot.
+ * Frames without a resolvable game are dropped; the practice filter is applied
+ * per-stat (each compute takes the StatsFilter) so one fetch serves any filter.
+ */
+export async function fetchStatFrames(supabase: SupabaseClient): Promise<StatFrame[]> {
+  const { data: frames } = await supabase
+    .from('frames')
+    .select(
+      'frame_number, games(is_practice, sessions(session_type)), shots(pins_standing, strike, spare, foul, created_at, lineup_position, slide_position, balls(name))',
+    )
+    .order('created_at', { foreignTable: 'shots', ascending: true });
+
+  if (!frames) return [];
+
+  const results: StatFrame[] = [];
+  for (const frame of frames as any[]) {
+    const game = frame.games;
+    if (!game) continue;
+    results.push({
+      frameNumber: frame.frame_number,
+      isPractice: game.is_practice,
+      sessionType: game.sessions?.session_type ?? null,
+      shots: frame.shots ?? [],
+    });
+  }
+  return results;
+}
+
+/** The shared practice rule for shot-level stats: the Practice segment of a
+ *  league night is always excluded; standalone practice sessions only when the
+ *  filter opts out. */
+function frameInFilter(frame: StatFrame, filter: StatsFilter): boolean {
+  if (frame.isPractice) return false;
+  if (!filter.includePracticeSessions && frame.sessionType === 'practice') return false;
+  return true;
+}
+
 export type BallStat = { ballName: string; avgPinsPerShot: number; shotCount: number };
 
 /**
@@ -157,27 +216,16 @@ export type BallStat = { ballName: string; avgPinsPerShot: number; shotCount: nu
  * a reset rack (after a strike, or the fill ball after a spare). Second/spare
  * balls are excluded because their pinfall is capped by what was left, not the
  * ball. Walks each frame in delivery order tracking the standing count, exactly
- * like the scoresheet. Always excludes is_practice games (the Practice segment
- * of a league night); standalone practice sessions are excluded unless
- * filter.includePracticeSessions.
+ * like the scoresheet.
  */
-export async function fetchBallStats(supabase: SupabaseClient, filter: StatsFilter): Promise<BallStat[]> {
-  const { data: frames } = await supabase
-    .from('frames')
-    .select('games(is_practice, sessions(session_type)), shots(pins_standing, strike, foul, created_at, balls(name))')
-    .order('created_at', { foreignTable: 'shots', ascending: true });
-
-  if (!frames) return [];
-
+export function computeBallStats(frames: StatFrame[], filter: StatsFilter): BallStat[] {
   const totals = new Map<string, { sum: number; count: number }>();
 
-  for (const frame of frames as any[]) {
-    const game = frame.games;
-    if (!game || game.is_practice) continue;
-    if (!filter.includePracticeSessions && game.sessions?.session_type === 'practice') continue;
+  for (const frame of frames) {
+    if (!frameInFilter(frame, filter)) continue;
 
     let priorStanding = 10;
-    for (const shot of frame.shots ?? []) {
+    for (const shot of frame.shots) {
       // a fouled delivery counts 0 and doesn't reflect carry, so leave it out of
       // the average entirely; its pins are respotted for the next ball
       if (shot.foul) {
@@ -228,26 +276,16 @@ function parseBoard(raw: unknown): number | null {
  * and slide (slide_position). Drift = stance − slide, the same value LanePicker
  * shows per shot: positive = the slide foot finishes to the RIGHT of the stance
  * (toward board 1), negative = to the LEFT. Legacy free-text marks that aren't a
- * plain board number are skipped. Respects the same practice filter as the other
- * shot-level stats (excludes the Practice segment always; standalone practice
- * sessions unless opted in). Returns null when no shot has both marks.
+ * plain board number are skipped. Returns null when no shot has both marks.
  */
-export async function fetchDriftStat(supabase: SupabaseClient, filter: StatsFilter): Promise<DriftStat | null> {
-  const { data: frames } = await supabase
-    .from('frames')
-    .select('games(is_practice, sessions(session_type)), shots(lineup_position, slide_position)');
-
-  if (!frames) return null;
-
+export function computeDriftStat(frames: StatFrame[], filter: StatsFilter): DriftStat | null {
   let sum = 0;
   let count = 0;
 
-  for (const frame of frames as any[]) {
-    const game = frame.games;
-    if (!game || game.is_practice) continue;
-    if (!filter.includePracticeSessions && game.sessions?.session_type === 'practice') continue;
+  for (const frame of frames) {
+    if (!frameInFilter(frame, filter)) continue;
 
-    for (const shot of frame.shots ?? []) {
+    for (const shot of frame.shots) {
       const stance = parseBoard(shot.lineup_position);
       const slide = parseBoard(shot.slide_position);
       if (stance == null || slide == null) continue;
@@ -258,6 +296,113 @@ export async function fetchDriftStat(supabase: SupabaseClient, filter: StatsFilt
 
   if (count === 0) return null;
   return { averageBoards: sum / count, shotCount: count };
+}
+
+export type RateStats = {
+  strikes: number;
+  strikeOpportunities: number;
+  spares: number;
+  spareOpportunities: number;
+  openFrames: number;
+  completedFrames: number;
+};
+
+export type LeaveConversion = { name: string; attempts: number; converted: number };
+
+/** A delivery that cleared everything it faced (a foul knocks nothing down). */
+function clearedRack(shot: StatShot): boolean {
+  if (shot.foul) return false;
+  return shot.strike || shot.spare || (shot.pins_standing?.length ?? 0) === 0;
+}
+
+/**
+ * Walks every frame's shots classifying each delivery the way the scoresheet
+ * does: a ball at a fresh rack where a strike is legal (the frame's first ball,
+ * or any fresh-rack ball in the 10th) is a strike opportunity; every other ball
+ * is a spare attempt at the leave it faced. The rack-reset rule mirrors
+ * pinsFacedBefore: a strike, a clearing ball, or a foul respots all ten -- so a
+ * ball 2 after a foul is a spare attempt at a "Full Rack". Fouled deliveries
+ * count as missed opportunities (they score zero). onSpareAttempt reports each
+ * spare attempt's faced leave for the conversion-by-leave grouping.
+ */
+function walkDeliveries(
+  frames: StatFrame[],
+  filter: StatsFilter,
+  onSpareAttempt?: (faced: number[], converted: boolean) => void,
+): RateStats {
+  const rates: RateStats = {
+    strikes: 0,
+    strikeOpportunities: 0,
+    spares: 0,
+    spareOpportunities: 0,
+    openFrames: 0,
+    completedFrames: 0,
+  };
+
+  for (const frame of frames) {
+    if (!frameInFilter(frame, filter)) continue;
+    if (frame.shots.length === 0) continue;
+
+    let faced: number[] = [...FULL_RACK];
+    frame.shots.forEach((shot, i) => {
+      const freshRack = faced.length === 10;
+      const cleared = clearedRack(shot);
+
+      if (freshRack && (i === 0 || frame.frameNumber === 10)) {
+        rates.strikeOpportunities += 1;
+        if (cleared) rates.strikes += 1;
+      } else {
+        rates.spareOpportunities += 1;
+        if (cleared) rates.spares += 1;
+        onSpareAttempt?.(faced, cleared);
+      }
+
+      const standingAfter = (shot.pins_standing ?? []) as number[];
+      faced = shot.foul || shot.strike || standingAfter.length === 0 ? [...FULL_RACK] : [...standingAfter];
+    });
+
+    // An open frame ended with no mark: fully bowled, first ball not a strike,
+    // first two rolls short of ten. computeFrameRolls scores a foul as zero, so
+    // the same expression covers fouled deliveries and the 10th frame alike.
+    if (frameProgress(frame.frameNumber, frame.shots).complete) {
+      rates.completedFrames += 1;
+      const rolls = computeFrameRolls(frame.shots);
+      if (rolls[0] !== 10 && (rolls[0] ?? 0) + (rolls[1] ?? 0) < 10) rates.openFrames += 1;
+    }
+  }
+
+  return rates;
+}
+
+/**
+ * Strike rate, spare-conversion rate, and open-frame rate across every logged
+ * delivery. Returns null when nothing has been bowled under the filter.
+ */
+export function computeRateStats(frames: StatFrame[], filter: StatsFilter): RateStats | null {
+  const rates = walkDeliveries(frames, filter);
+  return rates.strikeOpportunities === 0 && rates.spareOpportunities === 0 ? null : rates;
+}
+
+/**
+ * Spare conversion grouped by the exact leave faced ("converted the 10 Pin
+ * 4/11"), most-attempted first. Leaves are keyed by pin identity, so typed-in
+ * counts (which store placeholder pin identities) group by those placeholders.
+ */
+export function computeLeaveConversions(frames: StatFrame[], filter: StatsFilter): LeaveConversion[] {
+  const groups = new Map<string, { pins: number[]; attempts: number; converted: number }>();
+
+  walkDeliveries(frames, filter, (faced, converted) => {
+    const pins = sortedLeave(faced);
+    const key = pins.join('-');
+    const entry = groups.get(key) ?? { pins, attempts: 0, converted: 0 };
+    entry.attempts += 1;
+    if (converted) entry.converted += 1;
+    groups.set(key, entry);
+  });
+
+  return Array.from(groups.values())
+    .map(({ pins, attempts, converted }) => ({ name: leaveDisplayName(pins), attempts, converted }))
+    .sort((a, b) => b.attempts - a.attempts || a.name.localeCompare(b.name));
 }
 
 export function fetchHandicappedAverage(games: ScoredGame[], handicapOf: SessionHandicapResolver): number | null {
