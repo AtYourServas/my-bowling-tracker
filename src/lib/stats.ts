@@ -212,6 +212,54 @@ export async function fetchBallStats(supabase: SupabaseClient, filter: StatsFilt
  * or a rolling league with no prior-week average yet) are left out rather
  * than guessed at.
  */
+export type DriftStat = { averageBoards: number; shotCount: number };
+
+/** A board number stored in a text mark column, or null if it isn't numeric. */
+function parseBoard(raw: unknown): number | null {
+  if (raw == null) return null;
+  const s = String(raw).trim();
+  if (s === '') return null;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Average drift across shots that recorded BOTH a numeric stance (lineup_position)
+ * and slide (slide_position). Drift = stance − slide, the same value LanePicker
+ * shows per shot: positive = the slide foot finishes to the RIGHT of the stance
+ * (toward board 1), negative = to the LEFT. Legacy free-text marks that aren't a
+ * plain board number are skipped. Respects the same practice filter as the other
+ * shot-level stats (excludes the Practice segment always; standalone practice
+ * sessions unless opted in). Returns null when no shot has both marks.
+ */
+export async function fetchDriftStat(supabase: SupabaseClient, filter: StatsFilter): Promise<DriftStat | null> {
+  const { data: frames } = await supabase
+    .from('frames')
+    .select('games(is_practice, sessions(session_type)), shots(lineup_position, slide_position)');
+
+  if (!frames) return null;
+
+  let sum = 0;
+  let count = 0;
+
+  for (const frame of frames as any[]) {
+    const game = frame.games;
+    if (!game || game.is_practice) continue;
+    if (!filter.includePracticeSessions && game.sessions?.session_type === 'practice') continue;
+
+    for (const shot of frame.shots ?? []) {
+      const stance = parseBoard(shot.lineup_position);
+      const slide = parseBoard(shot.slide_position);
+      if (stance == null || slide == null) continue;
+      sum += stance - slide;
+      count += 1;
+    }
+  }
+
+  if (count === 0) return null;
+  return { averageBoards: sum / count, shotCount: count };
+}
+
 export function fetchHandicappedAverage(games: ScoredGame[], handicapOf: SessionHandicapResolver): number | null {
   const handicappedScores: number[] = [];
 
