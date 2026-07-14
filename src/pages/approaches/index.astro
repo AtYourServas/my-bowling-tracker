@@ -2,6 +2,7 @@
 import Layout from '../../layouts/Layout.astro';
 import LeavePicker from '../../components/LeavePicker';
 import { leaveLabel, isSpareLeave } from '../../lib/leaves';
+import { markLabel, targetLabel } from '../../lib/marks';
 
 const { supabase } = Astro.locals;
 
@@ -88,11 +89,11 @@ const { data: balls } = await supabase.from('balls').select('id, name').order('n
             <strong>{approach.name}</strong>
             <span class="leave-tag">{leaveLabel(approach.leave)}</span>
             {approach.balls?.name && <span>Ball: {approach.balls.name}</span>}
-            {approach.reference_lineup && <span>Alignment (Starting Point): {approach.reference_lineup}</span>}
+            {approach.reference_lineup && <span>Alignment (Starting Point): {markLabel(approach.reference_lineup)}</span>}
             {approach.reference_target_type && approach.reference_target_value != null && (
-              <span>Visual Target: {approach.reference_target_type} {approach.reference_target_value}</span>
+              <span>Visual Target: {targetLabel(approach.reference_target_type, approach.reference_target_value)}</span>
             )}
-            {approach.reference_slide && <span>Slide Position (Finish): {approach.reference_slide}</span>}
+            {approach.reference_slide && <span>Slide Position (Finish): {markLabel(approach.reference_slide)}</span>}
           </a>
         </li>
       ))}

@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import PinDiagram from './PinDiagram';
 import LanePicker, { type LanePickerHandle } from './LanePicker';
 import { leaveName } from '../lib/leaves';
+import { markLabel, targetLabel } from '../lib/marks';
 
 /** Parse a stored mark (text or numeric) into a board number for the picker. */
 function toBoard(v: string | number | null | undefined): number | null {
@@ -217,14 +218,12 @@ export default function ShotForm({
           {selectedApproach && (
             <div className="reference-box">
               <strong>{selectedApproach.name} (reference)</strong>
-              <span>Alignment (Starting Point): {selectedApproach.reference_lineup || '—'}</span>
+              <span>Alignment (Starting Point): {markLabel(selectedApproach.reference_lineup) || '—'}</span>
               <span>
                 Visual Target:{' '}
-                {selectedApproach.reference_target_type && selectedApproach.reference_target_value != null
-                  ? `${selectedApproach.reference_target_type} ${selectedApproach.reference_target_value}`
-                  : '—'}
+                {targetLabel(selectedApproach.reference_target_type, selectedApproach.reference_target_value) || '—'}
               </span>
-              <span>Slide Position (Finish): {selectedApproach.reference_slide || '—'}</span>
+              <span>Slide Position (Finish): {markLabel(selectedApproach.reference_slide) || '—'}</span>
               {applicableMarks.length > 0 && (
                 <button type="button" className="apply-approach" onClick={applyReference}>
                   {applied ? '✓ Applied to my approach' : 'Apply to my approach'}
