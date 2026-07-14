@@ -29,7 +29,7 @@ function gameLabel(game: { is_practice: boolean | null; game_number: number | nu
 
 // Shot columns needed to render a shot-linked note entry (outcome + marks + link).
 const SHOT_NOTE_SELECT =
-  'id, frame_id, note, created_at, pins_standing, strike, spare, foul, hook_timing, miss_direction, target_type, target_value, slide_position, breakpoint_board, balls(name), frames!inner(frame_number, games!inner(id, game_number, is_practice, session_id))';
+  'id, frame_id, note, created_at, pins_standing, strike, spare, foul, hook_timing, miss_direction, target_type, target_value, slide_position, breakpoint_board, ball_id, balls(name), frames!inner(frame_number, games!inner(id, game_number, is_practice, session_id))';
 
 type ShotMeta = { link: { href: string; label: string }; result: string; details: NoteDetail[] };
 
@@ -62,14 +62,16 @@ function shotResult(shot: any): string {
   return `Left ${[...standing].sort((a, b) => a - b).join('-')}`;
 }
 
+const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+
 // The shot's other logged detail, one labelled + icon'd row each.
 function shotDetails(shot: any): NoteDetail[] {
   const d: NoteDetail[] = [];
   if (shot.balls?.name) d.push({ icon: '🎳', label: 'Ball', value: shot.balls.name });
   if (shot.target_type && shot.target_value != null)
-    d.push({ icon: '🎯', label: 'Target', value: `${shot.target_type} ${shot.target_value}` });
+    d.push({ icon: '🎯', label: 'Target', value: `${cap(shot.target_type)} ${shot.target_value}` });
   if (shot.slide_position) d.push({ icon: '👟', label: 'Slide', value: shot.slide_position });
-  if (shot.breakpoint_board != null) d.push({ icon: '📍', label: 'Breakpoint', value: `board ${shot.breakpoint_board}` });
+  if (shot.breakpoint_board != null) d.push({ icon: '📍', label: 'Breakpoint', value: `Board ${shot.breakpoint_board}` });
   if (shot.hook_timing) d.push({ icon: '🌀', label: 'Hook', value: HOOK_LABEL[shot.hook_timing] ?? shot.hook_timing });
   if (shot.miss_direction) d.push({ icon: '⚠️', label: 'Miss', value: MISS_LABEL[shot.miss_direction] ?? shot.miss_direction });
   return d;
@@ -141,7 +143,7 @@ export type SessionNoteGroup = {
 // ordered newest session first. Optional filters narrow to one session/league.
 export async function fetchAllNotes(
   supabase: SupabaseClient,
-  filters: { leagueId?: string; sessionId?: string } = {},
+  filters: { leagueId?: string; sessionId?: string; alley?: string; ballId?: string } = {},
 ): Promise<SessionNoteGroup[]> {
   let sessionsQuery = supabase
     .from('sessions')
@@ -150,6 +152,7 @@ export async function fetchAllNotes(
     .order('created_at', { ascending: false });
   if (filters.sessionId) sessionsQuery = sessionsQuery.eq('id', filters.sessionId);
   if (filters.leagueId) sessionsQuery = sessionsQuery.eq('league_id', filters.leagueId);
+  if (filters.alley) sessionsQuery = sessionsQuery.eq('alley_name', filters.alley);
 
   const { data: sessions } = await sessionsQuery;
   const sessionList = (sessions ?? []) as any[];
@@ -162,14 +165,23 @@ export async function fetchAllNotes(
     supabase.from('shots').select(SHOT_NOTE_SELECT).not('note', 'is', null),
   ]);
 
-  // shot id -> { sessionId, meta, note, createdAt }, across all sessions
-  const shotById = new Map<string, { sessionId: string; meta: ShotMeta; note: string; createdAt: string }>();
+  // shot id -> { sessionId, meta, note, createdAt, ballId }, across all sessions
+  const shotById = new Map<
+    string,
+    { sessionId: string; meta: ShotMeta; note: string; createdAt: string; ballId: string | null }
+  >();
   for (const shot of (shotsRes.data ?? []) as any[]) {
     const sessionId = shot.frames?.games?.session_id;
     if (!sessionId) continue;
     const meta = shotMetaFrom(shot, sessionId);
     if (!meta) continue;
-    shotById.set(shot.id, { sessionId, meta, note: (shot.note ?? '').trim(), createdAt: shot.created_at });
+    shotById.set(shot.id, {
+      sessionId,
+      meta,
+      note: (shot.note ?? '').trim(),
+      createdAt: shot.created_at,
+      ballId: shot.ball_id ?? null,
+    });
   }
 
   const bySession = new Map<string, NoteEntry[]>();
@@ -182,7 +194,11 @@ export async function fetchAllNotes(
   for (const note of notesRes.data ?? []) {
     const body = (note.body ?? '').trim();
     if (!body) continue;
-    const meta = note.shot_id ? shotById.get(note.shot_id)?.meta : undefined;
+    const linked = note.shot_id ? shotById.get(note.shot_id) : undefined;
+    // ball filter keeps only notes tied to a shot with that ball; standalone
+    // (shot-less) notes carry no ball, so they drop out when it's active
+    if (filters.ballId && linked?.ballId !== filters.ballId) continue;
+    const meta = linked?.meta;
     push(note.session_id, {
       id: note.id,
       kind: 'note',
@@ -196,6 +212,7 @@ export async function fetchAllNotes(
 
   for (const [shotId, s] of shotById) {
     if (!s.note) continue;
+    if (filters.ballId && s.ballId !== filters.ballId) continue;
     push(s.sessionId, {
       id: shotId,
       kind: 'shot',
