@@ -27,7 +27,7 @@ function arrowToBoard(v: string | number | null | undefined): number | null {
   return n <= 7 ? n * 5 : n;
 }
 
-const { supabase } = Astro.locals;
+const { supabase, user } = Astro.locals;
 const { id } = Astro.params;
 
 let error: string | null = null;
@@ -45,34 +45,38 @@ if (Astro.request.method === 'POST') {
     }
   } else {
     const name = formData.get('name')?.toString().trim() ?? '';
-    const reference_ball_id = formData.get('reference_ball_id')?.toString() || null;
-    const reference_lineup = formData.get('reference_lineup')?.toString().trim() || null;
-    const reference_slide = formData.get('reference_slide')?.toString().trim() || null;
-    const reference_target_type = formData.get('reference_target_type')?.toString() || null;
-    const targetValueRaw = formData.get('reference_target_value')?.toString().trim();
-    const reference_target_value = targetValueRaw ? Number(targetValueRaw) : null;
     const leaveRaw = formData.get('leave')?.toString() ?? '';
     const leave = leaveRaw
       ? leaveRaw.split(',').map(Number).filter((n) => n >= 1 && n <= 10)
       : [];
-    const notes = formData.get('notes')?.toString().trim() || null;
 
     if (!name) {
       error = 'Approach name is required.';
     } else {
-      const { error: updateError } = await supabase
-        .from('approaches')
-        .update({
-          name,
-          reference_ball_id,
-          reference_lineup,
-          reference_slide,
-          reference_target_type,
-          reference_target_value,
-          leave,
-          notes,
-        })
-        .eq('id', id);
+      // Only overwrite the fields actually rendered on the form. A hidden field
+      // (profiles.hidden_approach_fields) posts no input, so it's left out of the
+      // update and keeps its stored value instead of being wiped to null. Name
+      // and leave are always shown, so always update.
+      const update: Record<string, unknown> = { name, leave };
+      if (formData.has('reference_ball_id')) {
+        update.reference_ball_id = formData.get('reference_ball_id')?.toString() || null;
+      }
+      if (formData.has('reference_lineup')) {
+        update.reference_lineup = formData.get('reference_lineup')?.toString().trim() || null;
+      }
+      if (formData.has('reference_target_type')) {
+        update.reference_target_type = formData.get('reference_target_type')?.toString() || null;
+        const targetValueRaw = formData.get('reference_target_value')?.toString().trim();
+        update.reference_target_value = targetValueRaw ? Number(targetValueRaw) : null;
+      }
+      if (formData.has('reference_slide')) {
+        update.reference_slide = formData.get('reference_slide')?.toString().trim() || null;
+      }
+      if (formData.has('notes')) {
+        update.notes = formData.get('notes')?.toString().trim() || null;
+      }
+
+      const { error: updateError } = await supabase.from('approaches').update(update).eq('id', id);
 
       if (updateError) {
         error = updateError.message;
@@ -90,6 +94,18 @@ if (!approach) {
 }
 
 const { data: balls } = await supabase.from('balls').select('id, name').order('name');
+
+// profile preference: optional approach fields the bowler has hidden (PR 37).
+// A hidden mark drops its LanePicker strip; a hidden field isn't rendered. The
+// POST above preserves any stored value a hidden field already had.
+const { data: prefRow } = await supabase
+  .from('profiles')
+  .select('hidden_approach_fields')
+  .eq('id', user!.id)
+  .maybeSingle();
+const hiddenFields: string[] = prefRow?.hidden_approach_fields ?? [];
+const show = (key: string) => !hiddenFields.includes(key);
+const shownMarks = APPROACH_MARKS.filter((m) => show(m));
 
 // seed the lane picker from the stored approach. An older 'arrow' target maps to
 // its board via arrowToBoard; a 'pin' target can't be placed.
@@ -112,33 +128,41 @@ const initialTarget =
       Name
       <input type="text" id="approach-name" name="name" required value={approach.name} />
     </label>
-    <label>
-      Reference Ball
-      <select name="reference_ball_id">
-        <option value="">None</option>
-        {balls?.map((ball) => (
-          <option value={ball.id} selected={ball.id === approach.reference_ball_id}>
-            {ball.name}
-          </option>
-        ))}
-      </select>
-    </label>
+    {show('ball') && (
+      <label>
+        Reference Ball
+        <select name="reference_ball_id">
+          <option value="">None</option>
+          {balls?.map((ball) => (
+            <option value={ball.id} selected={ball.id === approach.reference_ball_id}>
+              {ball.name}
+            </option>
+          ))}
+        </select>
+      </label>
+    )}
     <div class="sechead-mini"><span class="chev"><i></i><i></i><i></i></span><h3>Leave</h3></div>
     <LeavePicker client:load initialLeave={approach.leave ?? []} />
-    <div class="sechead-mini"><span class="chev"><i></i><i></i><i></i></span><h3>Reference Marks</h3></div>
-    <LanePicker
-      client:load
-      names={APPROACH_NAMES}
-      marks={[...APPROACH_MARKS]}
-      initialLineup={toBoard(approach.reference_lineup)}
-      initialTarget={initialTarget}
-      initialSlide={toBoard(approach.reference_slide)}
-    />
+    {shownMarks.length > 0 && (
+      <>
+        <div class="sechead-mini"><span class="chev"><i></i><i></i><i></i></span><h3>Reference Marks</h3></div>
+        <LanePicker
+          client:load
+          names={APPROACH_NAMES}
+          marks={shownMarks}
+          initialLineup={toBoard(approach.reference_lineup)}
+          initialTarget={initialTarget}
+          initialSlide={toBoard(approach.reference_slide)}
+        />
+      </>
+    )}
 
-    <label>
-      Notes
-      <textarea name="notes" rows="3">{approach.notes ?? ''}</textarea>
-    </label>
+    {show('notes') && (
+      <label>
+        Notes
+        <textarea name="notes" rows="3">{approach.notes ?? ''}</textarea>
+      </label>
+    )}
     <button type="submit">Save Changes</button>
   </form>
 

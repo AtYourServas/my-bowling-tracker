@@ -1,6 +1,7 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import { SHOT_FIELDS, SHOT_FIELD_KEYS } from '../lib/shotFields';
+import { APPROACH_FIELDS, APPROACH_FIELD_KEYS } from '../lib/approachFields';
 
 const { supabase, user } = Astro.locals;
 
@@ -15,10 +16,11 @@ if (Astro.request.method === 'POST') {
   const default_entry_mode = formData.get('default_entry_mode')?.toString() === 'type' ? 'type' : 'pick';
   // each shown checkbox posts show_<key>='on'; anything not checked is hidden
   const hidden_shot_fields = SHOT_FIELD_KEYS.filter((key) => formData.get(`show_${key}`) !== 'on');
+  const hidden_approach_fields = APPROACH_FIELD_KEYS.filter((key) => formData.get(`approach_show_${key}`) !== 'on');
 
   const { error: updateError } = await supabase
     .from('profiles')
-    .update({ display_name, default_ball_id, default_spare_ball_id, default_entry_mode, hidden_shot_fields })
+    .update({ display_name, default_ball_id, default_spare_ball_id, default_entry_mode, hidden_shot_fields, hidden_approach_fields })
     .eq('id', user!.id);
 
   if (updateError) {
@@ -30,12 +32,13 @@ if (Astro.request.method === 'POST') {
 
 const { data: profile } = await supabase
   .from('profiles')
-  .select('display_name, default_ball_id, default_spare_ball_id, default_entry_mode, hidden_shot_fields')
+  .select('display_name, default_ball_id, default_spare_ball_id, default_entry_mode, hidden_shot_fields, hidden_approach_fields')
   .eq('id', user!.id)
   .maybeSingle();
 
 const entryMode = profile?.default_entry_mode === 'type' ? 'type' : 'pick';
 const hiddenShotFields: string[] = profile?.hidden_shot_fields ?? [];
+const hiddenApproachFields: string[] = profile?.hidden_approach_fields ?? [];
 
 const { data: balls } = await supabase.from('balls').select('id, name').order('name');
 const hasBalls = (balls?.length ?? 0) > 0;
@@ -67,13 +70,28 @@ const hasBalls = (balls?.length ?? 0) > 0;
     <div class="sechead"><span class="chev"><i></i><i></i><i></i></span><h2>Shot Logger Fields</h2></div>
     <p class="empty">Choose which optional details show when logging a shot. Pins, strike/spare, and ball are always shown. Editing an existing shot always shows every field so nothing is hidden.</p>
     <div class="toggle-actions">
-      <button type="button" class="secondary" id="fields-all">Select All</button>
-      <button type="button" class="secondary" id="fields-none">Clear All</button>
+      <button type="button" class="secondary" data-grid="shot-fields" data-check="on">Select All</button>
+      <button type="button" class="secondary" data-grid="shot-fields" data-check="off">Clear All</button>
     </div>
-    <div class="field-toggles">
+    <div class="field-toggles" id="shot-fields">
       {SHOT_FIELDS.map((f) => (
         <label class="check">
           <input type="checkbox" name={`show_${f.key}`} checked={!hiddenShotFields.includes(f.key)} />
+          {f.label}
+        </label>
+      ))}
+    </div>
+
+    <div class="sechead"><span class="chev"><i></i><i></i><i></i></span><h2>Approach Fields</h2></div>
+    <p class="empty">Choose which optional details show on the add/edit approach form. Name and leave are always shown. A field you hide keeps any value it already had — unhide it to change that value.</p>
+    <div class="toggle-actions">
+      <button type="button" class="secondary" data-grid="approach-fields" data-check="on">Select All</button>
+      <button type="button" class="secondary" data-grid="approach-fields" data-check="off">Clear All</button>
+    </div>
+    <div class="field-toggles" id="approach-fields">
+      {APPROACH_FIELDS.map((f) => (
+        <label class="check">
+          <input type="checkbox" name={`approach_show_${f.key}`} checked={!hiddenApproachFields.includes(f.key)} />
           {f.label}
         </label>
       ))}
@@ -111,12 +129,14 @@ const hasBalls = (balls?.length ?? 0) > 0;
   </form>
 
   <script>
-    function setAllFields(checked: boolean) {
-      document
-        .querySelectorAll<HTMLInputElement>('.field-toggles input[type="checkbox"]')
-        .forEach((box) => (box.checked = checked));
-    }
-    document.getElementById('fields-all')?.addEventListener('click', () => setAllFields(true));
-    document.getElementById('fields-none')?.addEventListener('click', () => setAllFields(false));
+    // Each Select All / Clear All button targets its own grid by id, so the two
+    // field grids (shot logger + approach) toggle independently.
+    document.querySelectorAll<HTMLButtonElement>('.toggle-actions button[data-grid]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const grid = document.getElementById(btn.dataset.grid!);
+        const checked = btn.dataset.check === 'on';
+        grid?.querySelectorAll<HTMLInputElement>('input[type="checkbox"]').forEach((box) => (box.checked = checked));
+      });
+    });
   </script>
 </Layout>
