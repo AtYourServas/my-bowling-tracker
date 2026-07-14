@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import PinDiagram from './PinDiagram';
 import LanePicker, { type LanePickerHandle } from './LanePicker';
+import { leaveName } from '../lib/leaves';
 
 /** Parse a stored mark (text or numeric) into a board number for the picker. */
 function toBoard(v: string | number | null | undefined): number | null {
@@ -42,6 +43,7 @@ type Approach = {
   reference_slide: string | null;
   reference_target_type: string | null;
   reference_target_value: number | null;
+  leave: number[] | null;
 };
 
 type InitialShot = {
@@ -100,12 +102,29 @@ export default function ShotForm({
   const shownMarks = (['stance', 'target', 'slide', 'breakpoint'] as const).filter(show);
   const [approachId, setApproachId] = useState(initial?.approach_id ?? '');
   const [applied, setApplied] = useState(false);
+  const [matchPins, setMatchPins] = useState(false);
   const laneRef = useRef<LanePickerHandle>(null);
 
   const selectedApproach = useMemo(
     () => approaches.find((a) => a.id === approachId) ?? null,
     [approachId, approaches],
   );
+
+  // Pins standing in front of this ball (the leave you're shooting at). Only
+  // meaningful once ball 1 has left a leave; a fresh rack has nothing to match.
+  const standingPins = startingPins ?? [];
+  const canMatchPins = standingPins.length > 0;
+
+  // When "match standing pins" is on, keep only approaches whose leave covers
+  // every standing pin (leave ⊇ standing pins — same rule as the approaches
+  // list filter). The currently-selected approach is never hidden, so a manual
+  // pick isn't silently dropped from the dropdown.
+  const shownApproaches = useMemo(() => {
+    if (!matchPins || !canMatchPins) return approaches;
+    return approaches.filter(
+      (a) => a.id === approachId || standingPins.every((p) => (a.leave ?? []).includes(p)),
+    );
+  }, [matchPins, canMatchPins, approaches, approachId, standingPins]);
 
   // Which of the reference marks the picker is currently showing (stance/target/slide).
   const applicableMarks = shownMarks.filter((m) => m === 'stance' || m === 'target' || m === 'slide');
@@ -172,13 +191,24 @@ export default function ShotForm({
               }}
             >
               <option value="">None</option>
-              {approaches.map((a) => (
+              {shownApproaches.map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.name}
                 </option>
               ))}
             </select>
           </label>
+
+          {canMatchPins && (
+            <label className="check match-pins">
+              <input
+                type="checkbox"
+                checked={matchPins}
+                onChange={(e) => setMatchPins(e.target.checked)}
+              />
+              Match standing pins ({leaveName(standingPins)})
+            </label>
+          )}
 
           {selectedApproach && (
             <div className="reference-box">
