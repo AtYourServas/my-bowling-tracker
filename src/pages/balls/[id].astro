@@ -22,6 +22,7 @@ if (Astro.request.method === 'POST') {
     const brand_model = formData.get('brand_model')?.toString().trim() || null;
     const weightRaw = formData.get('weight')?.toString().trim();
     const weight = weightRaw ? Number(weightRaw) : null;
+    const notes = formData.get('notes')?.toString().trim() || null;
     const layout_notes = formData.get('layout_notes')?.toString().trim() || null;
 
     if (!name) {
@@ -29,7 +30,7 @@ if (Astro.request.method === 'POST') {
     } else {
       const { error: updateError } = await supabase
         .from('balls')
-        .update({ name, brand_model, weight, layout_notes })
+        .update({ name, brand_model, weight, notes, layout_notes })
         .eq('id', id);
 
       if (updateError) {
@@ -70,6 +71,10 @@ if (!ball) {
     <label>
       Layout Notes
       <textarea name="layout_notes" rows="3">{ball.layout_notes ?? ''}</textarea>
+    </label>
+    <label>
+      General Notes
+      <textarea name="notes" rows="3">{ball.notes ?? ''}</textarea>
     </label>
     <button type="submit">Save Changes</button>
   </form>
