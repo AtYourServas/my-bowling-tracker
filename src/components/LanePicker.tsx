@@ -85,7 +85,12 @@ function LaneStrip({
   const svgRef = useRef<SVGSVGElement>(null);
   const meta = META[mark];
 
-  function place(e: React.PointerEvent<SVGSVGElement>) {
+  // click, not pointerdown: iOS Safari has long-standing bugs dispatching
+  // pointer events on bare SVG elements (the tap placed nothing), while click
+  // on an element with cursor:pointer is reliable there — it's the same event
+  // the pin-diagram buttons use. A tap-that-becomes-a-scroll also no longer
+  // places a stray mark, since click only fires on a completed tap.
+  function place(e: React.MouseEvent<SVGSVGElement>) {
     const svg = svgRef.current;
     if (!svg) return;
     const pt = svg.createSVGPoint();
@@ -134,7 +139,7 @@ function LaneStrip({
           viewBox={`0 0 ${SW} ${SH}`}
           role="img"
           aria-label={`${meta.label} lane strip${value != null ? `, board ${fmt(value)}` : ', not set'}`}
-          onPointerDown={place}
+          onClick={place}
         >
           <rect className="lane-bed" x={0} y={2} width={SW} height={SH - 4} rx={3} />
 

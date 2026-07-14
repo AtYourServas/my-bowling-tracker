@@ -23,5 +23,16 @@ export const onRequest = defineMiddleware(async (context, next) => {
     return context.redirect('/dashboard');
   }
 
-  return next();
+  const response = await next();
+
+  // Signed-in pages render personal, mutable data and must never be served
+  // from a cache. Without an explicit header Safari heuristically caches them
+  // (and happily restores them from its back/forward cache), so a page like
+  // /settings could show stale values after a successful save. no-store also
+  // keeps these pages out of Safari's bfcache.
+  if (PROTECTED_ROUTES.some((route) => pathname.startsWith(route))) {
+    response.headers.set('Cache-Control', 'no-store');
+  }
+
+  return response;
 });
