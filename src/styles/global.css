@@ -261,6 +261,53 @@ nav.top {
   font-weight: var(--fw-med);
 }
 
+/* Persistent app bar (rendered only when signed in) */
+.appbar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  margin-bottom: var(--s5);
+  padding-bottom: var(--s3);
+  border-bottom: 1px solid var(--border);
+}
+.appbar .brand {
+  align-self: flex-start;
+  padding-right: 2.75rem; /* clear the fixed theme toggle on narrow screens */
+  font-size: var(--text-base);
+  font-weight: var(--fw-semi);
+  color: var(--text-primary);
+  text-decoration: none;
+}
+.appbar .brand:hover { color: var(--accent); text-decoration: none; }
+.appnav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2) var(--s3);
+  font-size: var(--text-sm);
+  font-weight: var(--fw-med);
+}
+.appnav a {
+  color: var(--text-secondary);
+  text-decoration: none;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+}
+.appnav a:hover { background: var(--surface-sunk); color: var(--text-primary); text-decoration: none; }
+.appnav a[aria-current="page"] { color: var(--accent-ink); background: var(--accent); }
+.appnav .logout { margin: 0 0 0 auto; }
+.appnav .logout button {
+  padding: 4px 8px;
+  font-size: var(--text-sm);
+  font-weight: var(--fw-med);
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.appnav .logout button:hover { color: var(--text-primary); border-color: var(--border-strong); }
+
 .error  { color: var(--coral); font-size: var(--text-sm); }
 .notice { color: var(--good); font-size: var(--text-sm); }
 p.switch { font-size: var(--text-sm); color: var(--text-secondary); margin-top: var(--s4); }
