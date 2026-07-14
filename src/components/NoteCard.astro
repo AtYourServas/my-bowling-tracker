@@ -21,7 +21,9 @@ const fallback = new Date(note.createdAt).toLocaleString('en-US', {
   {(note.link || note.result) && (
     <div class="note-head">
       {note.link && <a class="note-loc" href={note.link.href}>{note.link.label} &rarr;</a>}
-      {note.result && <span class="note-tag">{note.result}</span>}
+      {note.result && (
+        <span class="note-tag">{note.faced ? `Faced ${note.faced} · ${note.result}` : note.result}</span>
+      )}
     </div>
   )}
   <time class="note-time" datetime={note.createdAt} data-note-time>{fallback}</time>
@@ -51,7 +53,8 @@ const fallback = new Date(note.createdAt).toLocaleString('en-US', {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 0.5rem;
+    flex-wrap: wrap;
+    gap: 0.15rem 0.5rem;
     margin-bottom: 0.15rem;
   }
   .note-loc {

@@ -224,6 +224,23 @@ export function pinsStandingBefore(shots: ShotLite[]): number {
   return priorStanding;
 }
 
+export const FULL_RACK = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+
+/**
+ * The pin *identities* standing in front of the next ball, given the shots
+ * already thrown in the frame — the leave that ball actually faces. A cleared or
+ * respotted rack (strike, spare-clear, or foul) faces a full fresh rack;
+ * otherwise it faces the previous ball's leftover pins. Set-identity companion
+ * to pinsStandingBefore, which returns only the count.
+ */
+export function pinsFacedBefore(shots: ShotLite[]): number[] {
+  if (shots.length === 0) return [...FULL_RACK];
+  const prev = shots[shots.length - 1];
+  const standingAfter = (prev.pins_standing ?? []) as number[];
+  const cleared = (prev.foul ?? false) || prev.strike || standingAfter.length === 0;
+  return cleared ? [...FULL_RACK] : [...standingAfter];
+}
+
 export type AllowedMarks = { strike: boolean; spare: boolean };
 
 /**

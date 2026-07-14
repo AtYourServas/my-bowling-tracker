@@ -2,11 +2,11 @@
 import Layout from '../../../../layouts/Layout.astro';
 import ShotForm from '../../../../components/ShotForm';
 import NoteCard from '../../../../components/NoteCard.astro';
-import { fetchScoresheetForGame, frameProgress, computeFrameRolls, allowedMarks, pinsStandingBefore, parseShotShorthand, fetchEarliestIncompleteFrame } from '../../../../lib/scoring';
+import { fetchScoresheetForGame, frameProgress, computeFrameRolls, allowedMarks, pinsStandingBefore, pinsFacedBefore, parseShotShorthand, fetchEarliestIncompleteFrame } from '../../../../lib/scoring';
 import type { ShotLite } from '../../../../lib/scoring';
 import { fetchSessionHandicap } from '../../../../lib/handicap';
 import { fetchLeaveNotes, notesForLeave, leaveAnchor } from '../../../../lib/notes';
-import { leaveName } from '../../../../lib/leaves';
+import { leaveDisplayName } from '../../../../lib/leaves';
 import { laneForFrame, laneConfigFromSession } from '../../../../lib/lanes';
 
 const { supabase, user } = Astro.locals;
@@ -281,10 +281,12 @@ const ordinals = ['First', 'Second', 'Third'];
 // pins left standing after the last logged ball seed the next ball's picker
 const startingPins = frameShots.length ? frameShots[frameShots.length - 1].pins_standing ?? [] : [];
 
-// while facing a leave, surface what you noted the last times you left the same
-// pins (exact match, across all your sessions); shown capped, rest on /notes
-const facingLeave = progress.nextBall != null && startingPins.length > 0;
-const leaveNotes = facingLeave ? notesForLeave(await fetchLeaveNotes(supabase), startingPins) : [];
+// the leave this ball faces (pins standing before it — a full rack on ball 1 /
+// after a respot), used to surface what you noted the last times you shot it
+const facedNow = pinsFacedBefore(frameShots as ShotLite[]);
+// surface those past notes (exact faced-leave match, across all your sessions);
+// shown capped, the rest linked on /notes
+const leaveNotes = progress.nextBall != null ? notesForLeave(await fetchLeaveNotes(supabase), facedNow) : [];
 const leaveNotesShown = leaveNotes.slice(0, 5);
 
 // pre-select the session's default ball on the first ball of a frame and the
@@ -467,14 +469,14 @@ function ballResult(i: number): string {
 
   {leaveNotes.length > 0 && (
     <section class="leave-notes">
-      <div class="sechead-mini"><span class="chev"><i></i><i></i><i></i></span><h3>Past Notes &middot; {leaveName(startingPins)}</h3></div>
+      <div class="sechead-mini"><span class="chev"><i></i><i></i><i></i></span><h3>Past Notes &middot; {leaveDisplayName(facedNow)}</h3></div>
       <ul class="note-stream">
         {leaveNotesShown.map((note) => (
           <li><NoteCard note={note} /></li>
         ))}
       </ul>
       {leaveNotes.length > leaveNotesShown.length && (
-        <a class="leave-more" href={`/notes?view=leave#${leaveAnchor(startingPins)}`}>See all {leaveNotes.length} &rarr;</a>
+        <a class="leave-more" href={`/notes?view=leave#${leaveAnchor(facedNow)}`}>See all {leaveNotes.length} &rarr;</a>
       )}
     </section>
   )}
