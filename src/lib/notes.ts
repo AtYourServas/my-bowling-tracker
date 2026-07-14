@@ -44,7 +44,7 @@ function shotDetails(shot: any): NoteDetail[] {
   if (shot.slide_position) d.push({ icon: '👟', label: 'Slide', value: shot.slide_position });
   if (shot.breakpoint_board != null) d.push({ icon: '📍', label: 'Breakpoint', value: `board ${shot.breakpoint_board}` });
   if (shot.hook_timing) d.push({ icon: '🌀', label: 'Hook', value: HOOK_LABEL[shot.hook_timing] ?? shot.hook_timing });
-  if (shot.miss_direction) d.push({ icon: '💥', label: 'Miss', value: MISS_LABEL[shot.miss_direction] ?? shot.miss_direction });
+  if (shot.miss_direction) d.push({ icon: '⚠️', label: 'Miss', value: MISS_LABEL[shot.miss_direction] ?? shot.miss_direction });
   return d;
 }
 
