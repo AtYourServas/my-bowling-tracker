@@ -69,12 +69,12 @@ if (!ball) {
       <input type="number" name="weight" step="0.1" min="6" max="16" value={ball.weight ?? ''} />
     </label>
     <label>
-      Notes
-      <textarea name="notes" rows="3">{ball.notes ?? ''}</textarea>
-    </label>
-    <label>
       Layout Notes
       <textarea name="layout_notes" rows="3">{ball.layout_notes ?? ''}</textarea>
+    </label>
+    <label>
+      General Notes
+      <textarea name="notes" rows="3">{ball.notes ?? ''}</textarea>
     </label>
     <button type="submit">Save Changes</button>
   </form>
