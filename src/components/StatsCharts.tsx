@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { RateStats, LeaveConversion } from '../lib/stats';
 
 type BarDatum = { label: string; value: number; count: number };
 type TimeDatum = { date: string; score: number };
@@ -13,6 +14,8 @@ type Props = {
   averageOverTime: TimeDatum[];
   averageDrift: number | null;
   driftShotCount: number;
+  rateStats: RateStats | null;
+  leaveConversions: LeaveConversion[];
 };
 
 /** Signed drift (stance − slide) → "Straight" or "2.3 boards right/left". */
@@ -21,6 +24,54 @@ function formatDrift(boards: number): string {
   if (abs < 0.05) return 'Straight';
   const unit = abs.toFixed(1) === '1.0' ? 'board' : 'boards';
   return `${abs.toFixed(1)} ${unit} ${boards > 0 ? 'right' : 'left'}`;
+}
+
+/** "62%" for 62/118, an em dash when there have been no opportunities. */
+function formatRate(made: number, opportunities: number): string {
+  if (opportunities === 0) return '—';
+  return `${Math.round((made / opportunities) * 100)}%`;
+}
+
+function RateTile({ label, made, opportunities, noun }: { label: string; made: number; opportunities: number; noun: string }) {
+  return (
+    <div className="rate-stat">
+      <span className="rate-label">{label}</span>
+      <span className="rate-value">{formatRate(made, opportunities)}</span>
+      <span className="rate-sub">{opportunities === 0 ? `No ${noun} yet` : `${made} of ${opportunities} ${noun}`}</span>
+    </div>
+  );
+}
+
+function LeaveConversionTable({ data }: { data: LeaveConversion[] }) {
+  return (
+    <div className="chart-card">
+      <h2>Spare Conversion by Leave</h2>
+      {data.length === 0 ? (
+        <p className="chart-empty">Not enough data yet.</p>
+      ) : (
+        <table className="chart-table">
+          <thead>
+            <tr>
+              <th>Leave</th>
+              <th>Converted</th>
+              <th>Rate</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.map((d) => (
+              <tr key={d.name}>
+                <td>{d.name}</td>
+                <td>
+                  {d.converted}/{d.attempts}
+                </td>
+                <td>{formatRate(d.converted, d.attempts)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
 }
 
 const WIDTH = 320;
@@ -209,6 +260,8 @@ export default function StatsCharts({
   averageOverTime,
   averageDrift,
   driftShotCount,
+  rateStats,
+  leaveConversions,
 }: Props) {
   return (
     <div className="stats-charts">
@@ -230,6 +283,16 @@ export default function StatsCharts({
           <span className="hero-value-secondary">{formatDrift(averageDrift)}</span>
         </div>
       )}
+
+      {rateStats && (
+        <div className="rate-grid">
+          <RateTile label="Strike Rate" made={rateStats.strikes} opportunities={rateStats.strikeOpportunities} noun="first balls" />
+          <RateTile label="Spare Conversion" made={rateStats.spares} opportunities={rateStats.spareOpportunities} noun="leaves" />
+          <RateTile label="Open Frames" made={rateStats.openFrames} opportunities={rateStats.completedFrames} noun="frames" />
+        </div>
+      )}
+
+      {rateStats && <LeaveConversionTable data={leaveConversions} />}
 
       <LineChart title="Average Over Time" data={averageOverTime} />
       <BarChart title="Average by League" data={byLeague} unit="avg score" />
