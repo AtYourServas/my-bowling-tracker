@@ -1,4 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { sortedLeave, leaveDisplayName } from './leaves';
+import { pinsFacedBefore } from './scoring';
 
 // A single entry in a session's notes stream. Two sources feed it: standalone
 // session_notes (a running journal for the night) and per-shot notes stored on
@@ -15,6 +17,9 @@ export type NoteEntry = {
   // shot outcome + labelled detail, shown on shot-linked entries for context
   result?: string;
   details?: NoteDetail[];
+  // the leave this ball faced (e.g. "1-2" or "Full Rack"), set on leave-grouped
+  // entries so a card can read "Faced 1-2 · Left 2"
+  faced?: string;
 };
 
 function gameLabel(game: { is_practice: boolean | null; game_number: number | null }): string {
@@ -24,7 +29,7 @@ function gameLabel(game: { is_practice: boolean | null; game_number: number | nu
 
 // Shot columns needed to render a shot-linked note entry (outcome + marks + link).
 const SHOT_NOTE_SELECT =
-  'id, note, created_at, pins_standing, strike, spare, foul, hook_timing, miss_direction, target_type, target_value, slide_position, breakpoint_board, balls(name), frames!inner(frame_number, games!inner(id, game_number, is_practice, session_id))';
+  'id, frame_id, note, created_at, pins_standing, strike, spare, foul, hook_timing, miss_direction, target_type, target_value, slide_position, breakpoint_board, balls(name), frames!inner(frame_number, games!inner(id, game_number, is_practice, session_id))';
 
 type ShotMeta = { link: { href: string; label: string }; result: string; details: NoteDetail[] };
 
@@ -219,4 +224,154 @@ export async function fetchAllNotes(
     });
   }
   return groups;
+}
+
+// Notes tied to a specific leave *faced*, for surfacing "what I noted last time
+// I shot this" both in the shot logger and grouped on the notes page.
+export type LeaveGroup = {
+  leave: number[]; // the faced pins (sorted), e.g. [3, 10]; full 10 = a fresh rack
+  name: string; // leaveDisplayName(leave) — "Full Rack" for all ten
+  notes: NoteEntry[]; // newest first
+};
+
+// Short "Jul 7" label for a session_date ('YYYY-MM-DD'), pinned to local noon so
+// it can't slip a day. Used to prefix a leave note's link so cross-session notes
+// are distinguishable.
+function shortDate(date: string | null | undefined): string | null {
+  if (!date) return null;
+  const d = new Date(`${date}T00:00:00`);
+  if (isNaN(d.getTime())) return null;
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+export type LeaveNoteFilters = {
+  leagueId?: string;
+  from?: string; // inclusive 'YYYY-MM-DD'
+  to?: string; // inclusive 'YYYY-MM-DD'
+};
+
+// All note entries, grouped by the leave the noted ball *faced* (the pins
+// standing before it was thrown — not what it left). A first ball faces a full
+// rack. Both per-shot notes and shot-linked session_notes count; standalone
+// session_notes (no shot) are excluded. Scanned across every session the user
+// owns (RLS-scoped), optionally narrowed by league / date range; groups are
+// ordered most-noted first. Each entry carries a date-prefixed deep link plus
+// the faced leave.
+export async function fetchLeaveNotes(
+  supabase: SupabaseClient,
+  filters: LeaveNoteFilters = {},
+): Promise<LeaveGroup[]> {
+  const { data: sessions } = await supabase.from('sessions').select('id, session_date, league_id');
+  const dateBySession = new Map<string, string | null>((sessions ?? []).map((s: any) => [s.id, s.session_date]));
+
+  // sessions passing the league / date-range filters; a note is kept only if its
+  // shot's session is in here
+  const allowedSessions = new Set(
+    (sessions ?? [])
+      .filter((s: any) => {
+        if (filters.leagueId && s.league_id !== filters.leagueId) return false;
+        if (filters.from && (!s.session_date || s.session_date < filters.from)) return false;
+        if (filters.to && (!s.session_date || s.session_date > filters.to)) return false;
+        return true;
+      })
+      .map((s: any) => s.id),
+  );
+
+  const { data: sessionNotes } = await supabase.from('session_notes').select('id, body, created_at, shot_id');
+  const linkedIds = [...new Set((sessionNotes ?? []).filter((n) => n.shot_id).map((n) => n.shot_id))];
+
+  const [notedRes, linkedRes] = await Promise.all([
+    // shots that carry their own note — bounded by how many the user wrote
+    supabase.from('shots').select(SHOT_NOTE_SELECT).not('note', 'is', null),
+    // plus shots a session_note points at, so we know that shot's faced leave
+    linkedIds.length
+      ? supabase.from('shots').select(SHOT_NOTE_SELECT).in('id', linkedIds)
+      : Promise.resolve({ data: [] as any[] }),
+  ]);
+
+  const notedShots = [...(notedRes.data ?? []), ...(linkedRes.data ?? [])];
+  const shotById = new Map<string, any>();
+  for (const shot of notedShots) shotById.set(shot.id, shot);
+
+  // Every shot in each involved frame, ordered, so we can reconstruct the leave
+  // each noted ball faced (= pins standing before it, respots included).
+  const frameIds = [...new Set(notedShots.map((s) => s.frame_id).filter(Boolean))];
+  const { data: frameShotRows } = frameIds.length
+    ? await supabase
+        .from('shots')
+        .select('id, frame_id, pins_standing, strike, spare, foul')
+        .in('frame_id', frameIds)
+        .order('created_at', { ascending: true })
+    : { data: [] as any[] };
+  const shotsByFrame = new Map<string, any[]>();
+  for (const s of frameShotRows ?? []) {
+    const arr = shotsByFrame.get(s.frame_id) ?? [];
+    arr.push(s);
+    shotsByFrame.set(s.frame_id, arr);
+  }
+
+  // The leave a given noted shot faced: the pins standing before its position in
+  // the frame (full rack for the first ball / after a respot).
+  const facedFor = (shot: any): number[] => {
+    const siblings = shotsByFrame.get(shot.frame_id) ?? [];
+    const idx = siblings.findIndex((s) => s.id === shot.id);
+    return sortedLeave(pinsFacedBefore(idx >= 0 ? siblings.slice(0, idx) : []));
+  };
+
+  const byLeave = new Map<string, { leave: number[]; notes: NoteEntry[] }>();
+
+  const addNote = (shot: any, id: string, kind: 'note' | 'shot', body: string, createdAt: string) => {
+    const sessionId = shot.frames?.games?.session_id;
+    if (!sessionId || !allowedSessions.has(sessionId)) return;
+    const meta = shotMetaFrom(shot, sessionId);
+    if (!meta) return;
+    const faced = facedFor(shot);
+    const dp = shortDate(dateBySession.get(sessionId));
+    const entry: NoteEntry = {
+      id,
+      kind,
+      body,
+      createdAt,
+      link: { href: meta.link.href, label: dp ? `${dp} · ${meta.link.label}` : meta.link.label },
+      result: meta.result,
+      details: meta.details.length ? meta.details : undefined,
+      faced: faced.length === 10 ? 'Full Rack' : faced.join('-'),
+    };
+    const key = faced.join('-');
+    const g = byLeave.get(key) ?? { leave: faced, notes: [] };
+    g.notes.push(entry);
+    byLeave.set(key, g);
+  };
+
+  for (const shot of notedRes.data ?? []) {
+    const body = (shot.note ?? '').trim();
+    if (body) addNote(shot, shot.id, 'shot', body, shot.created_at);
+  }
+
+  for (const note of sessionNotes ?? []) {
+    if (!note.shot_id) continue;
+    const shot = shotById.get(note.shot_id);
+    if (!shot) continue;
+    const body = (note.body ?? '').trim();
+    if (body) addNote(shot, note.id, 'note', body, note.created_at);
+  }
+
+  const groups: LeaveGroup[] = [];
+  for (const { leave, notes } of byLeave.values()) {
+    notes.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    groups.push({ leave, name: leaveDisplayName(leave), notes });
+  }
+  groups.sort((a, b) => b.notes.length - a.notes.length || a.leave.join('-').localeCompare(b.leave.join('-')));
+  return groups;
+}
+
+// The notes for one exact leave (sorted-pin match), or [] if none.
+export function notesForLeave(groups: LeaveGroup[], leave: number[]): NoteEntry[] {
+  const key = sortedLeave(leave).join('-');
+  return groups.find((g) => g.leave.join('-') === key)?.notes ?? [];
+}
+
+// A stable anchor id for a leave group on the notes page (e.g. "leave-3-10").
+export function leaveAnchor(leave: number[]): string {
+  return `leave-${sortedLeave(leave).join('-')}`;
 }

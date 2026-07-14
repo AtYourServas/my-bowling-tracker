@@ -1,9 +1,12 @@
 ---
 import Layout from '../../../../layouts/Layout.astro';
 import ShotForm from '../../../../components/ShotForm';
-import { fetchScoresheetForGame, frameProgress, computeFrameRolls, allowedMarks, pinsStandingBefore, parseShotShorthand, fetchEarliestIncompleteFrame } from '../../../../lib/scoring';
+import NoteCard from '../../../../components/NoteCard.astro';
+import { fetchScoresheetForGame, frameProgress, computeFrameRolls, allowedMarks, pinsStandingBefore, pinsFacedBefore, parseShotShorthand, fetchEarliestIncompleteFrame } from '../../../../lib/scoring';
 import type { ShotLite } from '../../../../lib/scoring';
 import { fetchSessionHandicap } from '../../../../lib/handicap';
+import { fetchLeaveNotes, notesForLeave, leaveAnchor } from '../../../../lib/notes';
+import { leaveDisplayName } from '../../../../lib/leaves';
 import { laneForFrame, laneConfigFromSession } from '../../../../lib/lanes';
 
 const { supabase, user } = Astro.locals;
@@ -278,6 +281,14 @@ const ordinals = ['First', 'Second', 'Third'];
 // pins left standing after the last logged ball seed the next ball's picker
 const startingPins = frameShots.length ? frameShots[frameShots.length - 1].pins_standing ?? [] : [];
 
+// the leave this ball faces (pins standing before it — a full rack on ball 1 /
+// after a respot), used to surface what you noted the last times you shot it
+const facedNow = pinsFacedBefore(frameShots as ShotLite[]);
+// surface those past notes (exact faced-leave match, across all your sessions);
+// shown capped, the rest linked on /notes
+const leaveNotes = progress.nextBall != null ? notesForLeave(await fetchLeaveNotes(supabase), facedNow) : [];
+const leaveNotesShown = leaveNotes.slice(0, 5);
+
 // pre-select the session's default ball on the first ball of a frame and the
 // spare ball on later balls; each shot's ball can still be changed manually
 const defaultBallId =
@@ -456,6 +467,20 @@ function ballResult(i: number): string {
     </ul>
   )}
 
+  {leaveNotes.length > 0 && (
+    <details class="leave-notes" open>
+      <summary>Past Notes &middot; {leaveDisplayName(facedNow)} <span class="ln-count">({leaveNotes.length})</span></summary>
+      <ul class="note-stream">
+        {leaveNotesShown.map((note) => (
+          <li><NoteCard note={note} /></li>
+        ))}
+      </ul>
+      {leaveNotes.length > leaveNotesShown.length && (
+        <a class="leave-more" href={`/notes?view=leave#${leaveAnchor(facedNow)}`}>See all {leaveNotes.length} &rarr;</a>
+      )}
+    </details>
+  )}
+
   {progress.nextBall != null ? (
     mode === 'pick' ? (
       <>
@@ -514,5 +539,34 @@ function ballResult(i: number): string {
   }
   .add-note button {
     align-self: flex-start;
+  }
+  .leave-notes {
+    margin: 0.5rem 0 1rem;
+  }
+  .leave-notes > summary {
+    cursor: pointer;
+    color: var(--accent);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .leave-notes .ln-count {
+    color: var(--text-muted);
+    font-weight: 400;
+  }
+  .leave-notes .note-stream {
+    margin-top: 0.6rem;
+  }
+  .note-stream {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.75rem;
+  }
+  .leave-more {
+    display: inline-block;
+    margin-top: 0.5rem;
+    font-size: var(--text-sm);
+    font-weight: 600;
   }
 </style>

@@ -44,3 +44,9 @@ export function leaveLabel(pins: number[] | null | undefined): string {
   if (!isSpareLeave(pins)) return 'Strike ball';
   return `Spare · ${leaveName(pins as number[])}`;
 }
+
+// Display name for a set of standing pins, treating a full 10 as "Full Rack"
+// (used where a fresh rack is a valid "faced" state, e.g. a first-ball note).
+export function leaveDisplayName(pins: number[]): string {
+  return pins.length === 10 ? 'Full Rack' : leaveName(pins);
+}
