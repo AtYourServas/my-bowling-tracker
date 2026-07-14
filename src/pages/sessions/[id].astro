@@ -6,6 +6,7 @@ import { fetchSessionHandicapDetail } from '../../lib/handicap';
 import { fetchSessionLaneStats } from '../../lib/stats';
 import { laneLabel, laneConfigFromSession, hasLanePair } from '../../lib/lanes';
 import { fetchSessionNotes } from '../../lib/notes';
+import NoteCard from '../../components/NoteCard.astro';
 
 const { supabase, user } = Astro.locals;
 const { id } = Astro.params;
@@ -206,8 +207,6 @@ function gameScore(game: { id: string; final_score: number | null }) {
 }
 
 const notes = await fetchSessionNotes(supabase, id!);
-const noteTime = (iso: string) =>
-  new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
 const practiceGame = games?.find((g) => g.is_practice);
 const game1 = games?.find((g) => g.game_number === 1);
@@ -450,44 +449,27 @@ const leagueSlots = [
   {notes.length > 0 ? (
     <ul class="note-stream">
       {notes.map((note) => (
-        <li class="note">
-          {(note.link || note.result) && (
-            <div class="note-head">
-              {note.link && <a class="note-loc" href={note.link.href}>{note.link.label} &rarr;</a>}
-              {note.result && <span class="note-tag">{note.result}</span>}
-            </div>
-          )}
-          <time class="note-time" datetime={note.createdAt} data-note-time>{noteTime(note.createdAt)}</time>
-          <p class="note-body">{note.body}</p>
-          {note.details && (
-            <ul class="note-details">
-              {note.details.map((d) => (
-                <li>
-                  <span class="dico" aria-hidden="true">{d.icon}</span>
-                  <span class="dlabel">{d.label}</span>
-                  <span class="dval">{d.value}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-          {note.kind === 'note' && (
-            <div class="note-actions">
-              <details class="note-edit">
-                <summary>Edit</summary>
-                <form method="POST">
-                  <input type="hidden" name="intent" value="edit_note" />
+        <li>
+          <NoteCard note={note}>
+            {note.kind === 'note' && (
+              <div class="note-actions">
+                <details class="note-edit">
+                  <summary>Edit</summary>
+                  <form method="POST">
+                    <input type="hidden" name="intent" value="edit_note" />
+                    <input type="hidden" name="note_id" value={note.id} />
+                    <textarea name="body" rows="2" aria-label="Edit note" required>{note.body}</textarea>
+                    <button type="submit" class="secondary">Save Note</button>
+                  </form>
+                </details>
+                <form method="POST" onsubmit="return confirm('Delete this note?');">
+                  <input type="hidden" name="intent" value="delete_note" />
                   <input type="hidden" name="note_id" value={note.id} />
-                  <textarea name="body" rows="2" aria-label="Edit note" required>{note.body}</textarea>
-                  <button type="submit" class="secondary">Save Note</button>
+                  <button type="submit" class="linklike danger">Delete</button>
                 </form>
-              </details>
-              <form method="POST" onsubmit="return confirm('Delete this note?');">
-                <input type="hidden" name="intent" value="delete_note" />
-                <input type="hidden" name="note_id" value={note.id} />
-                <button type="submit" class="linklike danger">Delete</button>
-              </form>
-            </div>
-          )}
+              </div>
+            )}
+          </NoteCard>
         </li>
       ))}
     </ul>
@@ -540,65 +522,6 @@ const leagueSlots = [
     display: grid;
     gap: 0.75rem;
   }
-  .note {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    padding: 0.6rem 0.75rem;
-  }
-  .note-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
-    margin-bottom: 0.15rem;
-  }
-  .note-loc {
-    font-weight: 600;
-    font-size: var(--text-sm);
-  }
-  .note-tag {
-    font-size: var(--text-sm);
-    color: var(--text-secondary);
-    background: var(--surface-sunk);
-    border-radius: var(--radius-sm);
-    padding: 0.05rem 0.4rem;
-    white-space: nowrap;
-  }
-  .note-time {
-    display: block;
-    color: var(--text-muted);
-    font-size: var(--text-sm);
-    margin-bottom: 0.35rem;
-  }
-  .note-body {
-    margin: 0;
-    white-space: pre-wrap;
-  }
-  .note-details {
-    list-style: none;
-    margin: 0.5rem 0 0;
-    padding: 0;
-    display: grid;
-    gap: 0.2rem;
-  }
-  .note-details li {
-    display: grid;
-    grid-template-columns: 1.4rem 5.2rem 1fr;
-    align-items: baseline;
-    gap: 0.4rem;
-    font-size: var(--text-sm);
-  }
-  .note-details .dico {
-    text-align: center;
-  }
-  .note-details .dlabel {
-    color: var(--text-muted);
-  }
-  .note-details .dval {
-    color: var(--text-secondary);
-    font-variant-numeric: tabular-nums;
-  }
   .note-actions {
     display: flex;
     align-items: center;
@@ -632,18 +555,3 @@ const leagueSlots = [
     color: var(--coral);
   }
 </style>
-
-<script is:inline>
-  // created_at is stored UTC; render each note time in the viewer's local zone.
-  for (const el of document.querySelectorAll('time[data-note-time]')) {
-    const d = new Date(el.getAttribute('datetime'));
-    if (!isNaN(d.getTime())) {
-      el.textContent = d.toLocaleString(undefined, {
-        month: 'short',
-        day: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit',
-      });
-    }
-  }
-</script>

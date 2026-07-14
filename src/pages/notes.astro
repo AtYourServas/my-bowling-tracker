@@ -1,0 +1,105 @@
+---
+import Layout from '../layouts/Layout.astro';
+import NoteCard from '../components/NoteCard.astro';
+import { fetchAllNotes } from '../lib/notes';
+
+const { supabase } = Astro.locals;
+
+const params = Astro.url.searchParams;
+const filterLeague = params.get('league') ?? '';
+const filterSession = params.get('session') ?? '';
+const hasFilters = Boolean(filterLeague || filterSession);
+
+const groups = await fetchAllNotes(supabase, {
+  leagueId: filterLeague || undefined,
+  sessionId: filterSession || undefined,
+});
+
+// Filter dropdown options.
+const { data: leagues } = await supabase.from('leagues').select('id, name').order('name');
+const { data: sessionRows } = await supabase
+  .from('sessions')
+  .select('id, alley_name, session_date')
+  .order('session_date', { ascending: false });
+
+const noteCount = groups.reduce((n, g) => n + g.entries.length, 0);
+
+const sessionLabel = (s: { alley_name: string | null; session_date: string | null }) =>
+  `${s.session_date ?? ''}${s.alley_name ? ` · ${s.alley_name}` : ''}`.trim();
+
+const groupHeading = (g: (typeof groups)[number]['session']) =>
+  [g.date, g.alley || 'Unnamed alley', g.league].filter(Boolean).join(' · ');
+---
+
+<Layout title="Notes">
+  <nav class="top"><a href="/dashboard">&larr; Dashboard</a></nav>
+  <h1>Notes</h1>
+  <p class="meta">{noteCount} note{noteCount === 1 ? '' : 's'} across {groups.length} session{groups.length === 1 ? '' : 's'}</p>
+
+  <form method="GET" class="filter-form">
+    <label>
+      League
+      <select name="league">
+        <option value="">All</option>
+        {leagues?.map((l) => (
+          <option value={l.id} selected={l.id === filterLeague}>{l.name}</option>
+        ))}
+      </select>
+    </label>
+    <label>
+      Session
+      <select name="session">
+        <option value="">All</option>
+        {sessionRows?.map((s) => (
+          <option value={s.id} selected={s.id === filterSession}>{sessionLabel(s)}</option>
+        ))}
+      </select>
+    </label>
+    <button type="submit">Filter</button>
+    {hasFilters && <a href="/notes">Clear Filters</a>}
+  </form>
+
+  {groups.length > 0 ? (
+    <div class="note-groups">
+      {groups.map((group) => (
+        <section class="note-group">
+          <div class="group-head">
+            <a href={`/sessions/${group.session.id}#notes`}>{groupHeading(group.session)} &rarr;</a>
+          </div>
+          <ul class="note-stream">
+            {group.entries.map((note) => (
+              <li><NoteCard note={note} /></li>
+            ))}
+          </ul>
+        </section>
+      ))}
+    </div>
+  ) : (
+    <p class="empty">
+      {hasFilters ? 'No notes match those filters.' : 'No notes yet — jot one while bowling or on any session.'}
+    </p>
+  )}
+</Layout>
+
+<style>
+  .note-groups {
+    display: grid;
+    gap: 1.5rem;
+  }
+  .group-head {
+    margin-bottom: 0.5rem;
+    padding-bottom: 0.25rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .group-head a {
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .note-stream {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.75rem;
+  }
+</style>
