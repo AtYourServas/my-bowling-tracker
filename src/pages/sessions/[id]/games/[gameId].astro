@@ -249,7 +249,7 @@ const { data: shots } = frameRow
 const { data: balls } = await supabase.from('balls').select('id, name').order('name');
 const { data: approaches } = await supabase
   .from('approaches')
-  .select('id, name, reference_lineup, reference_slide, reference_target_type, reference_target_value')
+  .select('id, name, reference_lineup, reference_slide, reference_target_type, reference_target_value, leave')
   .order('name');
 
 // profile preference: optional shot-logger fields the bowler has hidden
