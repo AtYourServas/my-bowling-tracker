@@ -1,12 +1,12 @@
 ---
-import type { FrameCell } from '../lib/scoring';
+import type { FrameCell, FramePinfall } from '../lib/scoring';
 
 interface Props {
   cells: FrameCell[];
-  firstBallLeave: (number[] | null)[];
+  pinfall: FramePinfall[];
   label?: string;
 }
-const { cells, firstBallLeave, label } = Astro.props;
+const { cells, pinfall, label } = Astro.props;
 
 // Same corner-box rule as the game page: a struck frame (1-9) shows the X
 // alone in the top-right corner, dropping the placeholder empty 2nd-ball box.
@@ -22,14 +22,24 @@ const PIN_ROWS = [
   [2, 3],
   [1],
 ];
+
+// Which ball took a pin down (or it's still standing / unbowled), for the dots.
+function pinState(pf: FramePinfall, p: number): 'unbowled' | 'down1' | 'down2' | 'standing' {
+  const { leave1, leave2 } = pf;
+  if (leave1 == null) return 'unbowled';
+  if (!leave1.includes(p)) return 'down1'; // fell on the first ball
+  if (leave2 != null && !leave2.includes(p)) return 'down2'; // picked up on the second ball
+  return 'standing'; // still up after the frame's throws
+}
 ---
 
 <div class="mini-sheet-wrap">
   <div class="mini-sheet" aria-label={label ? `${label} scoresheet` : 'Scoresheet'}>
     {cells.map((cell) => {
-      const leave = firstBallLeave[cell.frameNumber - 1];
+      const pf = pinfall[cell.frameNumber - 1];
       return (
         <div class:list={['mcell', { f10: cell.frameNumber === 10 }]}>
+          <div class="mfnum">{cell.frameNumber}</div>
           <div class="mballs">
             {displayBalls(cell).map((b) => (
               <span class:list={['mbox', { strike: b.kind === 'strike', spare: b.kind === 'spare', foul: b.kind === 'foul', empty: b.kind === 'empty' }]}>{b.text}</span>
@@ -39,9 +49,7 @@ const PIN_ROWS = [
           <div class="mini-pinfall" aria-hidden="true">
             {PIN_ROWS.map((row) => (
               <div class="pf-row">
-                {row.map((p) => (
-                  <span class:list={['pf-dot', { standing: leave != null && leave.includes(p), down: leave != null && !leave.includes(p), unbowled: leave == null }]}></span>
-                ))}
+                {row.map((p) => <span class:list={['pf-dot', pinState(pf, p)]}></span>)}
               </div>
             ))}
           </div>
@@ -66,24 +74,38 @@ const PIN_ROWS = [
     overflow: hidden;
   }
   .mcell {
-    width: 34px;
+    width: 36px;
     flex: none;
     border-right: 1px solid var(--border);
     display: flex;
     flex-direction: column;
   }
-  .mcell.f10 { width: 48px; }
+  .mcell.f10 { width: 54px; }
   .mcell:last-child { border-right: none; }
+
+  /* fixed-height rows so the marks / totals / pinfall line up across every frame */
+  .mfnum {
+    height: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-mono);
+    font-size: 0.5rem;
+    color: var(--text-muted);
+    background: var(--surface-sunk);
+    border-bottom: 1px solid var(--border);
+  }
   .mballs {
+    height: 17px;
     display: flex;
     justify-content: flex-end;
-    padding: 2px 2px 0;
-    min-height: 15px;
+    align-items: flex-start;
+    padding: 2px 3px 0;
   }
   .mbox {
-    min-width: 11px;
+    box-sizing: border-box;
+    width: 13px;
     height: 13px;
-    padding: 0 1px;
     border: 1px solid var(--border);
     border-left: none;
     display: flex;
@@ -100,11 +122,13 @@ const PIN_ROWS = [
   .mbox.foul { color: var(--coral); font-weight: var(--fw-semi); }
   .mbox.empty { color: var(--text-muted); }
   .mtotal {
-    text-align: center;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     font-size: 0.72rem;
     font-weight: var(--fw-semi);
     font-variant-numeric: tabular-nums;
-    padding: 1px 0 2px;
   }
   .mtotal.blank { color: var(--border-strong); }
 
@@ -120,12 +144,14 @@ const PIN_ROWS = [
   :global(html.show-pinfall) .mini-pinfall { display: flex; }
   .pf-row { display: flex; gap: 1.5px; }
   .pf-dot {
+    box-sizing: border-box;
     width: 4px;
     height: 4px;
     border-radius: 50%;
     background: var(--border-strong);
   }
   .pf-dot.standing { background: var(--coral); }
-  .pf-dot.down { background: var(--border-strong); opacity: 0.4; }
-  .pf-dot.unbowled { background: transparent; box-shadow: inset 0 0 0 1px var(--border); }
+  .pf-dot.down2 { background: var(--good); }
+  .pf-dot.down1 { background: var(--border-strong); opacity: 0.4; }
+  .pf-dot.unbowled { background: transparent; border: 1px solid var(--border); }
 </style>

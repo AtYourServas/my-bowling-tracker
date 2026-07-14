@@ -498,10 +498,13 @@ export async function fetchScoresheetForGame(
   return computeScoresheet((frames ?? []) as unknown as FrameLite[]);
 }
 
+/** Pins left standing after ball 1 / ball 2 of a frame (null = that ball wasn't thrown). */
+export type FramePinfall = { leave1: number[] | null; leave2: number[] | null };
+
 export type MiniSheet = {
   cells: FrameCell[];
-  /** Pins left standing after each frame's first ball (the pinfall leave); null if unbowled. */
-  firstBallLeave: (number[] | null)[];
+  /** Per frame (1..10) pinfall leaves, so the summary can colour ball-1 vs ball-2 pinfall. */
+  pinfall: FramePinfall[];
 };
 
 /**
@@ -532,11 +535,14 @@ export async function fetchMiniScoresheets(
   for (const gameId of gameIds) {
     const gframes = byGame.get(gameId) ?? [];
     const byNumber = new Map(gframes.map((f) => [f.frame_number, f]));
-    const firstBallLeave = Array.from({ length: 10 }, (_, i) => {
-      const first = byNumber.get(i + 1)?.shots[0];
-      return first ? first.pins_standing ?? [] : null;
+    const pinfall = Array.from({ length: 10 }, (_, i) => {
+      const shots = byNumber.get(i + 1)?.shots ?? [];
+      return {
+        leave1: shots[0] ? shots[0].pins_standing ?? [] : null,
+        leave2: shots[1] ? shots[1].pins_standing ?? [] : null,
+      };
     });
-    out.set(gameId, { cells: computeScoresheet(gframes), firstBallLeave });
+    out.set(gameId, { cells: computeScoresheet(gframes), pinfall });
   }
 
   return out;

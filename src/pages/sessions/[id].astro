@@ -379,7 +379,7 @@ const leagueSlots = [
                 {miniSheet(slot.game.id) && (
                   <MiniScoresheet
                     cells={miniSheet(slot.game.id)!.cells}
-                    firstBallLeave={miniSheet(slot.game.id)!.firstBallLeave}
+                    pinfall={miniSheet(slot.game.id)!.pinfall}
                     label={slot.label}
                   />
                 )}
@@ -432,7 +432,7 @@ const leagueSlots = [
                 {miniSheet(game.id) && (
                   <MiniScoresheet
                     cells={miniSheet(game.id)!.cells}
-                    firstBallLeave={miniSheet(game.id)!.firstBallLeave}
+                    pinfall={miniSheet(game.id)!.pinfall}
                     label={`Game ${i + 1}`}
                   />
                 )}
