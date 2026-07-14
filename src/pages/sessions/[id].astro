@@ -452,10 +452,11 @@ const leagueSlots = [
       {notes.map((note) => (
         <li class="note">
           <div class="note-head">
-            <span class="note-time">{noteTime(note.createdAt)}</span>
-            {note.kind === 'shot' && <span class="note-tag">Shot Note</span>}
+            <time class="note-time" datetime={note.createdAt} data-note-time>{noteTime(note.createdAt)}</time>
+            {note.result && <span class="note-tag">{note.result}</span>}
           </div>
           <p class="note-body">{note.body}</p>
+          {note.remarks && <p class="note-remarks">{note.remarks}</p>}
           {note.link && <a class="note-link" href={note.link.href}>{note.link.label} &rarr;</a>}
           {note.kind === 'note' && (
             <div class="note-actions">
@@ -554,6 +555,12 @@ const leagueSlots = [
     margin: 0;
     white-space: pre-wrap;
   }
+  .note-remarks {
+    margin: 0.35rem 0 0;
+    color: var(--text-muted);
+    font-size: var(--text-sm);
+    font-variant-numeric: tabular-nums;
+  }
   .note-link {
     display: inline-block;
     margin-top: 0.35rem;
@@ -592,3 +599,18 @@ const leagueSlots = [
     color: var(--coral);
   }
 </style>
+
+<script is:inline>
+  // created_at is stored UTC; render each note time in the viewer's local zone.
+  for (const el of document.querySelectorAll('time[data-note-time]')) {
+    const d = new Date(el.getAttribute('datetime'));
+    if (!isNaN(d.getTime())) {
+      el.textContent = d.toLocaleString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      });
+    }
+  }
+</script>
