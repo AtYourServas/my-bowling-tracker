@@ -57,6 +57,18 @@ if (Astro.request.method === 'POST') {
     } else {
       return Astro.redirect(`/sessions/${sessionId}/games/${gameId}?frame=${frameNumber}${postModeQ}`);
     }
+  } else if (intent === 'add_note') {
+    const body = formData.get('body')?.toString().trim();
+
+    if (body) {
+      const { error: noteError } = await supabase
+        .from('session_notes')
+        .insert({ user_id: user!.id, session_id: sessionId, body });
+      if (noteError) error = noteError.message;
+      else return Astro.redirect(`/sessions/${sessionId}/games/${gameId}?frame=${frameNumber}${postModeQ}#note`);
+    } else {
+      return Astro.redirect(`/sessions/${sessionId}/games/${gameId}?frame=${frameNumber}${postModeQ}#note`);
+    }
   } else if (intent === 'log_shot' || intent === 'log_shorthand') {
     let { data: frame } = await supabase
       .from('frames')
@@ -416,6 +428,16 @@ function ballResult(i: number): string {
       : <span class="framenav disabled" aria-hidden="true">Next Frame &rarr;</span>}
   </div>
 
+  <details class="game-note" id="note">
+    <summary>+ Add a Note</summary>
+    <form method="POST" class="add-note">
+      <input type="hidden" name="intent" value="add_note" />
+      <input type="hidden" name="mode" value={mode} />
+      <textarea name="body" rows="2" placeholder="Quick thought while bowling — lane read, adjustment, reminder…" aria-label="New note" required></textarea>
+      <button type="submit" class="secondary">Add Note</button>
+    </form>
+  </details>
+
   {frameShots.length > 0 && (
     <ul class="ball-log">
       {frameShots.map((shot: any, i: number) => (
@@ -474,3 +496,23 @@ function ballResult(i: number): string {
     <button type="submit" class="danger">Delete Game</button>
   </form>
 </Layout>
+
+<style>
+  .game-note {
+    margin: 0.5rem 0 1rem;
+  }
+  .game-note summary {
+    cursor: pointer;
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .add-note {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+  }
+  .add-note button {
+    align-self: flex-start;
+  }
+</style>
