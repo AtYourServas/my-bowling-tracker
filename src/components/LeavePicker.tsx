@@ -27,11 +27,20 @@ function PinIcon({ n }: { n: number }) {
 type Props = {
   /** Pins standing for this approach's leave (empty = strike / first-ball approach). */
   initialLeave?: number[];
-  /** id of the Name input the suggestion chip fills. */
+  /** id of the Name input the suggestion chip fills (approach variant only). */
   nameFieldId?: string;
+  /** Hidden input field name that carries the selected pins. */
+  fieldName?: string;
+  /** 'approach' = setup form (name chip, strike wording); 'filter' = list filter. */
+  variant?: 'approach' | 'filter';
 };
 
-export default function LeavePicker({ initialLeave = [], nameFieldId = 'approach-name' }: Props) {
+export default function LeavePicker({
+  initialLeave = [],
+  nameFieldId = 'approach-name',
+  fieldName = 'leave',
+  variant = 'approach',
+}: Props) {
   const [standing, setStanding] = useState<Set<number>>(new Set(initialLeave));
 
   function togglePin(pin: number) {
@@ -49,7 +58,8 @@ export default function LeavePicker({ initialLeave = [], nameFieldId = 'approach
 
   const pins = sortedLeave(Array.from(standing));
   const suggestion = leaveName(pins);
-  const isSpare = pins.length > 0;
+  const hasPins = pins.length > 0;
+  const isApproach = variant === 'approach';
 
   function applyName() {
     if (!suggestion) return;
@@ -59,15 +69,15 @@ export default function LeavePicker({ initialLeave = [], nameFieldId = 'approach
 
   return (
     <div>
-      <input type="hidden" name="leave" value={pins.join(',')} />
+      <input type="hidden" name={fieldName} value={pins.join(',')} />
 
       <div className="pin-shortcuts">
-        {isSpare && (
+        {hasPins && (
           <button type="button" className="clear" onClick={clearLeave}>
-            Clear (Strike Ball)
+            {isApproach ? 'Clear (Strike Ball)' : 'Clear'}
           </button>
         )}
-        {suggestion && (
+        {isApproach && suggestion && (
           <button type="button" className="name-suggest" onClick={applyName}>
             Use Name: {suggestion}
           </button>
@@ -75,9 +85,11 @@ export default function LeavePicker({ initialLeave = [], nameFieldId = 'approach
       </div>
 
       <p className="pin-hint">
-        {isSpare
-          ? `Spare approach for the ${suggestion}`
-          : 'No leave selected — a first-ball / strike approach. Highlight the pins this approach is for:'}
+        {isApproach
+          ? hasPins
+            ? `Spare approach for the ${suggestion}`
+            : 'No leave selected — a first-ball / strike approach. Highlight the pins this approach is for:'
+          : 'Highlight pins to show approaches whose leave includes them:'}
       </p>
 
       <div className="pin-rows">
