@@ -54,6 +54,17 @@ if (Astro.request.method === 'POST') {
 }
 
 const { data: balls } = await supabase.from('balls').select('id, name').order('name');
+
+// profile preference: optional approach fields the bowler has hidden (PR 37).
+// A hidden mark drops its LanePicker strip; a hidden field isn't rendered.
+const { data: prefRow } = await supabase
+  .from('profiles')
+  .select('hidden_approach_fields')
+  .eq('id', user!.id)
+  .maybeSingle();
+const hiddenFields: string[] = prefRow?.hidden_approach_fields ?? [];
+const show = (key: string) => !hiddenFields.includes(key);
+const shownMarks = APPROACH_MARKS.filter((m) => show(m));
 ---
 
 <Layout title="Add an Approach">
@@ -67,22 +78,30 @@ const { data: balls } = await supabase.from('balls').select('id, name').order('n
       Name
       <input type="text" id="approach-name" name="name" required placeholder="e.g. Strike ball" />
     </label>
-    <label>
-      Reference Ball
-      <select name="reference_ball_id">
-        <option value="">None</option>
-        {balls?.map((ball) => <option value={ball.id}>{ball.name}</option>)}
-      </select>
-    </label>
+    {show('ball') && (
+      <label>
+        Reference Ball
+        <select name="reference_ball_id">
+          <option value="">None</option>
+          {balls?.map((ball) => <option value={ball.id}>{ball.name}</option>)}
+        </select>
+      </label>
+    )}
     <div class="sechead-mini"><span class="chev"><i></i><i></i><i></i></span><h3>Leave</h3></div>
     <LeavePicker client:load />
-    <div class="sechead-mini"><span class="chev"><i></i><i></i><i></i></span><h3>Reference Marks</h3></div>
-    <LanePicker client:load names={APPROACH_NAMES} marks={[...APPROACH_MARKS]} />
+    {shownMarks.length > 0 && (
+      <>
+        <div class="sechead-mini"><span class="chev"><i></i><i></i><i></i></span><h3>Reference Marks</h3></div>
+        <LanePicker client:load names={APPROACH_NAMES} marks={shownMarks} />
+      </>
+    )}
 
-    <label>
-      Notes
-      <textarea name="notes" rows="3"></textarea>
-    </label>
+    {show('notes') && (
+      <label>
+        Notes
+        <textarea name="notes" rows="3"></textarea>
+      </label>
+    )}
     <button type="submit">Add Approach</button>
   </form>
 </Layout>
