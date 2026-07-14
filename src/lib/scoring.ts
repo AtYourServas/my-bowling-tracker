@@ -497,3 +497,47 @@ export async function fetchScoresheetForGame(
 
   return computeScoresheet((frames ?? []) as unknown as FrameLite[]);
 }
+
+export type MiniSheet = {
+  cells: FrameCell[];
+  /** Pins left standing after each frame's first ball (the pinfall leave); null if unbowled. */
+  firstBallLeave: (number[] | null)[];
+};
+
+/**
+ * Scoresheet cells + first-ball pinfall leave for several games in ONE query,
+ * for the session screen's per-game summary strips.
+ */
+export async function fetchMiniScoresheets(
+  supabase: SupabaseClient,
+  gameIds: string[],
+): Promise<Map<string, MiniSheet>> {
+  const out = new Map<string, MiniSheet>();
+  if (gameIds.length === 0) return out;
+
+  const { data: frames } = await supabase
+    .from('frames')
+    .select('game_id, frame_number, shots(pins_standing, strike, spare, foul, created_at)')
+    .in('game_id', gameIds)
+    .order('frame_number', { ascending: true })
+    .order('created_at', { foreignTable: 'shots', ascending: true });
+
+  const byGame = new Map<string, FrameLite[]>();
+  for (const f of (frames ?? []) as any[]) {
+    const list = byGame.get(f.game_id) ?? [];
+    list.push({ frame_number: f.frame_number, shots: (f.shots ?? []) as ShotLite[] });
+    byGame.set(f.game_id, list);
+  }
+
+  for (const gameId of gameIds) {
+    const gframes = byGame.get(gameId) ?? [];
+    const byNumber = new Map(gframes.map((f) => [f.frame_number, f]));
+    const firstBallLeave = Array.from({ length: 10 }, (_, i) => {
+      const first = byNumber.get(i + 1)?.shots[0];
+      return first ? first.pins_standing ?? [] : null;
+    });
+    out.set(gameId, { cells: computeScoresheet(gframes), firstBallLeave });
+  }
+
+  return out;
+}
