@@ -6,7 +6,9 @@ import { APPROACH_FIELDS, APPROACH_FIELD_KEYS } from '../lib/approachFields';
 const { supabase, user } = Astro.locals;
 
 let error: string | null = null;
-let saved = false;
+// Post/Redirect/Get: a successful save redirects to ?saved=1, so reloading or
+// revisiting the page is always a fresh GET (never a stale or re-posted form).
+const saved = Astro.url.searchParams.get('saved') === '1';
 
 if (Astro.request.method === 'POST') {
   const formData = await Astro.request.formData();
@@ -26,7 +28,7 @@ if (Astro.request.method === 'POST') {
   if (updateError) {
     error = updateError.message;
   } else {
-    saved = true;
+    return Astro.redirect('/settings?saved=1');
   }
 }
 
