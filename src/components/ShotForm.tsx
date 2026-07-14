@@ -203,7 +203,7 @@ export default function ShotForm({
 
       {shownMarks.length > 0 && (
         <>
-          <div className="sechead-mini"><span className="chev"><i></i><i></i><i></i></span><h3>Reference marks</h3></div>
+          <div className="sechead-mini"><span className="chev"><i></i><i></i><i></i></span><h3>Reference Marks</h3></div>
           <LanePicker
             ref={laneRef}
             initialLineup={toBoard(initial?.lineup_position)}
@@ -221,9 +221,9 @@ export default function ShotForm({
           <select name="hook_timing" defaultValue={initial?.hook_timing ?? ''}>
             <option value="">None</option>
             <option value="early">Early</option>
-            <option value="on-time">On-time</option>
+            <option value="on-time">On-Time</option>
             <option value="late">Late</option>
-            <option value="none">No hook</option>
+            <option value="none">No Hook</option>
           </select>
         </label>
       )}

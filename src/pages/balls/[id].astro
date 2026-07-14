@@ -50,7 +50,7 @@ if (!ball) {
 
 <Layout title={ball.name}>
   <nav class="top"><a href="/balls">&larr; My Balls</a></nav>
-  <h1>Edit ball</h1>
+  <h1>Edit Ball</h1>
 
   {error && <p class="error">{error}</p>}
 
@@ -60,7 +60,7 @@ if (!ball) {
       <input type="text" name="name" required value={ball.name} />
     </label>
     <label>
-      Brand / model
+      Brand / Model
       <input type="text" name="brand_model" value={ball.brand_model ?? ''} />
     </label>
     <label>
@@ -68,14 +68,14 @@ if (!ball) {
       <input type="number" name="weight" step="0.1" min="6" max="16" value={ball.weight ?? ''} />
     </label>
     <label>
-      Layout notes
+      Layout Notes
       <textarea name="layout_notes" rows="3">{ball.layout_notes ?? ''}</textarea>
     </label>
-    <button type="submit">Save changes</button>
+    <button type="submit">Save Changes</button>
   </form>
 
   <form method="POST" class="row-actions">
     <input type="hidden" name="intent" value="delete" />
-    <button type="submit" class="danger">Delete ball</button>
+    <button type="submit" class="danger">Delete Ball</button>
   </form>
 </Layout>

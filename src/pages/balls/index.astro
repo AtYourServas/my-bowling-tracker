@@ -58,14 +58,14 @@ const { data: balls } = await supabase
 
   <hr />
 
-  <h1>Add a ball</h1>
+  <h1>Add a Ball</h1>
   <form method="POST">
     <label>
       Name
       <input type="text" name="name" required />
     </label>
     <label>
-      Brand / model
+      Brand / Model
       <input type="text" name="brand_model" />
     </label>
     <label>
@@ -73,9 +73,9 @@ const { data: balls } = await supabase
       <input type="number" name="weight" step="0.1" min="6" max="16" />
     </label>
     <label>
-      Layout notes
+      Layout Notes
       <textarea name="layout_notes" rows="3"></textarea>
     </label>
-    <button type="submit">Add ball</button>
+    <button type="submit">Add Ball</button>
   </form>
 </Layout>

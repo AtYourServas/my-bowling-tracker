@@ -28,8 +28,8 @@ if (Astro.request.method === 'POST') {
 }
 ---
 
-<Layout title="Sign up">
-  <h1>Create an account</h1>
+<Layout title="Sign Up">
+  <h1>Create an Account</h1>
 
   {error && <p class="error">{error}</p>}
   {notice && <p class="notice">{notice}</p>}
@@ -43,8 +43,8 @@ if (Astro.request.method === 'POST') {
       Password
       <input type="password" name="password" required minlength="6" autocomplete="new-password" />
     </label>
-    <button type="submit">Sign up</button>
+    <button type="submit">Sign Up</button>
   </form>
 
-  <p class="switch">Already have an account? <a href="/login">Log in</a></p>
+  <p class="switch">Already have an account? <a href="/login">Log In</a></p>
 </Layout>

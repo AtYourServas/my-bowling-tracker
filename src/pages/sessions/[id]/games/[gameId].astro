@@ -303,7 +303,7 @@ function ballResult(i: number): string {
   <div class="sechead"><span class="chev"><i></i><i></i><i></i></span><h2>Scoresheet</h2></div>
 
   <div class="entry-toggle" role="group" aria-label="Score entry mode">
-    <a class:list={['seg', { active: mode === 'pick' }]} href={frameHref(frameNumber, 'pick')} aria-current={mode === 'pick' ? 'true' : undefined}>Pick pins</a>
+    <a class:list={['seg', { active: mode === 'pick' }]} href={frameHref(frameNumber, 'pick')} aria-current={mode === 'pick' ? 'true' : undefined}>Pick Pins</a>
     <a class:list={['seg', { active: mode === 'type' }]} href={frameHref(frameNumber, 'type')} aria-current={mode === 'type' ? 'true' : undefined}>Type</a>
   </div>
 
@@ -374,7 +374,7 @@ function ballResult(i: number): string {
     </div>
     {mode === 'type' && progress.nextBall != null && (
       <div class="type-controls">
-        <button type="submit" class="secondary">Log ball {progress.nextBall}</button>
+        <button type="submit" class="secondary">Log Ball {progress.nextBall}</button>
       </div>
     )}
   </form>
@@ -406,7 +406,7 @@ function ballResult(i: number): string {
     </form>
   </div>
 
-  <div class="sechead"><span class="chev"><i></i><i></i><i></i></span><h2>Now bowling &middot; Frame {frameNumber}{progress.nextBall != null && ` · Ball ${progress.nextBall}`}{showFrameLane && ` · Lane ${frameLane}`}</h2></div>
+  <div class="sechead"><span class="chev"><i></i><i></i><i></i></span><h2>Now Bowling &middot; Frame {frameNumber}{progress.nextBall != null && ` · Ball ${progress.nextBall}`}{showFrameLane && ` · Lane ${frameLane}`}</h2></div>
   <div class="framenav-row">
     {prevFrame
       ? <a class="framenav" href={frameHref(prevFrame)} aria-label={`Go to frame ${prevFrame}`} rel="prev">&larr; Prev Frame</a>
@@ -437,7 +437,7 @@ function ballResult(i: number): string {
   {progress.nextBall != null ? (
     mode === 'pick' ? (
       <>
-        <p class="logball">+ Log ball {progress.nextBall}</p>
+        <p class="logball">+ Log Ball {progress.nextBall}</p>
         <ShotForm
           client:load
           balls={balls ?? []}
@@ -449,7 +449,7 @@ function ballResult(i: number): string {
           defaultBallId={defaultBallId}
           mode={mode}
           hiddenFields={hiddenShotFields}
-          submitLabel={`Log ball ${progress.nextBall}`}
+          submitLabel={`Log Ball ${progress.nextBall}`}
         />
       </>
     ) : (

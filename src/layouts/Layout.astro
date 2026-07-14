@@ -51,7 +51,7 @@ const isActive = (href: string) => path === href || path.startsWith(href + '/');
             <a href={item.href} aria-current={isActive(item.href) ? 'page' : undefined}>{item.label}</a>
           ))}
           <form class="logout" method="POST" action="/api/auth/logout">
-            <button type="submit">Log out</button>
+            <button type="submit">Log Out</button>
           </form>
         </nav>
       </header>

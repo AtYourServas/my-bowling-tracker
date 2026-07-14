@@ -18,7 +18,7 @@ export const SHOT_FIELDS: { key: ShotFieldKey; label: string }[] = [
   { key: 'stance', label: 'Alignment (Starting Point)' },
   { key: 'target', label: 'Visual Target' },
   { key: 'slide', label: 'Slide Position (Finish)' },
-  { key: 'breakpoint', label: 'Breakpoint mark' },
+  { key: 'breakpoint', label: 'Breakpoint' },
   { key: 'hook', label: 'Hook Timing' },
   { key: 'miss', label: 'Miss Direction' },
   { key: 'note', label: 'Note' },

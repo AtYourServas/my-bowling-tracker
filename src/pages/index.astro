@@ -8,11 +8,12 @@ const { user } = Astro.locals;
   <h1>MyBowlingTracker</h1>
   {
     user ? (
-      <p><a href="/dashboard">Go to dashboard</a></p>
+      <p><a href="/dashboard">Go to Dashboard</a></p>
     ) : (
-      <p>
-        <a href="/login">Log in</a> or <a href="/signup">sign up</a>
-      </p>
+      <div class="cta-row">
+        <a class="button" href="/login">Log In</a>
+        <a class="button secondary" href="/signup">Sign Up</a>
+      </div>
     )
   }
 </Layout>
