@@ -451,13 +451,25 @@ const leagueSlots = [
     <ul class="note-stream">
       {notes.map((note) => (
         <li class="note">
-          <div class="note-head">
-            <time class="note-time" datetime={note.createdAt} data-note-time>{noteTime(note.createdAt)}</time>
-            {note.result && <span class="note-tag">{note.result}</span>}
-          </div>
+          {(note.link || note.result) && (
+            <div class="note-head">
+              {note.link && <a class="note-loc" href={note.link.href}>{note.link.label} &rarr;</a>}
+              {note.result && <span class="note-tag">{note.result}</span>}
+            </div>
+          )}
+          <time class="note-time" datetime={note.createdAt} data-note-time>{noteTime(note.createdAt)}</time>
           <p class="note-body">{note.body}</p>
-          {note.remarks && <p class="note-remarks">{note.remarks}</p>}
-          {note.link && <a class="note-link" href={note.link.href}>{note.link.label} &rarr;</a>}
+          {note.details && (
+            <ul class="note-details">
+              {note.details.map((d) => (
+                <li>
+                  <span class="dico" aria-hidden="true">{d.icon}</span>
+                  <span class="dlabel">{d.label}</span>
+                  <span class="dval">{d.value}</span>
+                </li>
+              ))}
+            </ul>
+          )}
           {note.kind === 'note' && (
             <div class="note-actions">
               <details class="note-edit">
@@ -537,11 +549,12 @@ const leagueSlots = [
   .note-head {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 0.5rem;
-    margin-bottom: 0.25rem;
+    margin-bottom: 0.15rem;
   }
-  .note-time {
-    color: var(--text-muted);
+  .note-loc {
+    font-weight: 600;
     font-size: var(--text-sm);
   }
   .note-tag {
@@ -550,21 +563,41 @@ const leagueSlots = [
     background: var(--surface-sunk);
     border-radius: var(--radius-sm);
     padding: 0.05rem 0.4rem;
+    white-space: nowrap;
+  }
+  .note-time {
+    display: block;
+    color: var(--text-muted);
+    font-size: var(--text-sm);
+    margin-bottom: 0.35rem;
   }
   .note-body {
     margin: 0;
     white-space: pre-wrap;
   }
-  .note-remarks {
-    margin: 0.35rem 0 0;
-    color: var(--text-muted);
-    font-size: var(--text-sm);
-    font-variant-numeric: tabular-nums;
+  .note-details {
+    list-style: none;
+    margin: 0.5rem 0 0;
+    padding: 0;
+    display: grid;
+    gap: 0.2rem;
   }
-  .note-link {
-    display: inline-block;
-    margin-top: 0.35rem;
+  .note-details li {
+    display: grid;
+    grid-template-columns: 1.4rem 3.2rem 1fr;
+    align-items: baseline;
+    gap: 0.4rem;
     font-size: var(--text-sm);
+  }
+  .note-details .dico {
+    text-align: center;
+  }
+  .note-details .dlabel {
+    color: var(--text-muted);
+  }
+  .note-details .dval {
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
   }
   .note-actions {
     display: flex;

@@ -3,6 +3,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 // A single entry in a session's notes stream. Two sources feed it: standalone
 // session_notes (a running journal for the night) and per-shot notes stored on
 // shots.note. Shot-linked entries carry a deep link to that ball's detail.
+export type NoteDetail = { icon: string; label: string; value: string };
+
 export type NoteEntry = {
   id: string;
   kind: 'note' | 'shot';
@@ -10,9 +12,9 @@ export type NoteEntry = {
   createdAt: string;
   // present when the entry points at a specific shot
   link?: { href: string; label: string };
-  // shot outcome + detail, shown on shot-linked entries for context
+  // shot outcome + labelled detail, shown on shot-linked entries for context
   result?: string;
-  remarks?: string;
+  details?: NoteDetail[];
 };
 
 function gameLabel(game: { is_practice: boolean | null; game_number: number | null }): string {
@@ -33,16 +35,15 @@ function shotResult(shot: any): string {
   return `Left ${[...standing].sort((a, b) => a - b).join('-')}`;
 }
 
-// The shot's other logged detail, condensed for the stream.
-function shotRemarks(shot: any): string {
-  return [
-    shot.balls?.name,
-    shot.target_type && shot.target_value != null ? `${shot.target_type} ${shot.target_value}` : null,
-    shot.hook_timing ? (HOOK_LABEL[shot.hook_timing] ?? shot.hook_timing) : null,
-    shot.miss_direction ? (MISS_LABEL[shot.miss_direction] ?? shot.miss_direction) : null,
-  ]
-    .filter(Boolean)
-    .join(' · ');
+// The shot's other logged detail, one labelled + icon'd row each.
+function shotDetails(shot: any): NoteDetail[] {
+  const d: NoteDetail[] = [];
+  if (shot.balls?.name) d.push({ icon: '🎳', label: 'Ball', value: shot.balls.name });
+  if (shot.target_type && shot.target_value != null)
+    d.push({ icon: '🎯', label: 'Target', value: `${shot.target_type} ${shot.target_value}` });
+  if (shot.hook_timing) d.push({ icon: '🌀', label: 'Hook', value: HOOK_LABEL[shot.hook_timing] ?? shot.hook_timing });
+  if (shot.miss_direction) d.push({ icon: '📍', label: 'Miss', value: MISS_LABEL[shot.miss_direction] ?? shot.miss_direction });
+  return d;
 }
 
 // Merge the standalone session notes and the per-shot notes for one session into
@@ -65,7 +66,7 @@ export async function fetchSessionNotes(supabase: SupabaseClient, sessionId: str
 
   // shot_id -> deep link + label + outcome, so both a per-shot note and a
   // session_note that references that shot can render the same context.
-  type ShotMeta = { link: { href: string; label: string }; result: string; remarks: string };
+  type ShotMeta = { link: { href: string; label: string }; result: string; details: NoteDetail[] };
   const shotMeta = new Map<string, ShotMeta>();
   for (const shot of shotRows) {
     const frame = shot.frames;
@@ -77,7 +78,7 @@ export async function fetchSessionNotes(supabase: SupabaseClient, sessionId: str
         label: `${gameLabel(game)} · Frame ${frame.frame_number}`,
       },
       result: shotResult(shot),
-      remarks: shotRemarks(shot),
+      details: shotDetails(shot),
     });
   }
 
@@ -94,7 +95,7 @@ export async function fetchSessionNotes(supabase: SupabaseClient, sessionId: str
       createdAt: note.created_at,
       link: meta?.link,
       result: meta?.result,
-      remarks: meta?.remarks || undefined,
+      details: meta?.details?.length ? meta.details : undefined,
     });
   }
 
@@ -109,7 +110,7 @@ export async function fetchSessionNotes(supabase: SupabaseClient, sessionId: str
       createdAt: shot.created_at,
       link: meta?.link,
       result: meta?.result,
-      remarks: meta?.remarks || undefined,
+      details: meta?.details?.length ? meta.details : undefined,
     });
   }
 
