@@ -9,19 +9,23 @@ const params = Astro.url.searchParams;
 const view = params.get('view') === 'leave' ? 'leave' : 'session';
 const filterLeague = params.get('league') ?? '';
 const filterSession = params.get('session') ?? '';
+const filterAlley = params.get('alley') ?? '';
+const filterBall = params.get('ball') ?? '';
 const filterFrom = params.get('from') ?? '';
 const filterTo = params.get('to') ?? '';
 const hasFilters = view === 'session'
-  ? Boolean(filterLeague || filterSession)
+  ? Boolean(filterLeague || filterSession || filterAlley || filterBall)
   : Boolean(filterLeague || filterFrom || filterTo);
 
-// By-session view groups notes under their session (league / session filters);
-// by-leave groups every note under the leave its ball faced, across sessions
-// (league / date-range filters).
+// By-session view groups notes under their session (league / session / alley /
+// ball filters); by-leave groups every note under the leave its ball faced,
+// across sessions (league / date-range filters).
 const groups = view === 'session'
   ? await fetchAllNotes(supabase, {
       leagueId: filterLeague || undefined,
       sessionId: filterSession || undefined,
+      alley: filterAlley || undefined,
+      ballId: filterBall || undefined,
     })
   : [];
 const leaveGroups = view === 'leave'
@@ -34,10 +38,13 @@ const leaveGroups = view === 'leave'
 
 // Filter dropdown options.
 const { data: leagues } = await supabase.from('leagues').select('id, name').order('name');
+const { data: balls } = await supabase.from('balls').select('id, name').order('name');
 const { data: sessionRows } = await supabase
   .from('sessions')
   .select('id, alley_name, session_date')
   .order('session_date', { ascending: false });
+// Distinct alley names, for the alley filter dropdown.
+const alleys = [...new Set((sessionRows ?? []).map((s) => s.alley_name).filter(Boolean))].sort();
 
 const noteCount = view === 'session'
   ? groups.reduce((n, g) => n + g.entries.length, 0)
@@ -82,6 +89,28 @@ const groupHeading = (g: (typeof groups)[number]['session']) =>
           ))}
         </select>
       </label>
+      {alleys.length > 0 && (
+        <label>
+          Alley
+          <select name="alley">
+            <option value="">All</option>
+            {alleys.map((a) => (
+              <option value={a} selected={a === filterAlley}>{a}</option>
+            ))}
+          </select>
+        </label>
+      )}
+      {balls && balls.length > 0 && (
+        <label>
+          Ball
+          <select name="ball">
+            <option value="">All</option>
+            {balls.map((b) => (
+              <option value={b.id} selected={b.id === filterBall}>{b.name}</option>
+            ))}
+          </select>
+        </label>
+      )}
       <button type="submit">Filter</button>
       {hasFilters && <a href="/notes">Clear Filters</a>}
     </form>
