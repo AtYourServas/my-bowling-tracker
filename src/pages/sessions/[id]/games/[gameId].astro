@@ -542,6 +542,45 @@ function ballResult(i: number): string {
       (wrap.clientWidth - active.offsetWidth) / 2;
     wrap.scrollLeft += delta;
   }
+
+  // Unsaved-shot guard: once you've started entering a ball — picked/toggled
+  // pins, placed a reference mark, typed shorthand, or filled a detail field —
+  // warn before navigating away (a frame nav, the mode toggle, an app-bar link,
+  // or a browser back/refresh) so an in-progress shot isn't silently lost.
+  // Logging the ball submits the entry form, which clears the guard.
+  let shotDirty = false;
+  const markDirty = () => {
+    shotDirty = true;
+  };
+  // The pin-picker form (pick mode) and the shorthand box (type mode) are the
+  // two shot-entry surfaces; other forms (note / final score / delete) are left
+  // unguarded since they don't hold an in-progress throw.
+  const entryForms = [
+    document.querySelector('input[name="pins_standing"]')?.closest('form'),
+    document.querySelector('input[name="shorthand"]')?.closest('form'),
+  ];
+  for (const form of entryForms) {
+    if (!(form instanceof HTMLFormElement)) continue;
+    form.addEventListener('input', markDirty);
+    form.addEventListener('change', markDirty);
+    form.addEventListener('click', (e) => {
+      // pin toggles / shortcuts and LanePicker taps register as button or svg
+      // clicks (the submit button is excluded — it clears the guard instead)
+      if (e.target instanceof Element && e.target.closest('button:not([type="submit"]), svg')) {
+        markDirty();
+      }
+    });
+    form.addEventListener('submit', () => {
+      shotDirty = false;
+    });
+  }
+
+  window.addEventListener('beforeunload', (e) => {
+    if (shotDirty) {
+      e.preventDefault();
+      e.returnValue = '';
+    }
+  });
 </script>
 
 <style>
