@@ -70,6 +70,11 @@ const groupHeading = (g: (typeof groups)[number]['session']) =>
   </div>
 
   {view === 'session' ? (
+    <details class="filter-collapse" open={hasFilters}>
+    <summary>
+      Filters
+      {hasFilters && <span class="filter-badge">Active</span>}
+    </summary>
     <form method="GET" class="filter-form">
       <label>
         League
@@ -114,7 +119,13 @@ const groupHeading = (g: (typeof groups)[number]['session']) =>
       <button type="submit">Filter</button>
       {hasFilters && <a href="/notes">Clear Filters</a>}
     </form>
+    </details>
   ) : (
+    <details class="filter-collapse" open={hasFilters}>
+    <summary>
+      Filters
+      {hasFilters && <span class="filter-badge">Active</span>}
+    </summary>
     <form method="GET" class="filter-form">
       <input type="hidden" name="view" value="leave" />
       <label class="wide">
@@ -137,6 +148,7 @@ const groupHeading = (g: (typeof groups)[number]['session']) =>
       <button type="submit">Filter</button>
       {hasFilters && <a href="/notes?view=leave">Clear Filters</a>}
     </form>
+    </details>
   )}
 
   {view === 'session' ? (

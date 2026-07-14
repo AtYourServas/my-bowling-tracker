@@ -43,6 +43,11 @@ const alleyOptions = Array.from(new Set((alleyRows ?? []).map((r) => r.alley_nam
     <a class="button" href="/sessions/new">+ Start a Session</a>
   </div>
 
+  <details class="filter-collapse" open={hasFilters}>
+  <summary>
+    Filters
+    {hasFilters && <span class="filter-badge">Active</span>}
+  </summary>
   <form method="GET" class="filter-form">
     <label>
       Type
@@ -72,6 +77,7 @@ const alleyOptions = Array.from(new Set((alleyRows ?? []).map((r) => r.alley_nam
     <button type="submit">Filter</button>
     {hasFilters && <a href="/sessions">Clear Filters</a>}
   </form>
+  </details>
 
   {sessions && sessions.length > 0 ? (
     <ul class="list">

@@ -19,6 +19,7 @@ const { supabase } = Astro.locals;
 
 const includePracticeSessions = Astro.url.searchParams.get('practice') !== 'exclude';
 const filter = { includePracticeSessions };
+const hasFilters = !includePracticeSessions;
 
 // Fetch every game (with a bulk-derived score) and the ball-carry data in
 // parallel, then compute every stat below in memory -- no per-game or
@@ -84,6 +85,11 @@ const bestSeries = fetchBestSeriesStats(allGamesEver, handicapOf);
 
   <hr />
 
+  <details class="filter-collapse" open={hasFilters}>
+  <summary>
+    Filters
+    {hasFilters && <span class="filter-badge">Active</span>}
+  </summary>
   <form method="GET" class="filter-form">
     <label style="grid-column: span 2;">
       Practice Sessions
@@ -93,7 +99,9 @@ const bestSeries = fetchBestSeriesStats(allGamesEver, handicapOf);
       </select>
     </label>
     <button type="submit">Apply</button>
+    {hasFilters && <a href="/stats">Clear Filters</a>}
   </form>
+  </details>
 
   {scoredGames.length === 0 ? (
     <p class="empty">No scored games match this filter yet.</p>
