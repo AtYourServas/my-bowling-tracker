@@ -98,6 +98,7 @@ function pinState(pf: FramePinfall, p: number): 'unbowled' | 'down1' | 'down2' |
   .mballs {
     height: 17px;
     display: flex;
+    flex-wrap: nowrap;
     justify-content: flex-end;
     align-items: flex-start;
     padding: 2px 3px 0;
@@ -120,7 +121,9 @@ function pinState(pf: FramePinfall, p: number): 'unbowled' | 'down1' | 'down2' |
   .mbox.strike { color: var(--strike-ink); background: var(--mustard-weak); font-weight: var(--fw-semi); }
   .mbox.spare { color: var(--spare-ink); background: var(--mustard-weak); font-weight: var(--fw-semi); }
   .mbox.foul { color: var(--coral); font-weight: var(--fw-semi); }
-  .mbox.empty { color: var(--text-muted); }
+  /* Unbowled ball: keep the slot so real marks stay in their ball-1/ball-2
+     position, but hide the box so it doesn't read as a floating empty square. */
+  .mbox.empty { border-color: transparent; background: transparent; }
   .mtotal {
     height: 16px;
     display: flex;
