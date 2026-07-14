@@ -91,7 +91,16 @@ export default function PinDiagram({
     setSpare(false);
   }
 
+  function markClear() {
+    // reset back to the pristine, nothing-selected state
+    setStanding(new Set());
+    setStrike(false);
+    setSpare(false);
+    setFoul(false);
+  }
+
   const gutter = !strike && !spare && !foul && standing.size === 10;
+  const dirty = strike || spare || foul || standing.size > 0;
 
   // show a mark only when it's legal for this ball, or already set (editing an
   // existing shot) so the current value is never hidden
@@ -122,6 +131,11 @@ export default function PinDiagram({
         <button type="button" className={foul ? 'active' : ''} onClick={markFoul}>
           Foul
         </button>
+        {dirty && (
+          <button type="button" className="clear" onClick={markClear}>
+            Clear
+          </button>
+        )}
       </div>
 
       <p className="pin-hint">
