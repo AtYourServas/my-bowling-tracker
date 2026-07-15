@@ -201,6 +201,31 @@ export async function fetchStatFrames(supabase: SupabaseClient): Promise<StatFra
   return results;
 }
 
+/**
+ * One session's frames in the same StatFrame shape, for the per-game and
+ * per-session rate tiles -- scoped at the query so a session page doesn't pull
+ * the whole shot history the way fetchStatFrames does.
+ */
+export async function fetchSessionStatFrames(supabase: SupabaseClient, sessionId: string): Promise<StatFrame[]> {
+  const { data: frames } = await supabase
+    .from('frames')
+    .select(
+      'frame_number, games!inner(id, session_id, is_practice, sessions(session_type)), shots(pins_standing, strike, spare, foul, ball_id, created_at, lineup_position, slide_position, balls(name))',
+    )
+    .eq('games.session_id', sessionId)
+    .order('created_at', { foreignTable: 'shots', ascending: true });
+
+  if (!frames) return [];
+
+  return (frames as any[]).map((frame) => ({
+    frameNumber: frame.frame_number,
+    gameId: frame.games.id ?? null,
+    isPractice: frame.games.is_practice,
+    sessionType: frame.games.sessions?.session_type ?? null,
+    shots: frame.shots ?? [],
+  }));
+}
+
 /** The shared practice rule for shot-level stats: the Practice segment of a
  *  league night is always excluded; standalone practice sessions only when the
  *  filter opts out. */
@@ -410,11 +435,11 @@ function clearedRack(shot: StatShot): boolean {
  * pinsFacedBefore: a strike, a clearing ball, or a foul respots all ten -- so a
  * ball 2 after a foul is a spare attempt at a "Full Rack". Fouled deliveries
  * count as missed opportunities (they score zero). onSpareAttempt reports each
- * spare attempt's faced leave for the conversion-by-leave grouping.
+ * spare attempt's faced leave for the conversion-by-leave grouping. Callers
+ * pass frames already sliced to their scope (a filter, a game, a session).
  */
 function walkDeliveries(
   frames: StatFrame[],
-  filter: StatsFilter,
   onSpareAttempt?: (faced: number[], converted: boolean) => void,
 ): RateStats {
   const rates: RateStats = {
@@ -427,7 +452,6 @@ function walkDeliveries(
   };
 
   for (const frame of frames) {
-    if (!frameInFilter(frame, filter)) continue;
     if (frame.shots.length === 0) continue;
 
     let faced: number[] = [...FULL_RACK];
@@ -466,8 +490,31 @@ function walkDeliveries(
  * delivery. Returns null when nothing has been bowled under the filter.
  */
 export function computeRateStats(frames: StatFrame[], filter: StatsFilter): RateStats | null {
-  const rates = walkDeliveries(frames, filter);
+  return rateStatsOrNull(frames.filter((f) => frameInFilter(f, filter)));
+}
+
+/** walkDeliveries over an already-scoped slice, null when nothing was bowled in it. */
+function rateStatsOrNull(frames: StatFrame[]): RateStats | null {
+  const rates = walkDeliveries(frames);
   return rates.strikeOpportunities === 0 && rates.spareOpportunities === 0 ? null : rates;
+}
+
+/**
+ * Rates for ONE game, practice or not -- a game page reports on itself, so no
+ * practice rule applies. Returns null before the game's first logged delivery.
+ */
+export function computeGameRates(frames: StatFrame[], gameId: string): RateStats | null {
+  return rateStatsOrNull(frames.filter((f) => f.gameId === gameId));
+}
+
+/**
+ * Rates across one session's games, excluding the Practice segment of a league
+ * night -- the same slice "By Lane Tonight" reports on. Standalone practice
+ * sessions count their games (that's all they have). Pass the session's frames
+ * (fetchSessionStatFrames); returns null before the first logged delivery.
+ */
+export function computeSessionRates(frames: StatFrame[]): RateStats | null {
+  return rateStatsOrNull(frames.filter((f) => !f.isPractice));
 }
 
 /**
@@ -478,7 +525,7 @@ export function computeRateStats(frames: StatFrame[], filter: StatsFilter): Rate
 export function computeLeaveConversions(frames: StatFrame[], filter: StatsFilter): LeaveConversion[] {
   const groups = new Map<string, { pins: number[]; attempts: number; converted: number }>();
 
-  walkDeliveries(frames, filter, (faced, converted) => {
+  walkDeliveries(frames.filter((f) => frameInFilter(f, filter)), (faced, converted) => {
     const pins = sortedLeave(faced);
     const key = pins.join('-');
     const entry = groups.get(key) ?? { pins, attempts: 0, converted: 0 };
