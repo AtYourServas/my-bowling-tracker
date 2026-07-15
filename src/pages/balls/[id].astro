@@ -1,5 +1,6 @@
 ---
 import Layout from '../../layouts/Layout.astro';
+import { fetchStatFrames, computeBallDetail } from '../../lib/stats';
 
 const { supabase } = Astro.locals;
 const { id } = Astro.params;
@@ -47,13 +48,71 @@ const { data: ball } = await supabase.from('balls').select('*').eq('id', id).may
 if (!ball) {
   return Astro.redirect('/balls');
 }
+
+// "Is this ball working?" — same slice as the stats page default (practice
+// sessions included, the Practice segment of a league night excluded).
+const statFrames = await fetchStatFrames(supabase);
+const detail = computeBallDetail(statFrames, { includePracticeSessions: true }, id!);
+
+// "62%" for 62/118, an em dash when there have been no opportunities — the
+// same formatting as the stats page's rate tiles.
+function formatRate(made: number, opportunities: number): string {
+  if (opportunities === 0) return '—';
+  return `${Math.round((made / opportunities) * 100)}%`;
+}
 ---
 
 <Layout title={ball.name}>
   <nav class="top"><a href="/balls">&larr; My Balls</a></nav>
-  <h1>Edit Ball</h1>
+  <h1>{ball.name}</h1>
+  {ball.brand_model && <p class="meta">{ball.brand_model}{ball.weight ? ` · ${ball.weight} lb` : ''}</p>}
 
   {error && <p class="error">{error}</p>}
+
+  <div class="sechead"><span class="chev"><i></i><i></i><i></i></span><h2>Ball Performance</h2></div>
+  {detail ? (
+    <>
+      <div class="rate-grid rate-grid-2">
+        <div class="rate-stat">
+          <span class="rate-label">Strike Rate</span>
+          <span class="rate-value">{formatRate(detail.strikes, detail.strikeOpportunities)}</span>
+          <span class="rate-sub">
+            {detail.strikeOpportunities > 0
+              ? `${detail.strikes} of ${detail.strikeOpportunities} first balls`
+              : 'No first balls yet'}
+          </span>
+        </div>
+        <div class="rate-stat">
+          <span class="rate-label">Spare Conversion</span>
+          <span class="rate-value">{formatRate(detail.spares, detail.spareOpportunities)}</span>
+          <span class="rate-sub">
+            {detail.spareOpportunities > 0
+              ? `${detail.spares} of ${detail.spareOpportunities} leaves`
+              : 'No leaves yet'}
+          </span>
+        </div>
+        <div class="rate-stat">
+          <span class="rate-label">First-Ball Carry</span>
+          <span class="rate-value">{detail.carryAvg != null ? detail.carryAvg.toFixed(1) : '—'}</span>
+          <span class="rate-sub">
+            {detail.carryShots > 0
+              ? `avg pins · ${detail.carryShots} fresh-rack shot${detail.carryShots === 1 ? '' : 's'}`
+              : 'No fresh-rack shots yet'}
+          </span>
+        </div>
+        <div class="rate-stat">
+          <span class="rate-label">Games Used</span>
+          <span class="rate-value">{detail.gamesUsed}</span>
+          <span class="rate-sub">{detail.totalShots} shot{detail.totalShots === 1 ? '' : 's'} logged</span>
+        </div>
+      </div>
+      <p class="empty">Counts every logged shot with this ball; practice sessions included, the practice segment of a league night excluded.</p>
+    </>
+  ) : (
+    <p class="empty">No shots logged with this ball yet — its stats will appear once you bowl with it.</p>
+  )}
+
+  <div class="sechead"><span class="chev"><i></i><i></i><i></i></span><h2>Edit Ball</h2></div>
 
   <form method="POST">
     <label>
