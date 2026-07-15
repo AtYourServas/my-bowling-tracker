@@ -78,6 +78,9 @@ type Props = {
   allowSpare?: boolean;
   /** Ball to pre-select when logging a new shot (session default / spare ball). */
   defaultBallId?: string | null;
+  /** Saved reference to pre-select when logging a new shot (profile default
+   *  strike approach, passed on fresh-rack balls); its marks seed the picker. */
+  defaultApproachId?: string | null;
   /** Current score-entry mode, echoed back on submit so it persists across frames. */
   mode?: 'pick' | 'type';
   /** Optional detail fields the bowler has hidden (profiles.hidden_shot_fields).
@@ -96,12 +99,21 @@ export default function ShotForm({
   allowStrike = true,
   allowSpare = true,
   defaultBallId,
+  defaultApproachId,
   mode = 'pick',
   hiddenFields = [],
 }: Props) {
   const show = (key: string) => !hiddenFields.includes(key);
   const shownMarks = (['stance', 'target', 'slide', 'breakpoint'] as const).filter(show);
-  const [approachId, setApproachId] = useState(initial?.approach_id ?? '');
+  // The profile default approach prefills a new shot: it starts selected and its
+  // marks seed the picker below. Editing a shot ignores it (stored values win),
+  // as does hiding the approach field.
+  const defaultApproach =
+    !initial && defaultApproachId && show('approach')
+      ? (approaches.find((a) => a.id === defaultApproachId) ?? null)
+      : null;
+  const defaultBoards = defaultApproach ? approachBoards(defaultApproach) : null;
+  const [approachId, setApproachId] = useState(initial?.approach_id ?? defaultApproach?.id ?? '');
   const [filterApproaches, setFilterApproaches] = useState(false);
   const laneRef = useRef<LanePickerHandle>(null);
 
@@ -145,14 +157,15 @@ export default function ShotForm({
     laneRef.current?.apply(seed);
   }
 
-  // seed the lane picker from an existing shot. An older 'arrow' target maps to
-  // its board via arrowToBoard; a 'pin' target can't be placed.
+  // seed the lane picker from an existing shot (an older 'arrow' target maps to
+  // its board via arrowToBoard; a 'pin' target can't be placed), else from the
+  // default approach's reference marks when one prefills this shot.
   const initialTarget =
     initial?.target_type === 'board'
       ? toBoard(initial.target_value)
       : initial?.target_type === 'arrow'
         ? arrowToBoard(initial.target_value)
-        : null;
+        : (defaultBoards?.target ?? null);
 
   return (
     <form method="POST">
@@ -233,10 +246,10 @@ export default function ShotForm({
           <div className="sechead-mini"><span className="chev"><i></i><i></i><i></i></span><h3>Reference Marks</h3></div>
           <LanePicker
             ref={laneRef}
-            initialLineup={toBoard(initial?.lineup_position)}
+            initialLineup={toBoard(initial?.lineup_position) ?? defaultBoards?.stance}
             initialTarget={initialTarget}
             initialBreakpoint={toBoard(initial?.breakpoint_board)}
-            initialSlide={toBoard(initial?.slide_position)}
+            initialSlide={toBoard(initial?.slide_position) ?? defaultBoards?.slide}
             marks={shownMarks}
           />
         </>

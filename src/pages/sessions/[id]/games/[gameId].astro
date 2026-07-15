@@ -255,10 +255,10 @@ const { data: approaches } = await supabase
   .select('id, name, reference_lineup, reference_slide, reference_target_type, reference_target_value, leave')
   .order('name');
 
-// profile preference: optional shot-logger fields the bowler has hidden
+// profile preferences: hidden shot-logger fields + the default strike approach
 const { data: prefRow } = await supabase
   .from('profiles')
-  .select('hidden_shot_fields')
+  .select('hidden_shot_fields, default_approach_id')
   .eq('id', user!.id)
   .maybeSingle();
 const hiddenShotFields = prefRow?.hidden_shot_fields ?? [];
@@ -295,6 +295,10 @@ const defaultBallId =
   progress.nextBall === 1
     ? game.sessions?.default_ball_id ?? null
     : game.sessions?.default_spare_ball_id ?? game.sessions?.default_ball_id ?? null;
+
+// the profile's default strike approach prefills any ball facing a full rack
+// (frame first balls + 10th-frame respots); its marks auto-apply in ShotForm
+const defaultApproachId = startingPins.length === 0 ? prefRow?.default_approach_id ?? null : null;
 
 // frames 1-9 that completed on a lone strike: a 2nd ball needs the strike edited away
 const strikeLockShot = frameNumber < 10 && progress.complete && frameShots.length === 1 ? frameShots[0] : null;
@@ -502,6 +506,7 @@ function ballResult(i: number): string {
           allowStrike={marks.strike}
           allowSpare={marks.spare}
           defaultBallId={defaultBallId}
+          defaultApproachId={defaultApproachId}
           mode={mode}
           hiddenFields={hiddenShotFields}
           submitLabel={`Log Ball ${progress.nextBall}`}
