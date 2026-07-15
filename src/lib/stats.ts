@@ -154,6 +154,7 @@ export type StatShot = {
   strike: boolean;
   spare: boolean;
   foul?: boolean;
+  ball_id: string | null;
   lineup_position: string | null;
   slide_position: string | null;
   balls: { name: string } | null;
@@ -161,6 +162,7 @@ export type StatShot = {
 
 export type StatFrame = {
   frameNumber: number;
+  gameId: string | null;
   isPractice: boolean;
   sessionType: string | null;
   /** Shots in delivery order. */
@@ -178,7 +180,7 @@ export async function fetchStatFrames(supabase: SupabaseClient): Promise<StatFra
   const { data: frames } = await supabase
     .from('frames')
     .select(
-      'frame_number, games(is_practice, sessions(session_type)), shots(pins_standing, strike, spare, foul, created_at, lineup_position, slide_position, balls(name))',
+      'frame_number, games(id, is_practice, sessions(session_type)), shots(pins_standing, strike, spare, foul, ball_id, created_at, lineup_position, slide_position, balls(name))',
     )
     .order('created_at', { foreignTable: 'shots', ascending: true });
 
@@ -190,6 +192,7 @@ export async function fetchStatFrames(supabase: SupabaseClient): Promise<StatFra
     if (!game) continue;
     results.push({
       frameNumber: frame.frame_number,
+      gameId: game.id ?? null,
       isPractice: game.is_practice,
       sessionType: game.sessions?.session_type ?? null,
       shots: frame.shots ?? [],
@@ -296,6 +299,77 @@ export function computeDriftStat(frames: StatFrame[], filter: StatsFilter): Drif
 
   if (count === 0) return null;
   return { averageBoards: sum / count, shotCount: count };
+}
+
+export type BallDetail = {
+  totalShots: number;
+  gamesUsed: number;
+  /** Average fresh-rack pinfall with this ball (the carry metric), null if it
+   *  has never been thrown at a full rack. */
+  carryAvg: number | null;
+  carryShots: number;
+  /** Average stance − slide drift on this ball's shots that recorded both
+   *  marks; positive = right, matching LanePicker. */
+  driftAvg: number | null;
+  driftShots: number;
+};
+
+/**
+ * "Is this ball working?" figures for one ball's detail page. The carry walk
+ * mirrors computeBallStats (fresh-rack deliveries only, fouls respot and don't
+ * count); drift mirrors computeDriftStat but restricted to this ball. Returns
+ * null when the ball has no logged shots under the filter.
+ */
+export function computeBallDetail(frames: StatFrame[], filter: StatsFilter, ballId: string): BallDetail | null {
+  let totalShots = 0;
+  const games = new Set<string>();
+  let carrySum = 0;
+  let carryCount = 0;
+  let driftSum = 0;
+  let driftCount = 0;
+
+  for (const frame of frames) {
+    if (!frameInFilter(frame, filter)) continue;
+
+    let priorStanding = 10;
+    for (const shot of frame.shots) {
+      const isThisBall = shot.ball_id === ballId;
+
+      if (isThisBall) {
+        totalShots += 1;
+        if (frame.gameId) games.add(frame.gameId);
+
+        const stance = parseBoard(shot.lineup_position);
+        const slide = parseBoard(shot.slide_position);
+        if (stance != null && slide != null) {
+          driftSum += stance - slide;
+          driftCount += 1;
+        }
+      }
+
+      if (shot.foul) {
+        priorStanding = 10;
+        continue;
+      }
+
+      const standingAfter = shot.strike ? 0 : shot.pins_standing?.length ?? 0;
+      if (isThisBall && priorStanding === 10) {
+        carrySum += shot.strike ? 10 : Math.max(0, Math.min(10, priorStanding - standingAfter));
+        carryCount += 1;
+      }
+      priorStanding = standingAfter === 0 ? 10 : standingAfter;
+    }
+  }
+
+  if (totalShots === 0) return null;
+  return {
+    totalShots,
+    gamesUsed: games.size,
+    carryAvg: carryCount ? carrySum / carryCount : null,
+    carryShots: carryCount,
+    driftAvg: driftCount ? driftSum / driftCount : null,
+    driftShots: driftCount,
+  };
 }
 
 export type RateStats = {
