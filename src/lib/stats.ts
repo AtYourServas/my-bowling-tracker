@@ -308,57 +308,68 @@ export type BallDetail = {
    *  has never been thrown at a full rack. */
   carryAvg: number | null;
   carryShots: number;
-  /** Average stance − slide drift on this ball's shots that recorded both
-   *  marks; positive = right, matching LanePicker. */
-  driftAvg: number | null;
-  driftShots: number;
+  /** Strike/spare rates for deliveries with THIS ball, classified exactly like
+   *  the stats-page rates (see walkDeliveries). */
+  strikes: number;
+  strikeOpportunities: number;
+  spares: number;
+  spareOpportunities: number;
 };
 
 /**
  * "Is this ball working?" figures for one ball's detail page. The carry walk
  * mirrors computeBallStats (fresh-rack deliveries only, fouls respot and don't
- * count); drift mirrors computeDriftStat but restricted to this ball. Returns
- * null when the ball has no logged shots under the filter.
+ * count); strike/spare classification mirrors walkDeliveries (a fresh-rack ball
+ * where a strike is legal is a strike opportunity, every other ball a spare
+ * attempt, and a foul is a missed opportunity) but attributes each delivery to
+ * the ball that threw it. Returns null when the ball has no logged shots under
+ * the filter. (Deliberately no drift here: drift is stance-vs-slide footwork,
+ * a bowler metric, not a ball one.)
  */
 export function computeBallDetail(frames: StatFrame[], filter: StatsFilter, ballId: string): BallDetail | null {
   let totalShots = 0;
   const games = new Set<string>();
   let carrySum = 0;
   let carryCount = 0;
-  let driftSum = 0;
-  let driftCount = 0;
+  let strikes = 0;
+  let strikeOpportunities = 0;
+  let spares = 0;
+  let spareOpportunities = 0;
 
   for (const frame of frames) {
     if (!frameInFilter(frame, filter)) continue;
 
     let priorStanding = 10;
-    for (const shot of frame.shots) {
+    frame.shots.forEach((shot, i) => {
       const isThisBall = shot.ball_id === ballId;
+      const freshRack = priorStanding === 10;
 
       if (isThisBall) {
         totalShots += 1;
         if (frame.gameId) games.add(frame.gameId);
 
-        const stance = parseBoard(shot.lineup_position);
-        const slide = parseBoard(shot.slide_position);
-        if (stance != null && slide != null) {
-          driftSum += stance - slide;
-          driftCount += 1;
+        const cleared = !shot.foul && (shot.strike || shot.spare || (shot.pins_standing?.length ?? 0) === 0);
+        if (freshRack && (i === 0 || frame.frameNumber === 10)) {
+          strikeOpportunities += 1;
+          if (cleared) strikes += 1;
+        } else {
+          spareOpportunities += 1;
+          if (cleared) spares += 1;
         }
       }
 
       if (shot.foul) {
         priorStanding = 10;
-        continue;
+        return;
       }
 
       const standingAfter = shot.strike ? 0 : shot.pins_standing?.length ?? 0;
-      if (isThisBall && priorStanding === 10) {
+      if (isThisBall && freshRack) {
         carrySum += shot.strike ? 10 : Math.max(0, Math.min(10, priorStanding - standingAfter));
         carryCount += 1;
       }
       priorStanding = standingAfter === 0 ? 10 : standingAfter;
-    }
+    });
   }
 
   if (totalShots === 0) return null;
@@ -367,8 +378,10 @@ export function computeBallDetail(frames: StatFrame[], filter: StatsFilter, ball
     gamesUsed: games.size,
     carryAvg: carryCount ? carrySum / carryCount : null,
     carryShots: carryCount,
-    driftAvg: driftCount ? driftSum / driftCount : null,
-    driftShots: driftCount,
+    strikes,
+    strikeOpportunities,
+    spares,
+    spareOpportunities,
   };
 }
 

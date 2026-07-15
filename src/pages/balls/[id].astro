@@ -54,12 +54,11 @@ if (!ball) {
 const statFrames = await fetchStatFrames(supabase);
 const detail = computeBallDetail(statFrames, { includePracticeSessions: true }, id!);
 
-// Same wording as the stats page's Average Drift tile (StatsCharts.formatDrift).
-function formatDrift(boards: number): string {
-  const abs = Math.abs(boards);
-  if (abs < 0.05) return 'Straight';
-  const unit = abs.toFixed(1) === '1.0' ? 'board' : 'boards';
-  return `${abs.toFixed(1)} ${unit} ${boards > 0 ? 'right' : 'left'}`;
+// "62%" for 62/118, an em dash when there have been no opportunities — the
+// same formatting as the stats page's rate tiles.
+function formatRate(made: number, opportunities: number): string {
+  if (opportunities === 0) return '—';
+  return `${Math.round((made / opportunities) * 100)}%`;
 }
 ---
 
@@ -73,7 +72,25 @@ function formatDrift(boards: number): string {
   <div class="sechead"><span class="chev"><i></i><i></i><i></i></span><h2>Ball Performance</h2></div>
   {detail ? (
     <>
-      <div class="rate-grid">
+      <div class="rate-grid rate-grid-2">
+        <div class="rate-stat">
+          <span class="rate-label">Strike Rate</span>
+          <span class="rate-value">{formatRate(detail.strikes, detail.strikeOpportunities)}</span>
+          <span class="rate-sub">
+            {detail.strikeOpportunities > 0
+              ? `${detail.strikes} of ${detail.strikeOpportunities} first balls`
+              : 'No first balls yet'}
+          </span>
+        </div>
+        <div class="rate-stat">
+          <span class="rate-label">Spare Conversion</span>
+          <span class="rate-value">{formatRate(detail.spares, detail.spareOpportunities)}</span>
+          <span class="rate-sub">
+            {detail.spareOpportunities > 0
+              ? `${detail.spares} of ${detail.spareOpportunities} leaves`
+              : 'No leaves yet'}
+          </span>
+        </div>
         <div class="rate-stat">
           <span class="rate-label">First-Ball Carry</span>
           <span class="rate-value">{detail.carryAvg != null ? detail.carryAvg.toFixed(1) : '—'}</span>
@@ -87,15 +104,6 @@ function formatDrift(boards: number): string {
           <span class="rate-label">Games Used</span>
           <span class="rate-value">{detail.gamesUsed}</span>
           <span class="rate-sub">{detail.totalShots} shot{detail.totalShots === 1 ? '' : 's'} logged</span>
-        </div>
-        <div class="rate-stat">
-          <span class="rate-label">Avg Drift</span>
-          <span class="rate-value">{detail.driftAvg != null ? formatDrift(detail.driftAvg) : '—'}</span>
-          <span class="rate-sub">
-            {detail.driftShots > 0
-              ? `${detail.driftShots} shot${detail.driftShots === 1 ? '' : 's'} with both marks`
-              : 'No stance + slide marks yet'}
-          </span>
         </div>
       </div>
       <p class="empty">Counts every logged shot with this ball; practice sessions included, the practice segment of a league night excluded.</p>
