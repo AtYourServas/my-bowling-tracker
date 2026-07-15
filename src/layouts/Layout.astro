@@ -10,8 +10,8 @@ const { title } = Astro.props;
 const user = Astro.locals.user;
 const path = Astro.url.pathname;
 
-// Items with an icon also appear in the mobile bottom tab bar, which hides
-// their top-nav duplicates on narrow screens (.tab-dup).
+// Every item lives in the collapsible top menu; items with an icon also
+// appear in the mobile bottom tab bar.
 const navItems = [
   { href: '/sessions', label: 'Sessions', icon: '🎳' },
   { href: '/balls', label: 'Balls', icon: null },
@@ -50,18 +50,17 @@ const isActive = (href: string) => path === href || path.startsWith(href + '/');
     {user && (
       <header class="appbar">
         <a class="brand" href="/dashboard">🎳 MyBowlingTracker</a>
-        <nav class="appnav" aria-label="Primary">
-          {navItems.map((item) => (
-            <a
-              href={item.href}
-              class:list={[{ 'tab-dup': !!item.icon }]}
-              aria-current={isActive(item.href) ? 'page' : undefined}
-            >{item.label}</a>
-          ))}
-          <form class="logout" method="POST" action="/api/auth/logout">
-            <button type="submit">Log Out</button>
-          </form>
-        </nav>
+        <details class="appmenu" id="appmenu">
+          <summary><span class="menu-icon" aria-hidden="true">☰</span> Menu</summary>
+          <nav class="menu-panel" aria-label="Primary">
+            {navItems.map((item) => (
+              <a href={item.href} aria-current={isActive(item.href) ? 'page' : undefined}>{item.label}</a>
+            ))}
+            <form class="logout" method="POST" action="/api/auth/logout">
+              <button type="submit">Log Out</button>
+            </form>
+          </nav>
+        </details>
       </header>
     )}
     <slot />
@@ -75,6 +74,20 @@ const isActive = (href: string) => path === href || path.startsWith(href + '/');
         ))}
       </nav>
     )}
+    <script is:inline>
+      // Close the top menu on an outside click or Escape (a link click loads a
+      // fresh page, so navigation closes it on its own).
+      (function () {
+        var menu = document.getElementById('appmenu');
+        if (!menu) return;
+        document.addEventListener('click', function (e) {
+          if (menu.open && e.target instanceof Node && !menu.contains(e.target)) menu.open = false;
+        });
+        document.addEventListener('keydown', function (e) {
+          if (e.key === 'Escape') menu.open = false;
+        });
+      })();
+    </script>
     <script is:inline>
       (function () {
         var root = document.documentElement;
