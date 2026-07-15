@@ -218,9 +218,9 @@ type Props = {
   marks?: Mark[];
 };
 
-/** Imperative API for seeding marks from outside (e.g. the "Apply to my
- *  approach" button copies a reference approach's marks in). Only the marks
- *  present in the object change; omit one to leave it untouched. */
+/** Imperative API for seeding marks from outside (e.g. picking a saved
+ *  reference copies its marks in). Only the marks present in the object
+ *  change; omit one to leave it untouched. */
 export type LanePickerHandle = {
   apply: (marks: Partial<Record<Mark, number | null>>) => void;
 };

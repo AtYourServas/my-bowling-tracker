@@ -737,16 +737,6 @@ a.ball-row:hover { text-decoration: none; box-shadow: var(--shadow-md); border-c
   color: var(--text-secondary);
 }
 .reference-box strong { font-size: var(--text-sm); color: var(--text-primary); }
-.reference-box .apply-approach {
-  align-self: flex-start;
-  margin-top: var(--s1);
-  padding: var(--s2) var(--s3);
-  font-size: var(--text-xs);
-  background: var(--surface);
-  color: var(--accent);
-  border: 1px solid var(--accent);
-}
-.reference-box .apply-approach:hover { background: var(--accent); color: var(--accent-ink); filter: none; }
 
 .pin-shortcuts { display: flex; flex-wrap: wrap; gap: var(--s3); margin-top: var(--s2); }
 .pin-shortcuts button { flex: 1; background: var(--surface); color: var(--text-primary); border-color: var(--border-strong); }
