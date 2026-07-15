@@ -10,15 +10,18 @@ const { title } = Astro.props;
 const user = Astro.locals.user;
 const path = Astro.url.pathname;
 
+// Items with an icon also appear in the mobile bottom tab bar, which hides
+// their top-nav duplicates on narrow screens (.tab-dup).
 const navItems = [
-  { href: '/sessions', label: 'Sessions' },
-  { href: '/balls', label: 'Balls' },
-  { href: '/approaches', label: 'Approaches' },
-  { href: '/leagues', label: 'Leagues' },
-  { href: '/notes', label: 'Notes' },
-  { href: '/stats', label: 'Stats' },
-  { href: '/settings', label: 'Settings' },
+  { href: '/sessions', label: 'Sessions', icon: '🎳' },
+  { href: '/balls', label: 'Balls', icon: null },
+  { href: '/approaches', label: 'Approaches', icon: null },
+  { href: '/leagues', label: 'Leagues', icon: null },
+  { href: '/notes', label: 'Notes', icon: '📝' },
+  { href: '/stats', label: 'Stats', icon: '📊' },
+  { href: '/settings', label: 'Settings', icon: '⚙️' },
 ];
+const tabItems = navItems.filter((item) => item.icon);
 
 const isActive = (href: string) => path === href || path.startsWith(href + '/');
 ---
@@ -49,7 +52,11 @@ const isActive = (href: string) => path === href || path.startsWith(href + '/');
         <a class="brand" href="/dashboard">🎳 MyBowlingTracker</a>
         <nav class="appnav" aria-label="Primary">
           {navItems.map((item) => (
-            <a href={item.href} aria-current={isActive(item.href) ? 'page' : undefined}>{item.label}</a>
+            <a
+              href={item.href}
+              class:list={[{ 'tab-dup': !!item.icon }]}
+              aria-current={isActive(item.href) ? 'page' : undefined}
+            >{item.label}</a>
           ))}
           <form class="logout" method="POST" action="/api/auth/logout">
             <button type="submit">Log Out</button>
@@ -58,6 +65,16 @@ const isActive = (href: string) => path === href || path.startsWith(href + '/');
       </header>
     )}
     <slot />
+    {user && (
+      <nav class="tabbar" aria-label="Quick navigation">
+        {tabItems.map((item) => (
+          <a href={item.href} aria-current={isActive(item.href) ? 'page' : undefined}>
+            <span class="tab-icon" aria-hidden="true">{item.icon}</span>
+            {item.label}
+          </a>
+        ))}
+      </nav>
+    )}
     <script is:inline>
       (function () {
         var root = document.documentElement;
