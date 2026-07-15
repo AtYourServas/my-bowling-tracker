@@ -20,10 +20,12 @@ if (Astro.request.method === 'POST') {
   const hidden_shot_fields = SHOT_FIELD_KEYS.filter((key) => formData.get(`show_${key}`) !== 'on');
   const hidden_approach_fields = APPROACH_FIELD_KEYS.filter((key) => formData.get(`approach_show_${key}`) !== 'on');
 
+  // upsert, not update: an account from before the handle_new_user trigger
+  // has no profiles row, and an update matching zero rows "succeeds" without
+  // saving anything. Upsert creates the row on first save instead.
   const { error: updateError } = await supabase
     .from('profiles')
-    .update({ display_name, default_ball_id, default_spare_ball_id, default_entry_mode, hidden_shot_fields, hidden_approach_fields })
-    .eq('id', user!.id);
+    .upsert({ id: user!.id, display_name, default_ball_id, default_spare_ball_id, default_entry_mode, hidden_shot_fields, hidden_approach_fields });
 
   if (updateError) {
     error = updateError.message;
