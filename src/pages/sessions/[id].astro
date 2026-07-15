@@ -3,8 +3,9 @@ import Layout from '../../layouts/Layout.astro';
 import GameScoreValue from '../../components/GameScoreValue.astro';
 import MiniScoresheet from '../../components/MiniScoresheet.astro';
 import { fetchDerivedScoreForGame, fetchMiniScoresheets } from '../../lib/scoring';
+import type { MiniSheet } from '../../lib/scoring';
 import { fetchSessionHandicapDetail } from '../../lib/handicap';
-import { fetchSessionLaneStats, fetchSessionStatFrames, computeSessionRates } from '../../lib/stats';
+import { fetchSessionLaneStats, fetchSessionStatFrames, computeSessionRates, computeGameRates } from '../../lib/stats';
 import { laneLabel, laneConfigFromSession, hasLanePair } from '../../lib/lanes';
 import { fetchSessionNotes } from '../../lib/notes';
 import NoteCard from '../../components/NoteCard.astro';
@@ -95,9 +96,9 @@ if (Astro.request.method === 'POST') {
         .from('session_notes')
         .insert({ user_id: user!.id, session_id: id, body });
       if (noteError) error = noteError.message;
-      else return Astro.redirect(`/sessions/${id}#notes`);
+      else return Astro.redirect(`/sessions/${id}?view=notes`);
     } else {
-      return Astro.redirect(`/sessions/${id}#notes`);
+      return Astro.redirect(`/sessions/${id}?view=notes`);
     }
   } else if (intent === 'edit_note') {
     const noteId = formData.get('note_id')?.toString();
@@ -109,16 +110,16 @@ if (Astro.request.method === 'POST') {
         .update({ body })
         .eq('id', noteId);
       if (noteError) error = noteError.message;
-      else return Astro.redirect(`/sessions/${id}#notes`);
+      else return Astro.redirect(`/sessions/${id}?view=notes`);
     } else {
-      return Astro.redirect(`/sessions/${id}#notes`);
+      return Astro.redirect(`/sessions/${id}?view=notes`);
     }
   } else if (intent === 'delete_note') {
     const noteId = formData.get('note_id')?.toString();
 
     const { error: noteError } = await supabase.from('session_notes').delete().eq('id', noteId);
     if (noteError) error = noteError.message;
-    else return Astro.redirect(`/sessions/${id}#notes`);
+    else return Astro.redirect(`/sessions/${id}?view=notes`);
   } else {
     const slot = formData.get('slot')?.toString();
     const action = formData.get('action')?.toString();
@@ -161,23 +162,16 @@ if (!session) {
   return Astro.redirect('/sessions');
 }
 
+// Tabbed views keep the entry path (Games) front and centre; Stats and Notes
+// each fetch their data only when shown.
+const viewParam = Astro.url.searchParams.get('view');
+const view: 'games' | 'stats' | 'notes' = viewParam === 'stats' || viewParam === 'notes' ? viewParam : 'games';
+
 const handicap = await fetchSessionHandicapDetail(supabase, session);
 const sessionHandicap = handicap.effective;
 const leagueName = session.leagues?.name ?? null;
 
 const laneConfig = laneConfigFromSession(session);
-const laneStats = hasLanePair(laneConfig) ? await fetchSessionLaneStats(supabase, id!, laneConfig) : [];
-
-// strike/spare/open rates across tonight's games (practice segment excluded),
-// classified exactly like /stats
-const sessionRates = computeSessionRates(await fetchSessionStatFrames(supabase, id!));
-
-// "62%" for 62/118, an em dash when there have been no opportunities — the
-// same formatting as the stats page's rate tiles.
-function formatRate(made: number, opportunities: number): string {
-  if (opportunities === 0) return '—';
-  return `${Math.round((made / opportunities) * 100)}%`;
-}
 const { data: leagues } = await supabase.from('leagues').select('id, name').order('name');
 const { data: balls } = await supabase.from('balls').select('id, name').order('name');
 const ballName = (ballId: string | null) => balls?.find((b) => b.id === ballId)?.name ?? null;
@@ -192,19 +186,39 @@ const { data: games } = await supabase
   .eq('session_id', id)
   .order('created_at', { ascending: true });
 
-const derivedScores = new Map<string, number | null>(
-  await Promise.all(
-    (games ?? []).map(async (g) => [g.id, await fetchDerivedScoreForGame(supabase, g.id)] as const),
-  ),
-);
+// The slot label the games list uses for a game (league night vs freeform).
+function gameLabel(game: { is_practice: boolean; game_number: number | null }, index: number): string {
+  if (session.session_type !== 'league') return `Game ${index + 1}`;
+  return game.is_practice ? 'Practice' : game.game_number ? `Game ${game.game_number}` : 'Game';
+}
 
-// per-game marks/score strips (+ first-ball pinfall) for the games list summary
-const miniSheets = await fetchMiniScoresheets(supabase, (games ?? []).map((g) => g.id));
+// Games view: derived scores + per-game marks/score strips (+ first-ball pinfall)
+const derivedScores = new Map<string, number | null>(
+  view === 'games'
+    ? await Promise.all(
+        (games ?? []).map(async (g) => [g.id, await fetchDerivedScoreForGame(supabase, g.id)] as const),
+      )
+    : [],
+);
+const miniSheets = view === 'games' ? await fetchMiniScoresheets(supabase, (games ?? []).map((g) => g.id)) : new Map<string, MiniSheet>();
 const miniSheet = (gameId: string) => {
   const mini = miniSheets.get(gameId);
   return mini && mini.cells.some((c) => c.bowled) ? mini : null;
 };
 const anyPinfall = [...miniSheets.values()].some((m) => m.cells.some((c) => c.bowled));
+
+// The most recent game mid-bowl (frames logged, 10th unresolved, no saved
+// score) — the "Resume" fast path back into the logger, which reopens on the
+// earliest incomplete frame.
+const inProgress =
+  view === 'games'
+    ? [...(games ?? [])].reverse().find((g) => {
+        if (g.final_score != null) return false;
+        const mini = miniSheets.get(g.id);
+        return !!mini && mini.cells.some((c) => c.bowled) && mini.cells[9]?.cumulative == null;
+      })
+    : undefined;
+const inProgressLabel = inProgress ? gameLabel(inProgress, (games ?? []).indexOf(inProgress)) : null;
 
 function gameScore(game: { id: string; final_score: number | null }) {
   const derived = derivedScores.get(game.id) ?? null;
@@ -226,7 +240,25 @@ function gameScore(game: { id: string; final_score: number | null }) {
   return { primary: scratch, handicap, detail };
 }
 
-const notes = await fetchSessionNotes(supabase, id!);
+// Stats view: session + per-game rates (classified exactly like /stats) and
+// the per-lane breakdown, all off one scoped frames fetch.
+const sessionFrames = view === 'stats' ? await fetchSessionStatFrames(supabase, id!) : [];
+const sessionRates = view === 'stats' ? computeSessionRates(sessionFrames) : null;
+const gameRateRows = (view === 'stats' ? (games ?? []) : []).flatMap((game, i) => {
+  const rates = computeGameRates(sessionFrames, game.id);
+  return rates ? [{ label: gameLabel(game, i), rates }] : [];
+});
+const laneStats =
+  view === 'stats' && hasLanePair(laneConfig) ? await fetchSessionLaneStats(supabase, id!, laneConfig) : [];
+
+// "62%" for 62/118, an em dash when there have been no opportunities — the
+// same formatting as the stats page's rate tiles.
+function formatRate(made: number, opportunities: number): string {
+  if (opportunities === 0) return '—';
+  return `${Math.round((made / opportunities) * 100)}%`;
+}
+
+const notes = view === 'notes' ? await fetchSessionNotes(supabase, id!) : [];
 
 const practiceGame = games?.find((g) => g.is_practice);
 const game1 = games?.find((g) => g.game_number === 1);
@@ -239,6 +271,8 @@ const leagueSlots = [
   { key: 'game2', label: 'Game 2', game: game2 },
   { key: 'game3', label: 'Game 3', game: game3 },
 ];
+
+const setupSummary = [leagueName, laneLabel(laneConfig)].filter(Boolean).join(' · ') || 'Not set';
 ---
 
 <Layout title={session.alley_name || 'Session'}>
@@ -253,313 +287,356 @@ const leagueSlots = [
 
   {error && <p class="error">{error}</p>}
 
-  {session.session_type === 'league' && (
-    <details class="score-box collapsible" open={session.league_id == null}>
-      <summary>
-        <span class="sum-label">League</span>
-        <span class="sum-value">{leagueName ?? 'None'}{sessionHandicap != null ? ` · Hdcp ${sessionHandicap}` : ''}</span>
-      </summary>
-      <form method="POST">
-        <input type="hidden" name="intent" value="set_league" />
-        <label>
-          League
-          <select name="league_id">
-            <option value="">None</option>
-            {leagues?.map((league) => (
-              <option value={league.id} selected={league.id === session.league_id}>{league.name}</option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Handicap Override (optional)
-          <input type="number" name="manual_handicap" value={session.manual_handicap ?? ''} placeholder={handicap.calculated != null ? String(handicap.calculated) : '—'} />
-        </label>
-        <button type="submit">Save</button>
-      </form>
-      <p class="empty">
-        {handicap.calculated != null && `Calculated: ${handicap.calculated}. `}
-        {handicap.override != null
-          ? `Using your override of ${handicap.override}.`
-          : sessionHandicap != null
-            ? `This session's handicap: ${sessionHandicap}.`
-            : 'No handicap available for this session yet.'}
-      </p>
-    </details>
-  )}
+  <div class="entry-toggle session-tabs" role="group" aria-label="Session view">
+    <a class:list={['seg', { active: view === 'games' }]} href={`/sessions/${id}`} aria-current={view === 'games' ? 'true' : undefined}>Games</a>
+    <a class:list={['seg', { active: view === 'stats' }]} href={`/sessions/${id}?view=stats`} aria-current={view === 'stats' ? 'true' : undefined}>Stats</a>
+    <a class:list={['seg', { active: view === 'notes' }]} href={`/sessions/${id}?view=notes`} aria-current={view === 'notes' ? 'true' : undefined}>Notes</a>
+  </div>
 
-  <details class="score-box collapsible" open={session.lane_number == null}>
-    <summary>
-      <span class="sum-label">Lanes</span>
-      <span class="sum-value">{laneLabel(laneConfig) || 'Not set'}</span>
-    </summary>
-    <form method="POST">
-      <input type="hidden" name="intent" value="edit_lanes" />
-      <label>
-        Starting Lane
-        <input type="number" name="lane_number" min="1" value={session.lane_number ?? ''} />
-      </label>
-      <label>
-        Second Lane (optional — for a two-lane pair)
-        <input type="number" name="second_lane_number" min="1" value={session.second_lane_number ?? ''} placeholder="alternates each frame" />
-      </label>
-      <button type="submit">Save Lanes</button>
-    </form>
-    {hasLanePair(laneConfig) && (
-      <p class="empty">
-        Strict alternation — odd frames on lane {laneConfig.laneNumber}, even frames on lane {laneConfig.secondLaneNumber}.
-      </p>
-    )}
-  </details>
-
-  {balls && balls.length > 0 && (
-    <details class="score-box collapsible" open={session.default_ball_id == null && session.default_spare_ball_id == null}>
-      <summary>
-        <span class="sum-label">Default Balls</span>
-        <span class="sum-value">{defaultBallSummary}</span>
-      </summary>
-      <form method="POST">
-        <input type="hidden" name="intent" value="edit_balls" />
-        <label>
-          Default Ball (pre-fills each throw)
-          <select name="default_ball_id">
-            <option value="">None</option>
-            {balls.map((ball) => (
-              <option value={ball.id} selected={ball.id === session.default_ball_id}>{ball.name}</option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Default Spare Ball
-          <select name="default_spare_ball_id">
-            <option value="">None</option>
-            {balls.map((ball) => (
-              <option value={ball.id} selected={ball.id === session.default_spare_ball_id}>{ball.name}</option>
-            ))}
-          </select>
-        </label>
-        <button type="submit">Save Balls</button>
-      </form>
-      <p class="empty">Ball 1 of each frame pre-fills your default ball; later balls pre-fill the spare ball. You can still change the ball on any shot.</p>
-    </details>
-  )}
-
-  {sessionRates && (
-    <div class="score-box">
-      <div class="sechead"><span class="chev"><i></i><i></i><i></i></span><h2>Rates Tonight</h2></div>
-      <div class="rate-grid">
-        <div class="rate-stat">
-          <span class="rate-label">Strike Rate</span>
-          <span class="rate-value">{formatRate(sessionRates.strikes, sessionRates.strikeOpportunities)}</span>
-          <span class="rate-sub">
-            {sessionRates.strikeOpportunities > 0
-              ? `${sessionRates.strikes} of ${sessionRates.strikeOpportunities} first balls`
-              : 'No first balls yet'}
-          </span>
-        </div>
-        <div class="rate-stat">
-          <span class="rate-label">Spare Conversion</span>
-          <span class="rate-value">{formatRate(sessionRates.spares, sessionRates.spareOpportunities)}</span>
-          <span class="rate-sub">
-            {sessionRates.spareOpportunities > 0
-              ? `${sessionRates.spares} of ${sessionRates.spareOpportunities} leaves`
-              : 'No leaves yet'}
-          </span>
-        </div>
-        <div class="rate-stat">
-          <span class="rate-label">Open Frames</span>
-          <span class="rate-value">{formatRate(sessionRates.openFrames, sessionRates.completedFrames)}</span>
-          <span class="rate-sub">
-            {sessionRates.completedFrames > 0
-              ? `${sessionRates.openFrames} of ${sessionRates.completedFrames} frames`
-              : 'No frames done yet'}
-          </span>
-        </div>
-      </div>
-      <p class="empty">Logged frames from tonight's games; the practice segment isn't counted.</p>
-    </div>
-  )}
-
-  {laneStats.length > 0 && (
-    <div class="score-box">
-      <div class="sechead"><span class="chev"><i></i><i></i><i></i></span><h2>By Lane Tonight</h2></div>
-      <ul class="lane-stats">
-        {laneStats.map((s) => (
-          <li>
-            <strong>Lane {s.lane}</strong>
-            <span>
-              {s.frames} frame{s.frames === 1 ? '' : 's'} · {s.strikes} strike{s.strikes === 1 ? '' : 's'}
-              {' · first-ball avg '}{s.firstBallAvg != null ? s.firstBallAvg.toFixed(1) : '—'}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  )}
-
-  <hr />
-
-  <h1>Games</h1>
-  <p class="empty">Enter a game's final score, or add &amp; log it shot-by-shot.</p>
-
-  {anyPinfall && (
-    <label class="pinfall-toggle">
-      <input type="checkbox" id="show-pinfall" />
-      Show Pinfall
-    </label>
-  )}
-
-  {session.session_type === 'league' ? (
-    <ul class="list">
-      {leagueSlots.map((slot) => {
-        const score = slot.game ? gameScore(slot.game) : null;
-        return (
-          <li>
-            {slot.game && score ? (
-              <>
-                <a class="card game-card" href={`/sessions/${id}/games/${slot.game.id}`}>
-                  <div class="game-card-main">
-                    <strong>{slot.label}</strong>
-                    {score.detail && <div class="game-card-detail">{score.detail}</div>}
-                  </div>
-                  <GameScoreValue primary={score.primary} handicap={score.handicap} />
-                </a>
-                {miniSheet(slot.game.id) && (
-                  <MiniScoresheet
-                    cells={miniSheet(slot.game.id)!.cells}
-                    pinfall={miniSheet(slot.game.id)!.pinfall}
-                    label={slot.label}
-                  />
-                )}
-                {score.primary == null ? (
-                  <div class="game-actions">
-                    <form method="POST" class="score-inline">
-                      <input type="hidden" name="intent" value="set_game_score" />
-                      <input type="hidden" name="game_id" value={slot.game.id} />
-                      <input type="number" name="final_score" min="0" max="300" placeholder="final score" aria-label={`Final score for ${slot.label}`} />
-                      <button type="submit" class="secondary">Save</button>
-                    </form>
-                    <a href={`/sessions/${id}/games/${slot.game.id}/review`} class="review-link">Review Scorecard &rarr;</a>
-                  </div>
-                ) : (
-                  <a href={`/sessions/${id}/games/${slot.game.id}/review`} class="review-link">Review Scorecard &rarr;</a>
-                )}
-              </>
-            ) : (
-              <div class="add-slot">
-                <strong>{slot.label}</strong>
-                <form method="POST" class="add-game">
-                  <input type="hidden" name="slot" value={slot.key} />
-                  <input type="number" name="final_score" min="0" max="300" placeholder="final score (optional)" aria-label={`Score for ${slot.label}`} />
-                  <div class="add-game-actions">
-                    <button type="submit" name="action" value="score" class="secondary">Add Score Only</button>
-                    <button type="submit" name="action" value="log">Add &amp; Log Throws</button>
-                  </div>
-                </form>
-              </div>
-            )}
-          </li>
-        );
-      })}
-    </ul>
-  ) : (
+  {view === 'games' && (
     <>
-      {games && games.length > 0 ? (
+      {inProgress && (
+        <a class="button resume-cta" href={`/sessions/${id}/games/${inProgress.id}`}>Resume {inProgressLabel} &rarr;</a>
+      )}
+
+      {anyPinfall && (
+        <label class="pinfall-toggle">
+          <input type="checkbox" id="show-pinfall" />
+          Show Pinfall
+        </label>
+      )}
+
+      {session.session_type === 'league' ? (
         <ul class="list">
-          {games.map((game, i) => {
-            const score = gameScore(game);
+          {leagueSlots.map((slot) => {
+            const score = slot.game ? gameScore(slot.game) : null;
             return (
               <li>
-                <a class="card game-card" href={`/sessions/${id}/games/${game.id}`}>
-                  <div class="game-card-main">
-                    <strong>Game {i + 1}</strong>
-                    {score.detail && <div class="game-card-detail">{score.detail}</div>}
-                  </div>
-                  <GameScoreValue primary={score.primary} handicap={score.handicap} />
-                </a>
-                {miniSheet(game.id) && (
-                  <MiniScoresheet
-                    cells={miniSheet(game.id)!.cells}
-                    pinfall={miniSheet(game.id)!.pinfall}
-                    label={`Game ${i + 1}`}
-                  />
-                )}
-                {score.primary == null ? (
-                  <div class="game-actions">
-                    <form method="POST" class="score-inline">
-                      <input type="hidden" name="intent" value="set_game_score" />
-                      <input type="hidden" name="game_id" value={game.id} />
-                      <input type="number" name="final_score" min="0" max="300" placeholder="final score" aria-label={`Final score for game ${i + 1}`} />
-                      <button type="submit" class="secondary">Save</button>
-                    </form>
-                    <a href={`/sessions/${id}/games/${game.id}/review`} class="review-link">Review Scorecard &rarr;</a>
-                  </div>
+                {slot.game && score ? (
+                  <>
+                    <a class="card game-card" href={`/sessions/${id}/games/${slot.game.id}`}>
+                      <div class="game-card-main">
+                        <strong>{slot.label}</strong>
+                        {score.detail && <div class="game-card-detail">{score.detail}</div>}
+                      </div>
+                      <GameScoreValue primary={score.primary} handicap={score.handicap} />
+                    </a>
+                    {miniSheet(slot.game.id) && (
+                      <MiniScoresheet
+                        cells={miniSheet(slot.game.id)!.cells}
+                        pinfall={miniSheet(slot.game.id)!.pinfall}
+                        label={slot.label}
+                      />
+                    )}
+                    {score.primary == null ? (
+                      <div class="game-actions">
+                        <form method="POST" class="score-inline">
+                          <input type="hidden" name="intent" value="set_game_score" />
+                          <input type="hidden" name="game_id" value={slot.game.id} />
+                          <input type="number" name="final_score" min="0" max="300" placeholder="final score" aria-label={`Final score for ${slot.label}`} />
+                          <button type="submit" class="secondary">Save</button>
+                        </form>
+                        <a href={`/sessions/${id}/games/${slot.game.id}/review`} class="review-link">Review Scorecard &rarr;</a>
+                      </div>
+                    ) : (
+                      <a href={`/sessions/${id}/games/${slot.game.id}/review`} class="review-link">Review Scorecard &rarr;</a>
+                    )}
+                  </>
                 ) : (
-                  <a href={`/sessions/${id}/games/${game.id}/review`} class="review-link">Review Scorecard &rarr;</a>
+                  <div class="add-slot">
+                    <strong>{slot.label}</strong>
+                    <form method="POST" class="add-game">
+                      <input type="hidden" name="slot" value={slot.key} />
+                      <input type="number" name="final_score" min="0" max="300" placeholder="final score (optional)" aria-label={`Score for ${slot.label}`} />
+                      <div class="add-game-actions">
+                        <button type="submit" name="action" value="score" class="secondary">Add Score Only</button>
+                        <button type="submit" name="action" value="log">Add &amp; Log Throws</button>
+                      </div>
+                    </form>
+                  </div>
                 )}
               </li>
             );
           })}
         </ul>
       ) : (
-        <p class="empty">No games yet — add one below.</p>
+        <>
+          {games && games.length > 0 ? (
+            <ul class="list">
+              {games.map((game, i) => {
+                const score = gameScore(game);
+                return (
+                  <li>
+                    <a class="card game-card" href={`/sessions/${id}/games/${game.id}`}>
+                      <div class="game-card-main">
+                        <strong>Game {i + 1}</strong>
+                        {score.detail && <div class="game-card-detail">{score.detail}</div>}
+                      </div>
+                      <GameScoreValue primary={score.primary} handicap={score.handicap} />
+                    </a>
+                    {miniSheet(game.id) && (
+                      <MiniScoresheet
+                        cells={miniSheet(game.id)!.cells}
+                        pinfall={miniSheet(game.id)!.pinfall}
+                        label={`Game ${i + 1}`}
+                      />
+                    )}
+                    {score.primary == null ? (
+                      <div class="game-actions">
+                        <form method="POST" class="score-inline">
+                          <input type="hidden" name="intent" value="set_game_score" />
+                          <input type="hidden" name="game_id" value={game.id} />
+                          <input type="number" name="final_score" min="0" max="300" placeholder="final score" aria-label={`Final score for game ${i + 1}`} />
+                          <button type="submit" class="secondary">Save</button>
+                        </form>
+                        <a href={`/sessions/${id}/games/${game.id}/review`} class="review-link">Review Scorecard &rarr;</a>
+                      </div>
+                    ) : (
+                      <a href={`/sessions/${id}/games/${game.id}/review`} class="review-link">Review Scorecard &rarr;</a>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <p class="empty">No games yet — add one below.</p>
+          )}
+          <form method="POST" class="add-game" style="margin-top: 1rem;">
+            <input type="hidden" name="slot" value="new" />
+            <input type="number" name="final_score" min="0" max="300" placeholder="final score (optional)" aria-label="Score for new game" />
+            <div class="add-game-actions">
+              <button type="submit" name="action" value="score" class="secondary">Add Score Only</button>
+              <button type="submit" name="action" value="log">Add &amp; Log Throws</button>
+            </div>
+          </form>
+        </>
       )}
-      <form method="POST" class="add-game" style="margin-top: 1rem;">
-        <input type="hidden" name="slot" value="new" />
-        <input type="number" name="final_score" min="0" max="300" placeholder="final score (optional)" aria-label="Score for new game" />
-        <div class="add-game-actions">
-          <button type="submit" name="action" value="score" class="secondary">Add Score Only</button>
-          <button type="submit" name="action" value="log">Add &amp; Log Throws</button>
-        </div>
+
+      <hr />
+
+      <details class="score-box collapsible setup-box">
+        <summary>
+          <span class="sum-label">Session Setup</span>
+          <span class="sum-value">{setupSummary}</span>
+        </summary>
+
+        {session.session_type === 'league' && (
+          <details class="score-box collapsible" open={session.league_id == null}>
+            <summary>
+              <span class="sum-label">League</span>
+              <span class="sum-value">{leagueName ?? 'None'}{sessionHandicap != null ? ` · Hdcp ${sessionHandicap}` : ''}</span>
+            </summary>
+            <form method="POST">
+              <input type="hidden" name="intent" value="set_league" />
+              <label>
+                League
+                <select name="league_id">
+                  <option value="">None</option>
+                  {leagues?.map((league) => (
+                    <option value={league.id} selected={league.id === session.league_id}>{league.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Handicap Override (optional)
+                <input type="number" name="manual_handicap" value={session.manual_handicap ?? ''} placeholder={handicap.calculated != null ? String(handicap.calculated) : '—'} />
+              </label>
+              <button type="submit">Save</button>
+            </form>
+            <p class="empty">
+              {handicap.calculated != null && `Calculated: ${handicap.calculated}. `}
+              {handicap.override != null
+                ? `Using your override of ${handicap.override}.`
+                : sessionHandicap != null
+                  ? `This session's handicap: ${sessionHandicap}.`
+                  : 'No handicap available for this session yet.'}
+            </p>
+          </details>
+        )}
+
+        <details class="score-box collapsible" open={session.lane_number == null}>
+          <summary>
+            <span class="sum-label">Lanes</span>
+            <span class="sum-value">{laneLabel(laneConfig) || 'Not set'}</span>
+          </summary>
+          <form method="POST">
+            <input type="hidden" name="intent" value="edit_lanes" />
+            <label>
+              Starting Lane
+              <input type="number" name="lane_number" min="1" value={session.lane_number ?? ''} />
+            </label>
+            <label>
+              Second Lane (optional — for a two-lane pair)
+              <input type="number" name="second_lane_number" min="1" value={session.second_lane_number ?? ''} placeholder="alternates each frame" />
+            </label>
+            <button type="submit">Save Lanes</button>
+          </form>
+          {hasLanePair(laneConfig) && (
+            <p class="empty">
+              Strict alternation — odd frames on lane {laneConfig.laneNumber}, even frames on lane {laneConfig.secondLaneNumber}.
+            </p>
+          )}
+        </details>
+
+        {balls && balls.length > 0 && (
+          <details class="score-box collapsible" open={session.default_ball_id == null && session.default_spare_ball_id == null}>
+            <summary>
+              <span class="sum-label">Default Balls</span>
+              <span class="sum-value">{defaultBallSummary}</span>
+            </summary>
+            <form method="POST">
+              <input type="hidden" name="intent" value="edit_balls" />
+              <label>
+                Default Ball (pre-fills each throw)
+                <select name="default_ball_id">
+                  <option value="">None</option>
+                  {balls.map((ball) => (
+                    <option value={ball.id} selected={ball.id === session.default_ball_id}>{ball.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Default Spare Ball
+                <select name="default_spare_ball_id">
+                  <option value="">None</option>
+                  {balls.map((ball) => (
+                    <option value={ball.id} selected={ball.id === session.default_spare_ball_id}>{ball.name}</option>
+                  ))}
+                </select>
+              </label>
+              <button type="submit">Save Balls</button>
+            </form>
+            <p class="empty">Ball 1 of each frame pre-fills your default ball; later balls pre-fill the spare ball. You can still change the ball on any shot.</p>
+          </details>
+        )}
+      </details>
+
+      <hr />
+
+      <form method="POST" class="row-actions" onsubmit="return confirm('Delete this session? All of its games, throws, and scores will be permanently removed.');">
+        <input type="hidden" name="intent" value="delete_session" />
+        <button type="submit" class="danger">Delete Session</button>
       </form>
     </>
   )}
 
-  <hr />
+  {view === 'stats' && (
+    <>
+      {sessionRates ? (
+        <div class="score-box">
+          <div class="sechead"><span class="chev"><i></i><i></i><i></i></span><h2>Rates Tonight</h2></div>
+          <div class="rate-grid">
+            <div class="rate-stat">
+              <span class="rate-label">Strike Rate</span>
+              <span class="rate-value">{formatRate(sessionRates.strikes, sessionRates.strikeOpportunities)}</span>
+              <span class="rate-sub">
+                {sessionRates.strikeOpportunities > 0
+                  ? `${sessionRates.strikes} of ${sessionRates.strikeOpportunities} first balls`
+                  : 'No first balls yet'}
+              </span>
+            </div>
+            <div class="rate-stat">
+              <span class="rate-label">Spare Conversion</span>
+              <span class="rate-value">{formatRate(sessionRates.spares, sessionRates.spareOpportunities)}</span>
+              <span class="rate-sub">
+                {sessionRates.spareOpportunities > 0
+                  ? `${sessionRates.spares} of ${sessionRates.spareOpportunities} leaves`
+                  : 'No leaves yet'}
+              </span>
+            </div>
+            <div class="rate-stat">
+              <span class="rate-label">Open Frames</span>
+              <span class="rate-value">{formatRate(sessionRates.openFrames, sessionRates.completedFrames)}</span>
+              <span class="rate-sub">
+                {sessionRates.completedFrames > 0
+                  ? `${sessionRates.openFrames} of ${sessionRates.completedFrames} frames`
+                  : 'No frames done yet'}
+              </span>
+            </div>
+          </div>
+          <p class="empty">Logged frames from tonight's games; the practice segment isn't counted.</p>
+        </div>
+      ) : (
+        <p class="empty">No logged throws yet — stats appear as you bowl.</p>
+      )}
 
-  <div class="sechead" id="notes"><span class="chev"><i></i><i></i><i></i></span><h2>Notes</h2></div>
-  <form method="POST" class="add-note">
-    <input type="hidden" name="intent" value="add_note" />
-    <textarea name="body" rows="2" placeholder="Jot a thought about tonight — lane read, adjustment, reminder…" aria-label="New note" required></textarea>
-    <button type="submit" class="secondary">Add Note</button>
-  </form>
+      {gameRateRows.length > 0 && (
+        <div class="score-box">
+          <div class="sechead"><span class="chev"><i></i><i></i><i></i></span><h2>By Game Tonight</h2></div>
+          <ul class="lane-stats">
+            {gameRateRows.map((row) => (
+              <li>
+                <strong>{row.label}</strong>
+                <span>
+                  Strikes {formatRate(row.rates.strikes, row.rates.strikeOpportunities)}
+                  {' · Spares '}{formatRate(row.rates.spares, row.rates.spareOpportunities)}
+                  {' · Open '}{formatRate(row.rates.openFrames, row.rates.completedFrames)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
-  {notes.length > 0 ? (
-    <ul class="note-stream">
-      {notes.map((note) => (
-        <li>
-          <NoteCard note={note}>
-            {note.kind === 'note' && (
-              <div class="note-actions">
-                <details class="note-edit">
-                  <summary>Edit</summary>
-                  <form method="POST">
-                    <input type="hidden" name="intent" value="edit_note" />
-                    <input type="hidden" name="note_id" value={note.id} />
-                    <textarea name="body" rows="2" aria-label="Edit note" required>{note.body}</textarea>
-                    <button type="submit" class="secondary">Save Note</button>
-                  </form>
-                </details>
-                <form method="POST" onsubmit="return confirm('Delete this note?');">
-                  <input type="hidden" name="intent" value="delete_note" />
-                  <input type="hidden" name="note_id" value={note.id} />
-                  <button type="submit" class="linklike danger">Delete</button>
-                </form>
-              </div>
-            )}
-          </NoteCard>
-        </li>
-      ))}
-    </ul>
-  ) : (
-    <p class="empty">No notes yet — add one above, or leave a note on any shot while logging.</p>
+      {laneStats.length > 0 && (
+        <div class="score-box">
+          <div class="sechead"><span class="chev"><i></i><i></i><i></i></span><h2>By Lane Tonight</h2></div>
+          <ul class="lane-stats">
+            {laneStats.map((s) => (
+              <li>
+                <strong>Lane {s.lane}</strong>
+                <span>
+                  {s.frames} frame{s.frames === 1 ? '' : 's'} · {s.strikes} strike{s.strikes === 1 ? '' : 's'}
+                  {' · first-ball avg '}{s.firstBallAvg != null ? s.firstBallAvg.toFixed(1) : '—'}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </>
   )}
 
-  <hr />
+  {view === 'notes' && (
+    <>
+      <form method="POST" class="add-note">
+        <input type="hidden" name="intent" value="add_note" />
+        <textarea name="body" rows="2" placeholder="Jot a thought about tonight — lane read, adjustment, reminder…" aria-label="New note" required></textarea>
+        <button type="submit" class="secondary">Add Note</button>
+      </form>
 
-  <form method="POST" class="row-actions" onsubmit="return confirm('Delete this session? All of its games, throws, and scores will be permanently removed.');">
-    <input type="hidden" name="intent" value="delete_session" />
-    <button type="submit" class="danger">Delete Session</button>
-  </form>
+      {notes.length > 0 ? (
+        <ul class="note-stream">
+          {notes.map((note) => (
+            <li>
+              <NoteCard note={note}>
+                {note.kind === 'note' && (
+                  <div class="note-actions">
+                    <details class="note-edit">
+                      <summary>Edit</summary>
+                      <form method="POST">
+                        <input type="hidden" name="intent" value="edit_note" />
+                        <input type="hidden" name="note_id" value={note.id} />
+                        <textarea name="body" rows="2" aria-label="Edit note" required>{note.body}</textarea>
+                        <button type="submit" class="secondary">Save Note</button>
+                      </form>
+                    </details>
+                    <form method="POST" onsubmit="return confirm('Delete this note?');">
+                      <input type="hidden" name="intent" value="delete_note" />
+                      <input type="hidden" name="note_id" value={note.id} />
+                      <button type="submit" class="linklike danger">Delete</button>
+                    </form>
+                  </div>
+                )}
+              </NoteCard>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p class="empty">No notes yet — add one above, or leave a note on any shot while logging.</p>
+      )}
+    </>
+  )}
 </Layout>
 
 <script>
@@ -574,6 +651,20 @@ const leagueSlots = [
 </script>
 
 <style>
+  .session-tabs {
+    margin: 0.75rem 0 1rem;
+  }
+  .resume-cta {
+    display: block;
+    text-align: center;
+    margin: 0 0 1rem;
+  }
+  .setup-box > summary {
+    cursor: pointer;
+  }
+  .setup-box > details {
+    margin-top: 0.75rem;
+  }
   .pinfall-toggle {
     display: inline-flex;
     align-items: center;
