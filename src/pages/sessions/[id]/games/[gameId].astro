@@ -720,7 +720,7 @@ function ballResult(i: number): string {
     position: fixed;
     left: 50%;
     transform: translateX(-50%);
-    bottom: var(--s4);
+    bottom: calc(var(--s4) + var(--tabbar-clearance));
     z-index: 50;
     display: flex;
     align-items: center;

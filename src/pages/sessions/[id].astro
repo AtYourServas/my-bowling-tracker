@@ -654,6 +654,17 @@ const setupSummary = [leagueName, laneLabel(laneConfig)].filter(Boolean).join(' 
   .session-tabs {
     margin: 0.75rem 0 1rem;
   }
+  /* on phones the tab row sticks to the top so long game lists can still
+     switch views; the bg-coloured halo hides content scrolling behind the
+     toggle's rounded corners */
+  @media (max-width: 640px) {
+    .session-tabs {
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      box-shadow: 0 0 0 4px var(--bg);
+    }
+  }
   .resume-cta {
     display: block;
     text-align: center;
