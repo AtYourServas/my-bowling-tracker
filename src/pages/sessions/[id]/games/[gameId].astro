@@ -5,6 +5,7 @@ import NoteCard from '../../../../components/NoteCard.astro';
 import { fetchScoresheetForGame, frameProgress, computeFrameRolls, allowedMarks, pinsStandingBefore, pinsFacedBefore, parseShotShorthand, fetchEarliestIncompleteFrame } from '../../../../lib/scoring';
 import type { ShotLite } from '../../../../lib/scoring';
 import { fetchSessionHandicap } from '../../../../lib/handicap';
+import { fetchSessionStatFrames, computeGameRates } from '../../../../lib/stats';
 import { fetchLeaveNotes, notesForLeave, leaveAnchor } from '../../../../lib/notes';
 import { leaveDisplayName } from '../../../../lib/leaves';
 import { laneForFrame, laneConfigFromSession } from '../../../../lib/lanes';
@@ -220,6 +221,16 @@ const runningTotal = through?.cumulative ?? null;
 const finalDerived = cells[9]?.cumulative ?? null; // full total once all 10 resolve
 const scratchScore = game.final_score ?? finalDerived ?? runningTotal;
 const sessionHandicap = await fetchSessionHandicap(supabase, { id: sessionId!, ...game.sessions });
+
+// this game's strike/spare/open rates so far, classified exactly like /stats
+const gameRates = computeGameRates(await fetchSessionStatFrames(supabase, sessionId!), gameId!);
+
+// "62%" for 62/118, an em dash when there have been no opportunities — the
+// same formatting as the stats page's rate tiles.
+function formatRate(made: number, opportunities: number): string {
+  if (opportunities === 0) return '—';
+  return `${Math.round((made / opportunities) * 100)}%`;
+}
 
 const sessionMeta = [
   game.sessions?.alley_name,
@@ -440,6 +451,38 @@ function ballResult(i: number): string {
       <button type="submit" class="secondary">Save</button>
     </form>
   </div>
+
+  {gameRates && (
+    <div class="rate-grid game-rates">
+      <div class="rate-stat">
+        <span class="rate-label">Strike Rate</span>
+        <span class="rate-value">{formatRate(gameRates.strikes, gameRates.strikeOpportunities)}</span>
+        <span class="rate-sub">
+          {gameRates.strikeOpportunities > 0
+            ? `${gameRates.strikes} of ${gameRates.strikeOpportunities} first balls`
+            : 'No first balls yet'}
+        </span>
+      </div>
+      <div class="rate-stat">
+        <span class="rate-label">Spare Conversion</span>
+        <span class="rate-value">{formatRate(gameRates.spares, gameRates.spareOpportunities)}</span>
+        <span class="rate-sub">
+          {gameRates.spareOpportunities > 0
+            ? `${gameRates.spares} of ${gameRates.spareOpportunities} leaves`
+            : 'No leaves yet'}
+        </span>
+      </div>
+      <div class="rate-stat">
+        <span class="rate-label">Open Frames</span>
+        <span class="rate-value">{formatRate(gameRates.openFrames, gameRates.completedFrames)}</span>
+        <span class="rate-sub">
+          {gameRates.completedFrames > 0
+            ? `${gameRates.openFrames} of ${gameRates.completedFrames} frames`
+            : 'No frames done yet'}
+        </span>
+      </div>
+    </div>
+  )}
 
   <div class="sechead"><span class="chev"><i></i><i></i><i></i></span><h2>Now Bowling &middot; Frame {frameNumber}{progress.nextBall != null && ` · Ball ${progress.nextBall}`}{showFrameLane && ` · Lane ${frameLane}`}</h2></div>
   <div class="framenav-row">
@@ -670,6 +713,9 @@ function ballResult(i: number): string {
 </script>
 
 <style>
+  .game-rates {
+    margin: 0.75rem 0 1rem;
+  }
   .game-note {
     margin: 0.5rem 0 1rem;
   }

@@ -4,7 +4,7 @@ import GameScoreValue from '../../components/GameScoreValue.astro';
 import MiniScoresheet from '../../components/MiniScoresheet.astro';
 import { fetchDerivedScoreForGame, fetchMiniScoresheets } from '../../lib/scoring';
 import { fetchSessionHandicapDetail } from '../../lib/handicap';
-import { fetchSessionLaneStats } from '../../lib/stats';
+import { fetchSessionLaneStats, fetchSessionStatFrames, computeSessionRates } from '../../lib/stats';
 import { laneLabel, laneConfigFromSession, hasLanePair } from '../../lib/lanes';
 import { fetchSessionNotes } from '../../lib/notes';
 import NoteCard from '../../components/NoteCard.astro';
@@ -167,6 +167,17 @@ const leagueName = session.leagues?.name ?? null;
 
 const laneConfig = laneConfigFromSession(session);
 const laneStats = hasLanePair(laneConfig) ? await fetchSessionLaneStats(supabase, id!, laneConfig) : [];
+
+// strike/spare/open rates across tonight's games (practice segment excluded),
+// classified exactly like /stats
+const sessionRates = computeSessionRates(await fetchSessionStatFrames(supabase, id!));
+
+// "62%" for 62/118, an em dash when there have been no opportunities — the
+// same formatting as the stats page's rate tiles.
+function formatRate(made: number, opportunities: number): string {
+  if (opportunities === 0) return '—';
+  return `${Math.round((made / opportunities) * 100)}%`;
+}
 const { data: leagues } = await supabase.from('leagues').select('id, name').order('name');
 const { data: balls } = await supabase.from('balls').select('id, name').order('name');
 const ballName = (ballId: string | null) => balls?.find((b) => b.id === ballId)?.name ?? null;
@@ -330,6 +341,42 @@ const leagueSlots = [
       </form>
       <p class="empty">Ball 1 of each frame pre-fills your default ball; later balls pre-fill the spare ball. You can still change the ball on any shot.</p>
     </details>
+  )}
+
+  {sessionRates && (
+    <div class="score-box">
+      <div class="sechead"><span class="chev"><i></i><i></i><i></i></span><h2>Rates Tonight</h2></div>
+      <div class="rate-grid">
+        <div class="rate-stat">
+          <span class="rate-label">Strike Rate</span>
+          <span class="rate-value">{formatRate(sessionRates.strikes, sessionRates.strikeOpportunities)}</span>
+          <span class="rate-sub">
+            {sessionRates.strikeOpportunities > 0
+              ? `${sessionRates.strikes} of ${sessionRates.strikeOpportunities} first balls`
+              : 'No first balls yet'}
+          </span>
+        </div>
+        <div class="rate-stat">
+          <span class="rate-label">Spare Conversion</span>
+          <span class="rate-value">{formatRate(sessionRates.spares, sessionRates.spareOpportunities)}</span>
+          <span class="rate-sub">
+            {sessionRates.spareOpportunities > 0
+              ? `${sessionRates.spares} of ${sessionRates.spareOpportunities} leaves`
+              : 'No leaves yet'}
+          </span>
+        </div>
+        <div class="rate-stat">
+          <span class="rate-label">Open Frames</span>
+          <span class="rate-value">{formatRate(sessionRates.openFrames, sessionRates.completedFrames)}</span>
+          <span class="rate-sub">
+            {sessionRates.completedFrames > 0
+              ? `${sessionRates.openFrames} of ${sessionRates.completedFrames} frames`
+              : 'No frames done yet'}
+          </span>
+        </div>
+      </div>
+      <p class="empty">Logged frames from tonight's games; the practice segment isn't counted.</p>
+    </div>
   )}
 
   {laneStats.length > 0 && (
