@@ -15,6 +15,7 @@ if (Astro.request.method === 'POST') {
   const display_name = formData.get('display_name')?.toString().trim() || null;
   const default_ball_id = formData.get('default_ball_id')?.toString() || null;
   const default_spare_ball_id = formData.get('default_spare_ball_id')?.toString() || null;
+  const default_approach_id = formData.get('default_approach_id')?.toString() || null;
   const default_entry_mode = formData.get('default_entry_mode')?.toString() === 'type' ? 'type' : 'pick';
   // each shown checkbox posts show_<key>='on'; anything not checked is hidden
   const hidden_shot_fields = SHOT_FIELD_KEYS.filter((key) => formData.get(`show_${key}`) !== 'on');
@@ -25,7 +26,7 @@ if (Astro.request.method === 'POST') {
   // saving anything. Upsert creates the row on first save instead.
   const { error: updateError } = await supabase
     .from('profiles')
-    .upsert({ id: user!.id, display_name, default_ball_id, default_spare_ball_id, default_entry_mode, hidden_shot_fields, hidden_approach_fields });
+    .upsert({ id: user!.id, display_name, default_ball_id, default_spare_ball_id, default_approach_id, default_entry_mode, hidden_shot_fields, hidden_approach_fields });
 
   if (updateError) {
     error = updateError.message;
@@ -36,7 +37,7 @@ if (Astro.request.method === 'POST') {
 
 const { data: profile } = await supabase
   .from('profiles')
-  .select('display_name, default_ball_id, default_spare_ball_id, default_entry_mode, hidden_shot_fields, hidden_approach_fields')
+  .select('display_name, default_ball_id, default_spare_ball_id, default_approach_id, default_entry_mode, hidden_shot_fields, hidden_approach_fields')
   .eq('id', user!.id)
   .maybeSingle();
 
@@ -46,6 +47,11 @@ const hiddenApproachFields: string[] = profile?.hidden_approach_fields ?? [];
 
 const { data: balls } = await supabase.from('balls').select('id, name').order('name');
 const hasBalls = (balls?.length ?? 0) > 0;
+
+// only strike approaches (empty leave) can be the default — it prefills
+// fresh-rack first throws, where a spare approach makes no sense
+const { data: approaches } = await supabase.from('approaches').select('id, name, leave').order('name');
+const strikeApproaches = (approaches ?? []).filter((a) => (a.leave ?? []).length === 0);
 ---
 
 <Layout title="Settings">
@@ -127,6 +133,23 @@ const hasBalls = (balls?.length ?? 0) > 0;
       </>
     ) : (
       <p class="empty">Add a ball on <a href="/balls">My Balls</a> first to set your defaults.</p>
+    )}
+
+    <div class="sechead"><span class="chev"><i></i><i></i><i></i></span><h2>Default Approach</h2></div>
+    <p class="empty">Pre-selects this saved reference — and applies its marks — on every fresh-rack first throw. You can pick a different reference per shot.</p>
+
+    {strikeApproaches.length > 0 ? (
+      <label>
+        Default Approach (Strike)
+        <select name="default_approach_id">
+          <option value="">None</option>
+          {strikeApproaches.map((a) => (
+            <option value={a.id} selected={a.id === profile?.default_approach_id}>{a.name}</option>
+          ))}
+        </select>
+      </label>
+    ) : (
+      <p class="empty">Add a strike approach (one with no leave) on <a href="/approaches">My Approaches</a> first.</p>
     )}
 
     <button type="submit">Save Settings</button>
