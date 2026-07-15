@@ -10,7 +10,8 @@ const { supabase, user } = Astro.locals;
 if (Astro.request.method === 'POST') {
   const formData = await Astro.request.formData();
   if (formData.get('intent') === 'dismiss_onboarding') {
-    await supabase.from('profiles').update({ onboarding_dismissed: true }).eq('id', user!.id);
+    // upsert like the settings save: a pre-trigger account has no profiles row
+    await supabase.from('profiles').upsert({ id: user!.id, onboarding_dismissed: true });
   }
   return Astro.redirect('/dashboard');
 }
