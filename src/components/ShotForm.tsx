@@ -102,7 +102,6 @@ export default function ShotForm({
   const show = (key: string) => !hiddenFields.includes(key);
   const shownMarks = (['stance', 'target', 'slide', 'breakpoint'] as const).filter(show);
   const [approachId, setApproachId] = useState(initial?.approach_id ?? '');
-  const [applied, setApplied] = useState(false);
   const [filterApproaches, setFilterApproaches] = useState(false);
   const laneRef = useRef<LanePickerHandle>(null);
 
@@ -134,17 +133,16 @@ export default function ShotForm({
   // Which of the reference marks the picker is currently showing (stance/target/slide).
   const applicableMarks = shownMarks.filter((m) => m === 'stance' || m === 'target' || m === 'slide');
 
-  // Copy the selected reference approach's marks into the LanePicker as a
-  // starting point to adjust from. Only seeds the marks currently shown.
-  function applyReference() {
-    if (!selectedApproach) return;
-    const b = approachBoards(selectedApproach);
+  // Copy a reference approach's marks into the LanePicker as a starting point
+  // to adjust from. Runs when one is picked from the dropdown; only seeds the
+  // marks currently shown. Picking "None" keeps whatever marks are placed.
+  function applyReference(approach: Approach) {
+    const b = approachBoards(approach);
     const seed: { stance?: number | null; target?: number | null; slide?: number | null } = {};
     if (applicableMarks.includes('stance')) seed.stance = b.stance;
     if (applicableMarks.includes('target')) seed.target = b.target;
     if (applicableMarks.includes('slide')) seed.slide = b.slide;
     laneRef.current?.apply(seed);
-    setApplied(true);
   }
 
   // seed the lane picker from an existing shot. An older 'arrow' target maps to
@@ -192,7 +190,8 @@ export default function ShotForm({
               value={approachId}
               onChange={(e) => {
                 setApproachId(e.target.value);
-                setApplied(false);
+                const picked = approaches.find((a) => a.id === e.target.value);
+                if (picked) applyReference(picked);
               }}
             >
               <option value="">None</option>
@@ -224,11 +223,6 @@ export default function ShotForm({
                 {targetLabel(selectedApproach.reference_target_type, selectedApproach.reference_target_value) || '—'}
               </span>
               <span>Slide Position (Finish): {markLabel(selectedApproach.reference_slide) || '—'}</span>
-              {applicableMarks.length > 0 && (
-                <button type="button" className="apply-approach" onClick={applyReference}>
-                  {applied ? '✓ Applied to my approach' : 'Apply to my approach'}
-                </button>
-              )}
             </div>
           )}
         </>
