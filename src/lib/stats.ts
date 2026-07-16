@@ -428,6 +428,8 @@ export type RateStats = {
   completedFrames: number;
   splitAttempts: number;
   splitConversions: number;
+  gutterBalls: number;
+  deliveries: number;
 };
 
 export type LeaveConversion = { name: string; attempts: number; converted: number };
@@ -450,7 +452,11 @@ function clearedRack(shot: StatShot): boolean {
  * splitConversions, so the split-conversion rate is a slice of the same walk.
  * onSpareAttempt reports each spare attempt's faced leave for the
  * conversion-by-leave grouping. Callers pass frames already sliced to their
- * scope (a filter, a game, a session).
+ * scope (a filter, a game, a session). Every non-fouled delivery also counts
+ * toward gutterBalls/deliveries -- a "gutter" here means the ball knocked down
+ * nothing it faced (0 pins), whether that's a literal gutter ball or any other
+ * total miss; fouls are excluded from this count (a foul is a rule violation,
+ * not a miss).
  */
 function walkDeliveries(
   frames: StatFrame[],
@@ -465,6 +471,8 @@ function walkDeliveries(
     completedFrames: 0,
     splitAttempts: 0,
     splitConversions: 0,
+    gutterBalls: 0,
+    deliveries: 0,
   };
 
   for (const frame of frames) {
@@ -475,6 +483,11 @@ function walkDeliveries(
       const freshRack = faced.length === 10;
       const cleared = clearedRack(shot);
       const standingAfter = (shot.pins_standing ?? []) as number[];
+
+      if (!shot.foul) {
+        rates.deliveries += 1;
+        if (standingAfter.length === faced.length) rates.gutterBalls += 1;
+      }
 
       if (freshRack && (i === 0 || frame.frameNumber === 10)) {
         rates.strikeOpportunities += 1;
@@ -585,6 +598,68 @@ export function computePinLeaveStats(frames: StatFrame[], filter: StatsFilter): 
   return Array.from(counts.entries())
     .map(([pin, { attempts, converted }]) => ({ pin, attempts, converted }))
     .sort((a, b) => a.pin - b.pin);
+}
+
+export type CleanGameStats = { cleanGames: number; totalGames: number };
+
+/**
+ * How often a FINISHED game had no open frame (every frame a strike, spare, or
+ * split conversion -- anything but a leftover). Only fully-bowled games count
+ * (an in-progress game is neither clean nor open yet); mirrors walkDeliveries'
+ * per-frame open check but grouped by game so partial games don't skew the rate.
+ */
+export function computeCleanGameStats(frames: StatFrame[], filter: StatsFilter): CleanGameStats | null {
+  const byGame = new Map<string, StatFrame[]>();
+  for (const frame of frames) {
+    if (!frameInFilter(frame, filter) || !frame.gameId) continue;
+    const list = byGame.get(frame.gameId) ?? [];
+    list.push(frame);
+    byGame.set(frame.gameId, list);
+  }
+
+  let cleanGames = 0;
+  let totalGames = 0;
+  for (const gameFrames of byGame.values()) {
+    const byNumber = new Map(gameFrames.map((f) => [f.frameNumber, f]));
+    let finished = true;
+    let hasOpen = false;
+    for (let n = 1; n <= 10; n += 1) {
+      const shots = byNumber.get(n)?.shots ?? [];
+      if (!frameProgress(n, shots).complete) {
+        finished = false;
+        break;
+      }
+      const rolls = computeFrameRolls(shots);
+      if (rolls[0] !== 10 && (rolls[0] ?? 0) + (rolls[1] ?? 0) < 10) hasOpen = true;
+    }
+    if (!finished) continue;
+    totalGames += 1;
+    if (!hasOpen) cleanGames += 1;
+  }
+
+  return totalGames === 0 ? null : { cleanGames, totalGames };
+}
+
+export type HandicapTrendPoint = { date: string; handicap: number };
+
+/**
+ * The resolved handicap for each league session, in chronological order -- one
+ * point per session (not per game, since a session's games share one handicap).
+ * Sessions with no resolvable handicap (no league, or a rolling league with no
+ * prior-week average yet) are skipped. `games` should already be date-sorted
+ * ascending (fetchAllGamesWithScores' order).
+ */
+export function computeHandicapTrend(games: ScoredGame[], handicapOf: SessionHandicapResolver): HandicapTrendPoint[] {
+  const seenSessions = new Set<string>();
+  const points: HandicapTrendPoint[] = [];
+  for (const g of games) {
+    if (g.sessionType !== 'league' || !g.leagueId || seenSessions.has(g.sessionId)) continue;
+    const h = handicapOf(sessionForHandicap(g));
+    if (h == null) continue;
+    seenSessions.add(g.sessionId);
+    points.push({ date: g.sessionDate, handicap: h });
+  }
+  return points;
 }
 
 export function fetchHandicappedAverage(games: ScoredGame[], handicapOf: SessionHandicapResolver): number | null {

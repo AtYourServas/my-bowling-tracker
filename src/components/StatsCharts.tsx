@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { RateStats, LeaveConversion, PinLeaveStat } from '../lib/stats';
+import type { RateStats, LeaveConversion, PinLeaveStat, CleanGameStats } from '../lib/stats';
 
 type BarDatum = { label: string; value: number; count: number };
 type TimeDatum = { date: string; score: number };
@@ -17,6 +17,8 @@ type Props = {
   rateStats: RateStats | null;
   leaveConversions: LeaveConversion[];
   pinLeaveStats: PinLeaveStat[];
+  cleanGameStats: CleanGameStats | null;
+  handicapTrend: TimeDatum[];
 };
 
 /** Signed drift (stance − slide) → "Straight" or "2.3 boards right/left". */
@@ -425,6 +427,8 @@ export default function StatsCharts({
   rateStats,
   leaveConversions,
   pinLeaveStats,
+  cleanGameStats,
+  handicapTrend,
 }: Props) {
   return (
     <div className="stats-charts">
@@ -448,11 +452,15 @@ export default function StatsCharts({
       )}
 
       {rateStats && (
-        <div className="rate-grid rate-grid-4">
+        <div className="rate-grid">
           <RateTile label="Strike Rate" made={rateStats.strikes} opportunities={rateStats.strikeOpportunities} noun="first balls" />
           <RateTile label="Spare Conversion" made={rateStats.spares} opportunities={rateStats.spareOpportunities} noun="leaves" />
           <RateTile label="Split Conversion" made={rateStats.splitConversions} opportunities={rateStats.splitAttempts} noun="splits" />
           <RateTile label="Open Frames" made={rateStats.openFrames} opportunities={rateStats.completedFrames} noun="frames" />
+          <RateTile label="Gutter Rate" made={rateStats.gutterBalls} opportunities={rateStats.deliveries} noun="balls" />
+          {cleanGameStats && (
+            <RateTile label="Clean Game Rate" made={cleanGameStats.cleanGames} opportunities={cleanGameStats.totalGames} noun="games" />
+          )}
         </div>
       )}
 
@@ -460,6 +468,7 @@ export default function StatsCharts({
       {rateStats && <PinLeaveDiagram data={pinLeaveStats} />}
 
       <LineChart title="Average Over Time" data={averageOverTime} />
+      <LineChart title="Handicap Trend" data={handicapTrend} />
       <BarChart title="Average by League" data={byLeague} unit="avg score" />
       <BarChart title="Average by Lane Condition" data={byLaneCondition} unit="avg score" />
       <BarChart title="Avg First-Ball Pinfall, by Ball" data={byBall} unit="pins" />
