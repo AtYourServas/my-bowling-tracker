@@ -129,7 +129,10 @@ function LaneStrip({
           aria-label={`${meta.label} board number`}
           onChange={(e) => {
             const raw = e.target.value;
-            if (raw === '') return;
+            if (raw === '') {
+              onClear();
+              return;
+            }
             const n = Number(raw);
             if (!Number.isNaN(n)) onPlace(snap(n));
           }}
