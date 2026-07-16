@@ -64,6 +64,13 @@ const isActive = (href: string) => path === href || path.startsWith(href + '/');
       </header>
     )}
     <slot />
+    <dialog id="confirm-dialog" class="confirm-dialog">
+      <p id="confirm-dialog-message"></p>
+      <div class="confirm-dialog-actions">
+        <button type="button" class="secondary" data-confirm-cancel>Cancel</button>
+        <button type="button" class="danger" data-confirm-ok>Delete</button>
+      </div>
+    </dialog>
     {user && (
       <nav class="tabbar" aria-label="Quick navigation">
         {tabItems.map((item) => (
@@ -85,6 +92,48 @@ const isActive = (href: string) => path === href || path.startsWith(href + '/');
         });
         document.addEventListener('keydown', function (e) {
           if (e.key === 'Escape') menu.open = false;
+        });
+      })();
+    </script>
+    <script is:inline>
+      // Forms marked data-confirm="message" get a styled <dialog> instead of
+      // the browser's native confirm() before actually submitting.
+      (function () {
+        var dialog = document.getElementById('confirm-dialog');
+        var message = document.getElementById('confirm-dialog-message');
+        if (!dialog || !message) return;
+        var pendingForm = null;
+
+        document.addEventListener(
+          'submit',
+          function (e) {
+            var form = e.target;
+            if (!(form instanceof HTMLFormElement)) return;
+            var text = form.getAttribute('data-confirm');
+            if (!text || form.hasAttribute('data-confirm-bypass')) return;
+            e.preventDefault();
+            pendingForm = form;
+            message.textContent = text;
+            dialog.showModal();
+          },
+          true
+        );
+
+        dialog.querySelector('[data-confirm-cancel]').addEventListener('click', function () {
+          pendingForm = null;
+          dialog.close();
+        });
+        dialog.querySelector('[data-confirm-ok]').addEventListener('click', function () {
+          var form = pendingForm;
+          pendingForm = null;
+          dialog.close();
+          if (form) {
+            form.setAttribute('data-confirm-bypass', '');
+            form.requestSubmit();
+          }
+        });
+        dialog.addEventListener('cancel', function () {
+          pendingForm = null;
         });
       })();
     </script>

@@ -24,6 +24,12 @@ if (Astro.request.method === 'POST') {
 
   if (session_type !== 'league' && session_type !== 'practice') {
     error = 'Session type is required.';
+  } else if (
+    (lane_number != null && Number.isNaN(lane_number)) ||
+    (second_lane_number != null && Number.isNaN(second_lane_number)) ||
+    (manual_handicap != null && Number.isNaN(manual_handicap))
+  ) {
+    error = 'Lane numbers and handicap must be valid numbers.';
   } else {
     // a league session with no team typed inherits the league's team name
     let effectiveTeamName = session_type === 'league' ? league_team_name : null;

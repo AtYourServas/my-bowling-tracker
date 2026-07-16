@@ -156,7 +156,15 @@ if (Astro.request.method === 'POST') {
   }
 }
 
-const { data: session } = await supabase.from('sessions').select('*, leagues(name)').eq('id', id).maybeSingle();
+const { data: session, error: sessionError } = await supabase
+  .from('sessions')
+  .select('*, leagues(name)')
+  .eq('id', id)
+  .maybeSingle();
+
+if (sessionError) {
+  throw new Error(`Failed to load session: ${sessionError.message}`);
+}
 
 if (!session) {
   return Astro.redirect('/sessions');
@@ -513,7 +521,7 @@ const setupSummary = [leagueName, laneLabel(laneConfig)].filter(Boolean).join(' 
 
       <hr />
 
-      <form method="POST" class="row-actions" onsubmit="return confirm('Delete this session? All of its games, throws, and scores will be permanently removed.');">
+      <form method="POST" class="row-actions" data-confirm="Delete this session? All of its games, throws, and scores will be permanently removed.">
         <input type="hidden" name="intent" value="delete_session" />
         <button type="submit" class="danger">Delete Session</button>
       </form>
@@ -639,7 +647,7 @@ const setupSummary = [leagueName, laneLabel(laneConfig)].filter(Boolean).join(' 
                         <button type="submit" class="secondary">Save Note</button>
                       </form>
                     </details>
-                    <form method="POST" onsubmit="return confirm('Delete this note?');">
+                    <form method="POST" data-confirm="Delete this note?">
                       <input type="hidden" name="intent" value="delete_note" />
                       <input type="hidden" name="note_id" value={note.id} />
                       <button type="submit" class="linklike danger">Delete</button>
