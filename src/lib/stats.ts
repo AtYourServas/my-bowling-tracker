@@ -353,12 +353,12 @@ export type BallDetail = {
 /**
  * "Is this ball working?" figures for one ball's detail page. The carry walk
  * mirrors computeBallStats (fresh-rack deliveries only, fouls respot and don't
- * count); strike/spare classification mirrors walkDeliveries (a fresh-rack ball
- * where a strike is legal is a strike opportunity, every other ball a spare
- * attempt, and a foul is a missed opportunity) but attributes each delivery to
- * the ball that threw it. Returns null when the ball has no logged shots under
- * the filter. (Deliberately no drift here: drift is stance-vs-slide footwork,
- * a bowler metric, not a ball one.)
+ * count); strike/spare classification shares walkFrame with walkDeliveries (a
+ * fresh-rack ball where a strike is legal is a strike opportunity, every other
+ * ball a spare attempt, and a foul is a missed opportunity) filtered down to
+ * the deliveries that used this ball. Returns null when the ball has no logged
+ * shots under the filter. (Deliberately no drift here: drift is stance-vs-slide
+ * footwork, a bowler metric, not a ball one.)
  */
 export function computeBallDetail(frames: StatFrame[], filter: StatsFilter, ballId: string): BallDetail | null {
   let totalShots = 0;
@@ -372,37 +372,26 @@ export function computeBallDetail(frames: StatFrame[], filter: StatsFilter, ball
 
   for (const frame of frames) {
     if (!frameInFilter(frame, filter)) continue;
+    if (frame.shots.length === 0) continue;
 
-    let priorStanding = 10;
-    frame.shots.forEach((shot, i) => {
-      const isThisBall = shot.ball_id === ballId;
-      const freshRack = priorStanding === 10;
+    walkFrame(frame, (shot, i, freshRack, faced, cleared) => {
+      if (shot.ball_id !== ballId) return;
+      totalShots += 1;
+      if (frame.gameId) games.add(frame.gameId);
 
-      if (isThisBall) {
-        totalShots += 1;
-        if (frame.gameId) games.add(frame.gameId);
-
-        const cleared = !shot.foul && (shot.strike || shot.spare || (shot.pins_standing?.length ?? 0) === 0);
-        if (freshRack && (i === 0 || frame.frameNumber === 10)) {
-          strikeOpportunities += 1;
-          if (cleared) strikes += 1;
-        } else {
-          spareOpportunities += 1;
-          if (cleared) spares += 1;
-        }
+      if (freshRack && (i === 0 || frame.frameNumber === 10)) {
+        strikeOpportunities += 1;
+        if (cleared) strikes += 1;
+      } else {
+        spareOpportunities += 1;
+        if (cleared) spares += 1;
       }
 
-      if (shot.foul) {
-        priorStanding = 10;
-        return;
-      }
-
-      const standingAfter = shot.strike ? 0 : shot.pins_standing?.length ?? 0;
-      if (isThisBall && freshRack) {
-        carrySum += shot.strike ? 10 : Math.max(0, Math.min(10, priorStanding - standingAfter));
+      if (!shot.foul && freshRack) {
+        const standingAfter = shot.strike ? 0 : shot.pins_standing?.length ?? 0;
+        carrySum += shot.strike ? 10 : Math.max(0, Math.min(10, faced.length - standingAfter));
         carryCount += 1;
       }
-      priorStanding = standingAfter === 0 ? 10 : standingAfter;
     });
   }
 
@@ -438,6 +427,28 @@ export type LeaveConversion = { name: string; attempts: number; converted: numbe
 function clearedRack(shot: StatShot): boolean {
   if (shot.foul) return false;
   return shot.strike || shot.spare || (shot.pins_standing?.length ?? 0) === 0;
+}
+
+/**
+ * Walks one frame's shots in order, tracking the leave each ball faced (the
+ * rack-reset rule: a strike, a clearing ball, or a foul respots all ten -- see
+ * pinsFacedBefore). Shared by walkDeliveries (aggregate rates) and
+ * computeBallDetail (same classification, attributed to one ball), so a future
+ * scoring-rule change only needs fixing here.
+ */
+function walkFrame(
+  frame: StatFrame,
+  onShot: (shot: StatShot, index: number, freshRack: boolean, faced: number[], cleared: boolean) => void,
+): void {
+  let faced: number[] = [...FULL_RACK];
+  frame.shots.forEach((shot, i) => {
+    const freshRack = faced.length === 10;
+    const cleared = clearedRack(shot);
+    onShot(shot, i, freshRack, faced, cleared);
+
+    const standingAfter = (shot.pins_standing ?? []) as number[];
+    faced = shot.foul || shot.strike || standingAfter.length === 0 ? [...FULL_RACK] : [...standingAfter];
+  });
 }
 
 /**
@@ -478,10 +489,7 @@ function walkDeliveries(
   for (const frame of frames) {
     if (frame.shots.length === 0) continue;
 
-    let faced: number[] = [...FULL_RACK];
-    frame.shots.forEach((shot, i) => {
-      const freshRack = faced.length === 10;
-      const cleared = clearedRack(shot);
+    walkFrame(frame, (shot, i, freshRack, faced, cleared) => {
       const standingAfter = (shot.pins_standing ?? []) as number[];
 
       if (!shot.foul) {
@@ -501,8 +509,6 @@ function walkDeliveries(
         }
         onSpareAttempt?.(faced, cleared);
       }
-
-      faced = shot.foul || shot.strike || standingAfter.length === 0 ? [...FULL_RACK] : [...standingAfter];
     });
 
     // An open frame ended with no mark: fully bowled, first ball not a strike,
