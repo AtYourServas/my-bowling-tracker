@@ -1,7 +1,7 @@
 ---
 import Layout from '../../../../../../layouts/Layout.astro';
 import ShotForm from '../../../../../../components/ShotForm';
-import { allowedMarks } from '../../../../../../lib/scoring';
+import { allowedMarks, pinsFacedBefore } from '../../../../../../lib/scoring';
 import type { ShotLite } from '../../../../../../lib/scoring';
 
 const { supabase } = Astro.locals;
@@ -93,7 +93,7 @@ if (Astro.request.method === 'POST') {
 const { data: balls } = await supabase.from('balls').select('id, name').order('name');
 const { data: approaches } = await supabase
   .from('approaches')
-  .select('id, name, reference_lineup, reference_slide, reference_target_type, reference_target_value')
+  .select('id, name, reference_lineup, reference_slide, reference_target_type, reference_target_value, leave')
   .order('name');
 
 // which marks are legal for this ball, based on the shots thrown before it in
@@ -105,6 +105,11 @@ const { data: siblingShots } = await supabase
   .order('created_at', { ascending: true });
 const priorShots = (siblingShots ?? []).filter((s) => s.created_at < shot.created_at) as ShotLite[];
 const marks = allowedMarks(frameNumber, priorShots);
+
+// the leave this ball faced, so the picker's Missed/quick-count shortcuts work
+// on the right pins when editing (ShotForm treats [] as a fresh rack)
+const faced = pinsFacedBefore(priorShots);
+const facedLeave = faced.length === 10 ? [] : faced;
 ---
 
 <Layout title={`Frame ${frameNumber} shot`}>
@@ -119,6 +124,7 @@ const marks = allowedMarks(frameNumber, priorShots);
     approaches={approaches ?? []}
     frameNumber={frameNumber}
     submitLabel="Save Changes"
+    startingPins={facedLeave}
     allowStrike={marks.strike}
     allowSpare={marks.spare}
     mode={mode}
