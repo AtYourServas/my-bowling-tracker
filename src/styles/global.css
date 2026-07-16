@@ -219,6 +219,21 @@ button.secondary { background: var(--surface); color: var(--text-primary); borde
 button.secondary:hover { background: var(--surface-sunk); filter: none; }
 button.danger { background: var(--coral); color: #fff; }
 
+/* Shared confirm dialog (replaces native confirm() for destructive actions). */
+.confirm-dialog {
+  padding: var(--s4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  background: var(--surface);
+  color: var(--text-primary);
+  max-width: 24rem;
+  width: calc(100% - var(--s4) * 2);
+}
+.confirm-dialog::backdrop { background: rgba(0, 0, 0, 0.4); }
+.confirm-dialog p { margin: 0 0 var(--s4); }
+.confirm-dialog-actions { display: flex; justify-content: flex-end; gap: var(--s2); }
+
 /* Checkbox row: a label with an inline checkbox instead of a stacked field. */
 label.check { flex-direction: row; align-items: center; gap: var(--s2); color: var(--text-primary); cursor: pointer; }
 label.check input[type="checkbox"] { width: auto; flex: none; padding: 0; margin: 0; accent-color: var(--accent); }
