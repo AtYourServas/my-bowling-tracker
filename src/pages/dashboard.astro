@@ -39,7 +39,23 @@ async function findOrCreateOpenGame(
 
   if (!sessionId) return '/sessions/new';
 
-  const openGame = existing?.games.find((g) => g.final_score == null) ?? existing?.games[0] ?? null;
+  const games = existing?.games ?? [];
+
+  let openGame: GameStub | null;
+  if (sessionType === 'practice') {
+    // Practice sessions hold any number of freeform games -- a finished one
+    // (manual score, or all 10 frames resolved) should never block starting
+    // the next, so re-tapping Start Practice always lands on unfinished work
+    // instead of reopening an already-complete game.
+    const sheets = games.length ? await fetchMiniScoresheets(supabase, games.map((g) => g.id)) : new Map<string, MiniSheet>();
+    const isComplete = (g: GameStub) => g.final_score != null || (sheets.get(g.id)?.cells[9]?.cumulative ?? null) != null;
+    openGame = games.find((g) => !isComplete(g)) ?? null;
+  } else {
+    // League night always targets the "Game 1" slot -- Games 2/3 are added
+    // from the session page once Game 1 is underway.
+    openGame = games.find((g) => g.final_score == null) ?? games[0] ?? null;
+  }
+
   const gameId = openGame
     ? openGame.id
     : (
