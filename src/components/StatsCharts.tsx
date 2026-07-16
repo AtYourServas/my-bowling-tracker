@@ -168,6 +168,47 @@ function truncate(label: string, max = 8) {
   return label.length > max ? `${label.slice(0, max - 1)}…` : label;
 }
 
+/** A "nice" round number near `range` (D3's classic nice-ticks algorithm). */
+function niceNumber(range: number, round: boolean): number {
+  if (range <= 0) return 1;
+  const exponent = Math.floor(Math.log10(range));
+  const fraction = range / 10 ** exponent;
+  let niceFraction: number;
+  if (round) {
+    niceFraction = fraction < 1.5 ? 1 : fraction < 3 ? 2 : fraction < 7 ? 5 : 10;
+  } else {
+    niceFraction = fraction <= 1 ? 1 : fraction <= 2 ? 2 : fraction <= 5 ? 5 : 10;
+  }
+  return niceFraction * 10 ** exponent;
+}
+
+/** Clean round tick values from 0 up to at least `max`, ~targetCount of them --
+ *  so a y-axis reads "0 / 100 / 200" instead of whatever the data happened to hit. */
+function niceTicks(max: number, targetCount = 4): number[] {
+  if (max <= 0) return [0, 1];
+  const step = niceNumber(niceNumber(max, false) / Math.max(1, targetCount - 1), true);
+  const niceMax = Math.ceil(max / step) * step;
+  const ticks: number[] = [];
+  for (let v = 0; v <= niceMax + step / 2; v += step) ticks.push(Math.round(v * 100) / 100);
+  return ticks;
+}
+
+/** "2026-07-16" -> "Jul 16", for compact x-axis date ticks. */
+function formatDateTick(iso: string): string {
+  const d = new Date(`${iso}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+/** Evenly-spaced indices into a length-n series, capped at maxTicks, always
+ *  including the first and last point. */
+function pickTickIndices(n: number, maxTicks = 4): number[] {
+  if (n <= maxTicks) return Array.from({ length: n }, (_, i) => i);
+  const indices = new Set<number>();
+  for (let i = 0; i < maxTicks; i += 1) indices.add(Math.round((i * (n - 1)) / (maxTicks - 1)));
+  return Array.from(indices).sort((a, b) => a - b);
+}
+
 function BarChart({ title, data, unit }: { title: string; data: BarDatum[]; unit: string }) {
   const [hovered, setHovered] = useState<number | null>(null);
 
@@ -180,19 +221,30 @@ function BarChart({ title, data, unit }: { title: string; data: BarDatum[]; unit
     );
   }
 
-  const padding = { top: 10, right: 10, bottom: 32, left: 10 };
+  const padding = { top: 18, right: 10, bottom: 32, left: 10 };
   const chartWidth = WIDTH - padding.left - padding.right;
   const chartHeight = HEIGHT - padding.top - padding.bottom;
   const barGap = 8;
   const barWidth = Math.min(24, (chartWidth - barGap * (data.length - 1)) / data.length);
   const totalBarsWidth = barWidth * data.length + barGap * (data.length - 1);
   const startX = padding.left + Math.max(0, (chartWidth - totalBarsWidth) / 2);
-  const max = Math.max(...data.map((d) => d.value), 1);
+  const rawMax = Math.max(...data.map((d) => d.value), 1);
+  const yTicks = niceTicks(rawMax);
+  const max = yTicks[yTicks.length - 1];
+  const yFor = (v: number) => HEIGHT - padding.bottom - (v / max) * chartHeight;
 
   return (
     <div className="chart-card">
       <h2>{title}</h2>
       <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="chart-svg" role="img" aria-label={title}>
+        {yTicks.map((t) => (
+          <g key={t}>
+            <line x1={padding.left} y1={yFor(t)} x2={WIDTH - padding.right} y2={yFor(t)} className="chart-gridline" />
+            <text x={padding.left + 2} y={yFor(t) - 3} className="chart-axis-label">
+              {t}
+            </text>
+          </g>
+        ))}
         <line
           x1={padding.left}
           y1={HEIGHT - padding.bottom}
@@ -216,6 +268,9 @@ function BarChart({ title, data, unit }: { title: string; data: BarDatum[]; unit
               aria-label={`${d.label}: ${d.value.toFixed(1)} ${unit}, ${d.count} games`}
             >
               <path d={roundedTopBarPath(x, y, barWidth, barHeight, 4)} className={`chart-bar${hovered === i ? ' hovered' : ''}`} />
+              <text x={x + barWidth / 2} y={y - 4} textAnchor="middle" className="chart-value">
+                {d.value.toFixed(1)}
+              </text>
               <text x={x + barWidth / 2} y={HEIGHT - padding.bottom + 16} textAnchor="middle" className="chart-tick">
                 {truncate(d.label)}
               </text>
@@ -265,22 +320,33 @@ function LineChart({ title, data }: { title: string; data: TimeDatum[] }) {
     );
   }
 
-  const padding = { top: 15, right: 12, bottom: 26, left: 12 };
+  const padding = { top: 15, right: 34, bottom: 26, left: 12 };
   const chartWidth = WIDTH - padding.left - padding.right;
   const chartHeight = HEIGHT - padding.top - padding.bottom;
   const scores = data.map((d) => d.score);
-  const yMax = Math.max(...scores, 10);
+  const yTicks = niceTicks(Math.max(...scores, 1));
+  const yMax = yTicks[yTicks.length - 1];
   const xStep = data.length > 1 ? chartWidth / (data.length - 1) : 0;
 
   const xFor = (i: number) => padding.left + i * xStep;
   const yFor = (v: number) => padding.top + chartHeight - (v / yMax) * chartHeight;
 
   const pathD = data.map((d, i) => `${i === 0 ? 'M' : 'L'} ${xFor(i)} ${yFor(d.score)}`).join(' ');
+  const xTickIndices = pickTickIndices(data.length);
+  const last = data[data.length - 1];
 
   return (
     <div className="chart-card">
       <h2>{title}</h2>
       <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="chart-svg" role="img" aria-label={title}>
+        {yTicks.map((t) => (
+          <g key={t}>
+            <line x1={padding.left} y1={yFor(t)} x2={WIDTH - padding.right} y2={yFor(t)} className="chart-gridline" />
+            <text x={padding.left + 2} y={yFor(t) - 3} className="chart-axis-label">
+              {t}
+            </text>
+          </g>
+        ))}
         <line
           x1={padding.left}
           y1={padding.top + chartHeight}
@@ -288,6 +354,17 @@ function LineChart({ title, data }: { title: string; data: TimeDatum[] }) {
           y2={padding.top + chartHeight}
           className="chart-axis"
         />
+        {xTickIndices.map((i) => (
+          <text
+            key={i}
+            x={xFor(i)}
+            y={padding.top + chartHeight + 14}
+            textAnchor={i === 0 ? 'start' : i === data.length - 1 ? 'end' : 'middle'}
+            className="chart-tick"
+          >
+            {formatDateTick(data[i].date)}
+          </text>
+        ))}
         <path d={pathD} className="chart-line" fill="none" />
         {data.map((d, i) => (
           <g
@@ -305,6 +382,9 @@ function LineChart({ title, data }: { title: string; data: TimeDatum[] }) {
             <circle cx={xFor(i)} cy={yFor(d.score)} r={4} className={`chart-dot${hovered === i ? ' hovered' : ''}`} />
           </g>
         ))}
+        <text x={WIDTH - 2} y={yFor(last.score) - 8} textAnchor="end" className="chart-endlabel">
+          {last.score.toFixed(1)}
+        </text>
       </svg>
       <p className="chart-tooltip" aria-live="polite">
         {hovered != null ? `${data[hovered].date}: average ${data[hovered].score.toFixed(1)}` : ' '}

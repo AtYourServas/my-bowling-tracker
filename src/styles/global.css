@@ -987,6 +987,10 @@ a.ball-row:hover { text-decoration: none; box-shadow: var(--shadow-md); border-c
 .chart-bar { fill: var(--series-1); }
 .chart-bar.hovered { fill: var(--series-1); opacity: 0.8; }
 .chart-tick { font-size: 8px; fill: var(--text-muted); }
+.chart-gridline { stroke: var(--gridline); stroke-width: 1; }
+.chart-axis-label { font-size: 8px; fill: var(--text-muted); font-variant-numeric: tabular-nums; }
+.chart-value { font-size: 8px; fill: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.chart-endlabel { font-size: 9px; font-weight: var(--fw-semi); fill: var(--text-primary); font-variant-numeric: tabular-nums; }
 .chart-line { fill: none; stroke: var(--series-1); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
 .chart-dot { fill: var(--series-1); }
 .chart-dot.hovered { fill: var(--series-1); r: 5; }
