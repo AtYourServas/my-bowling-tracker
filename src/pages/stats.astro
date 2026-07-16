@@ -10,6 +10,8 @@ import {
   computeRateStats,
   computeLeaveConversions,
   computePinLeaveStats,
+  computeCleanGameStats,
+  computeHandicapTrend,
   groupByLaneCondition,
   fetchLeagueStats,
   average,
@@ -44,6 +46,7 @@ const driftStat = computeDriftStat(statFrames, filter);
 const rateStats = computeRateStats(statFrames, filter);
 const leaveConversions = computeLeaveConversions(statFrames, filter);
 const pinLeaveStats = computePinLeaveStats(statFrames, filter);
+const cleanGameStats = computeCleanGameStats(statFrames, filter);
 
 const handicapOf = await buildSessionHandicapResolver(supabase, allGamesEver);
 
@@ -60,6 +63,8 @@ const averageOverTime = scoredGames.map((g, i) => {
   runningSum += g.score;
   return { date: g.sessionDate, score: runningSum / (i + 1) };
 });
+
+const handicapTrend = computeHandicapTrend(scoredGames, handicapOf).map((p) => ({ date: p.date, score: p.handicap }));
 
 const heroLabel = includePracticeSessions ? 'Overall Average' : 'League-Only Average';
 
@@ -143,6 +148,8 @@ const bestSeries = fetchBestSeriesStats(allGamesEver, handicapOf);
       rateStats={rateStats}
       leaveConversions={leaveConversions}
       pinLeaveStats={pinLeaveStats}
+      cleanGameStats={cleanGameStats}
+      handicapTrend={handicapTrend}
     />
   )}
 </Layout>
