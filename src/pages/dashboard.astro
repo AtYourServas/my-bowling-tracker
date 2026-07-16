@@ -8,7 +8,51 @@ const { supabase, user } = Astro.locals;
 
 const todayStr = new Date().toISOString().slice(0, 10);
 
-// ---- Onboarding dismissal / Start League Night -------------------------------
+// ---- Onboarding dismissal / Start League Night / Start Practice --------------
+// Re-tapping either start button (e.g. a double-tap) should land on tonight's
+// game, not spawn a second session -- reuses today's session of the same type
+// (same league, for league night) if one already exists, and its earliest
+// open game if there is one.
+type GameStub = { id: string; final_score: number | null };
+
+async function findOrCreateOpenGame(
+  sessionType: 'league' | 'practice',
+  leagueId: string | null,
+  insertFields: Record<string, unknown>,
+): Promise<string> {
+  let existingQuery = supabase
+    .from('sessions')
+    .select('id, games(id, final_score, created_at)')
+    .eq('session_date', todayStr)
+    .eq('session_type', sessionType);
+  if (leagueId) existingQuery = existingQuery.eq('league_id', leagueId);
+  const { data: existing } = await existingQuery
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle<{ id: string; games: GameStub[] }>();
+
+  let sessionId = existing?.id ?? null;
+  if (!sessionId) {
+    const { data: created } = await supabase.from('sessions').insert(insertFields).select('id').single();
+    sessionId = created?.id ?? null;
+  }
+
+  if (!sessionId) return '/sessions/new';
+
+  const openGame = existing?.games.find((g) => g.final_score == null) ?? existing?.games[0] ?? null;
+  const gameId = openGame
+    ? openGame.id
+    : (
+        await supabase
+          .from('games')
+          .insert({ session_id: sessionId, is_practice: sessionType === 'practice', game_number: sessionType === 'league' ? 1 : null })
+          .select('id')
+          .single()
+      ).data?.id;
+
+  return gameId ? `/sessions/${sessionId}/games/${gameId}` : `/sessions/${sessionId}`;
+}
+
 if (Astro.request.method === 'POST') {
   const formData = await Astro.request.formData();
   const intent = formData.get('intent');
@@ -20,8 +64,6 @@ if (Astro.request.method === 'POST') {
   }
 
   if (intent === 'start_league_night') {
-    // Re-tapping the button (e.g. a double-tap) should land on tonight's game,
-    // not spawn a second session -- same league, same date wins.
     const { data: mostRecentLeague } = await supabase
       .from('sessions')
       .select('league_id, alley_name, lane_number, second_lane_number, league_team_name, default_ball_id, default_spare_ball_id')
@@ -46,62 +88,59 @@ if (Astro.request.method === 'POST') {
     }
 
     if (leagueId) {
-      const { data: existing } = await supabase
-        .from('sessions')
-        .select('id, games(id, final_score, created_at)')
-        .eq('session_date', todayStr)
-        .eq('league_id', leagueId)
-        .order('created_at', { ascending: false })
-        .limit(1)
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('default_ball_id, default_spare_ball_id')
+        .eq('id', user!.id)
         .maybeSingle();
 
-      let sessionId = existing?.id ?? null;
-      if (!sessionId) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('default_ball_id, default_spare_ball_id')
-          .eq('id', user!.id)
-          .maybeSingle();
-
-        const { data: created } = await supabase
-          .from('sessions')
-          .insert({
-            user_id: user!.id,
-            session_type: 'league',
-            session_date: todayStr,
-            league_id: leagueId,
-            league_team_name: teamName,
-            alley_name: mostRecentLeague?.alley_name ?? null,
-            lane_number: mostRecentLeague?.lane_number ?? null,
-            second_lane_number: mostRecentLeague?.second_lane_number ?? null,
-            default_ball_id: mostRecentLeague?.default_ball_id ?? profile?.default_ball_id ?? null,
-            default_spare_ball_id: mostRecentLeague?.default_spare_ball_id ?? profile?.default_spare_ball_id ?? null,
-          })
-          .select('id')
-          .single();
-        sessionId = created?.id ?? null;
-      }
-
-      if (sessionId) {
-        const openGame = existing?.games.find((g) => g.final_score == null) ?? existing?.games[0] ?? null;
-        const gameId = openGame
-          ? openGame.id
-          : (
-              await supabase
-                .from('games')
-                .insert({ session_id: sessionId, is_practice: false, game_number: 1 })
-                .select('id')
-                .single()
-            ).data?.id;
-
-        if (gameId) return Astro.redirect(`/sessions/${sessionId}/games/${gameId}`);
-        return Astro.redirect(`/sessions/${sessionId}`);
-      }
+      const redirectPath = await findOrCreateOpenGame('league', leagueId, {
+        user_id: user!.id,
+        session_type: 'league',
+        session_date: todayStr,
+        league_id: leagueId,
+        league_team_name: teamName,
+        alley_name: mostRecentLeague?.alley_name ?? null,
+        lane_number: mostRecentLeague?.lane_number ?? null,
+        second_lane_number: mostRecentLeague?.second_lane_number ?? null,
+        default_ball_id: mostRecentLeague?.default_ball_id ?? profile?.default_ball_id ?? null,
+        default_spare_ball_id: mostRecentLeague?.default_spare_ball_id ?? profile?.default_spare_ball_id ?? null,
+      });
+      return Astro.redirect(redirectPath);
     }
 
     // No league to start a night for (shouldn't happen -- the button only
     // renders once one exists) -- fall back to the manual flow.
     return Astro.redirect('/sessions/new');
+  }
+
+  if (intent === 'start_practice') {
+    const { data: mostRecentPractice } = await supabase
+      .from('sessions')
+      .select('alley_name, lane_number, second_lane_number, default_ball_id, default_spare_ball_id')
+      .eq('session_type', 'practice')
+      .order('session_date', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('default_ball_id, default_spare_ball_id')
+      .eq('id', user!.id)
+      .maybeSingle();
+
+    const redirectPath = await findOrCreateOpenGame('practice', null, {
+      user_id: user!.id,
+      session_type: 'practice',
+      session_date: todayStr,
+      alley_name: mostRecentPractice?.alley_name ?? null,
+      lane_number: mostRecentPractice?.lane_number ?? null,
+      second_lane_number: mostRecentPractice?.second_lane_number ?? null,
+      default_ball_id: mostRecentPractice?.default_ball_id ?? profile?.default_ball_id ?? null,
+      default_spare_ball_id: mostRecentPractice?.default_spare_ball_id ?? profile?.default_spare_ball_id ?? null,
+    });
+    return Astro.redirect(redirectPath);
   }
 
   return Astro.redirect('/dashboard');
@@ -256,6 +295,21 @@ const showOnboarding = !onboardProfile?.onboarding_dismissed && onboardSteps.som
     </section>
   )}
 
+  {!resumeGame && recap && (
+    <div class="dash-start-row">
+      {(leagueCount ?? 0) > 0 && (
+        <form method="POST" class="dash-start-form">
+          <input type="hidden" name="intent" value="start_league_night" />
+          <button type="submit" class="button dash-start">🎳 Start League Night</button>
+        </form>
+      )}
+      <form method="POST" class="dash-start-form">
+        <input type="hidden" name="intent" value="start_practice" />
+        <button type="submit" class:list={['button', 'dash-start', { secondary: (leagueCount ?? 0) > 0 }]}>🎯 Start Practice</button>
+      </form>
+    </div>
+  )}
+
   {resumeGame && latest && (
     <a class="resume-tile" href={`/sessions/${latest.id}/games/${resumeGame.id}`}>
       <span class="resume-kicker">{latest.session_date === todayStr ? 'Continue Tonight' : 'Pick Up Where You Left Off'}</span>
@@ -308,16 +362,7 @@ const showOnboarding = !onboardProfile?.onboarding_dismissed && onboardSteps.som
     )
   )}
 
-  {!resumeGame && recap && (
-    (leagueCount ?? 0) > 0 ? (
-      <form method="POST" class="dash-start-form">
-        <input type="hidden" name="intent" value="start_league_night" />
-        <button type="submit" class="button dash-start">🎳 Start League Night</button>
-      </form>
-    ) : (
-      <a class="button dash-start" href="/sessions/new">+ Start a Session</a>
-    )
-  )}
+
 </Layout>
 
 <style>
@@ -462,7 +507,11 @@ const showOnboarding = !onboardProfile?.onboarding_dismissed && onboardSteps.som
     font-variant-numeric: tabular-nums;
   }
 
-  .dash-start-form { margin-top: var(--s4); }
-  .dash-start { display: block; width: 100%; text-align: center; }
-  .dash-start-form .dash-start { margin-top: 0; }
+  .dash-start-row {
+    display: flex;
+    gap: var(--s3);
+    margin-top: var(--s4);
+  }
+  .dash-start-form { flex: 1; margin: 0; }
+  .dash-start { display: block; width: 100%; text-align: center; margin: 0; }
 </style>
