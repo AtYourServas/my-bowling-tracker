@@ -545,12 +545,12 @@ const setupSummary = [leagueName, laneLabel(laneConfig)].filter(Boolean).join(' 
               </span>
             </div>
             <div class="rate-stat">
-              <span class="rate-label">Split Rate</span>
-              <span class="rate-value">{formatRate(sessionRates.splits, sessionRates.strikeOpportunities - sessionRates.strikes)}</span>
+              <span class="rate-label">Split Conversion</span>
+              <span class="rate-value">{formatRate(sessionRates.splitConversions, sessionRates.splitAttempts)}</span>
               <span class="rate-sub">
-                {sessionRates.strikeOpportunities - sessionRates.strikes > 0
-                  ? `${sessionRates.splits} of ${sessionRates.strikeOpportunities - sessionRates.strikes} leaves faced`
-                  : 'No leaves faced yet'}
+                {sessionRates.splitAttempts > 0
+                  ? `${sessionRates.splitConversions} of ${sessionRates.splitAttempts} splits`
+                  : 'No splits yet'}
               </span>
             </div>
             <div class="rate-stat">
