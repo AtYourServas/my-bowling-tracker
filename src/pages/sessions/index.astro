@@ -1,6 +1,7 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 import { laneLabel, laneConfigFromSession } from '../../lib/lanes';
+import { fetchMiniScoresheets, fetchEarliestIncompleteFrame, type MiniSheet } from '../../lib/scoring';
 
 const { supabase } = Astro.locals;
 
@@ -13,9 +14,10 @@ const hasFilters = Boolean(filterType || filterAlley || filterFrom || filterTo);
 
 let sessionsQuery = supabase
   .from('sessions')
-  .select('*, leagues(name)')
+  .select('*, leagues(name), games(id, final_score, created_at)')
   .order('session_date', { ascending: false })
-  .order('created_at', { ascending: false });
+  .order('created_at', { ascending: false })
+  .order('created_at', { foreignTable: 'games', ascending: true });
 
 if (filterType === 'league' || filterType === 'practice') {
   sessionsQuery = sessionsQuery.eq('session_type', filterType);
@@ -34,6 +36,31 @@ const { data: sessions } = await sessionsQuery;
 
 const { data: alleyRows } = await supabase.from('sessions').select('alley_name').not('alley_name', 'is', null);
 const alleyOptions = Array.from(new Set((alleyRows ?? []).map((r) => r.alley_name))).sort();
+
+// ---- Resume link per session (in-progress game) -----------------------------
+// A game is done once it has a manual final score; only unscored games need a
+// mini-scoresheet to tell "in progress" from "not started yet" (dashboard rule).
+type GameRow = { id: string; final_score: number | null; created_at: string };
+const unfinishedGameIds = (sessions ?? []).flatMap((s) =>
+  (s.games as GameRow[]).filter((g) => g.final_score == null).map((g) => g.id),
+);
+const sheets = await fetchMiniScoresheets(supabase, unfinishedGameIds);
+
+function gameComplete(game: GameRow) {
+  if (game.final_score != null) return true;
+  const sheet = sheets.get(game.id);
+  return sheet != null && sheet.cells[9].cumulative != null;
+}
+
+const resumeBySession = new Map<string, string>(); // session id -> in-progress game id
+for (const s of sessions ?? []) {
+  const game = (s.games as GameRow[]).find((g) => !gameComplete(g));
+  if (game) resumeBySession.set(s.id, game.id);
+}
+const resumeFrames = new Map<string, number>(); // game id -> earliest incomplete frame
+for (const gameId of resumeBySession.values()) {
+  resumeFrames.set(gameId, await fetchEarliestIncompleteFrame(supabase, gameId));
+}
 ---
 
 <Layout title="Sessions">
@@ -81,17 +108,25 @@ const alleyOptions = Array.from(new Set((alleyRows ?? []).map((r) => r.alley_nam
 
   {sessions && sessions.length > 0 ? (
     <ul class="list">
-      {sessions.map((session) => (
-        <li>
-          <a class="card" href={`/sessions/${session.id}`}>
-            <strong>{session.alley_name || 'Unnamed alley'} {laneLabel(laneConfigFromSession(session)) ? `· ${laneLabel(laneConfigFromSession(session))}` : ''}</strong>
-            <span>
-              {session.session_date} · {session.session_type === 'league' ? 'League' : 'Practice'}
-              {session.leagues?.name ? ` · ${session.leagues.name}` : ''}
-            </span>
-          </a>
-        </li>
-      ))}
+      {sessions.map((session) => {
+        const resumeGameId = resumeBySession.get(session.id);
+        return (
+          <li>
+            <a class="card" href={`/sessions/${session.id}`}>
+              <strong>{session.alley_name || 'Unnamed alley'} {laneLabel(laneConfigFromSession(session)) ? `· ${laneLabel(laneConfigFromSession(session))}` : ''}</strong>
+              <span>
+                {session.session_date} · {session.session_type === 'league' ? 'League' : 'Practice'}
+                {session.leagues?.name ? ` · ${session.leagues.name}` : ''}
+              </span>
+            </a>
+            {resumeGameId && (
+              <a class="card-resume" href={`/sessions/${session.id}/games/${resumeGameId}`}>
+                Resume · Frame {resumeFrames.get(resumeGameId)} &rarr;
+              </a>
+            )}
+          </li>
+        );
+      })}
     </ul>
   ) : (
     <p class="empty">{hasFilters ? 'No sessions match those filters.' : 'No sessions yet.'} <a href="/sessions/new">Start a session</a>.</p>
