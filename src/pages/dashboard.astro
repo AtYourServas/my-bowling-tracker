@@ -6,13 +6,104 @@ import { fetchAllGamesWithScores, filterScoredGames, average } from '../lib/stat
 
 const { supabase, user } = Astro.locals;
 
-// ---- Onboarding dismissal ----------------------------------------------------
+const todayStr = new Date().toISOString().slice(0, 10);
+
+// ---- Onboarding dismissal / Start League Night -------------------------------
 if (Astro.request.method === 'POST') {
   const formData = await Astro.request.formData();
-  if (formData.get('intent') === 'dismiss_onboarding') {
+  const intent = formData.get('intent');
+
+  if (intent === 'dismiss_onboarding') {
     // upsert like the settings save: a pre-trigger account has no profiles row
     await supabase.from('profiles').upsert({ id: user!.id, onboarding_dismissed: true });
+    return Astro.redirect('/dashboard');
   }
+
+  if (intent === 'start_league_night') {
+    // Re-tapping the button (e.g. a double-tap) should land on tonight's game,
+    // not spawn a second session -- same league, same date wins.
+    const { data: mostRecentLeague } = await supabase
+      .from('sessions')
+      .select('league_id, alley_name, lane_number, second_lane_number, league_team_name, default_ball_id, default_spare_ball_id')
+      .eq('session_type', 'league')
+      .not('league_id', 'is', null)
+      .order('session_date', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    let leagueId = mostRecentLeague?.league_id ?? null;
+    let teamName = mostRecentLeague?.league_team_name ?? null;
+    if (!leagueId) {
+      const { data: anyLeague } = await supabase
+        .from('leagues')
+        .select('id, team_name')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      leagueId = anyLeague?.id ?? null;
+      teamName = anyLeague?.team_name ?? null;
+    }
+
+    if (leagueId) {
+      const { data: existing } = await supabase
+        .from('sessions')
+        .select('id, games(id, final_score, created_at)')
+        .eq('session_date', todayStr)
+        .eq('league_id', leagueId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      let sessionId = existing?.id ?? null;
+      if (!sessionId) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('default_ball_id, default_spare_ball_id')
+          .eq('id', user!.id)
+          .maybeSingle();
+
+        const { data: created } = await supabase
+          .from('sessions')
+          .insert({
+            user_id: user!.id,
+            session_type: 'league',
+            session_date: todayStr,
+            league_id: leagueId,
+            league_team_name: teamName,
+            alley_name: mostRecentLeague?.alley_name ?? null,
+            lane_number: mostRecentLeague?.lane_number ?? null,
+            second_lane_number: mostRecentLeague?.second_lane_number ?? null,
+            default_ball_id: mostRecentLeague?.default_ball_id ?? profile?.default_ball_id ?? null,
+            default_spare_ball_id: mostRecentLeague?.default_spare_ball_id ?? profile?.default_spare_ball_id ?? null,
+          })
+          .select('id')
+          .single();
+        sessionId = created?.id ?? null;
+      }
+
+      if (sessionId) {
+        const openGame = existing?.games.find((g) => g.final_score == null) ?? existing?.games[0] ?? null;
+        const gameId = openGame
+          ? openGame.id
+          : (
+              await supabase
+                .from('games')
+                .insert({ session_id: sessionId, is_practice: false, game_number: 1 })
+                .select('id')
+                .single()
+            ).data?.id;
+
+        if (gameId) return Astro.redirect(`/sessions/${sessionId}/games/${gameId}`);
+        return Astro.redirect(`/sessions/${sessionId}`);
+      }
+    }
+
+    // No league to start a night for (shouldn't happen -- the button only
+    // renders once one exists) -- fall back to the manual flow.
+    return Astro.redirect('/sessions/new');
+  }
+
   return Astro.redirect('/dashboard');
 }
 
@@ -82,8 +173,6 @@ function gameComplete(game: GameRow, sheets: Map<string, MiniSheet>) {
 const resumeIndex = latest ? latest.games.findIndex((g) => !gameComplete(g, latestSheets)) : -1;
 const resumeGame = resumeIndex >= 0 ? latest!.games[resumeIndex] : null;
 const resumeFrame = resumeGame ? await fetchEarliestIncompleteFrame(supabase, resumeGame.id) : null;
-
-const todayStr = new Date().toISOString().slice(0, 10);
 
 // ---- Last-session recap ------------------------------------------------------
 // The most recent session with at least one scored game. Usually the latest
@@ -220,7 +309,14 @@ const showOnboarding = !onboardProfile?.onboarding_dismissed && onboardSteps.som
   )}
 
   {!resumeGame && recap && (
-    <a class="button dash-start" href="/sessions/new">+ Start a Session</a>
+    (leagueCount ?? 0) > 0 ? (
+      <form method="POST" class="dash-start-form">
+        <input type="hidden" name="intent" value="start_league_night" />
+        <button type="submit" class="button dash-start">🎳 Start League Night</button>
+      </form>
+    ) : (
+      <a class="button dash-start" href="/sessions/new">+ Start a Session</a>
+    )
   )}
 </Layout>
 
@@ -366,5 +462,7 @@ const showOnboarding = !onboardProfile?.onboarding_dismissed && onboardSteps.som
     font-variant-numeric: tabular-nums;
   }
 
-  .dash-start { display: block; margin-top: var(--s4); text-align: center; }
+  .dash-start-form { margin-top: var(--s4); }
+  .dash-start { display: block; width: 100%; text-align: center; }
+  .dash-start-form .dash-start { margin-top: 0; }
 </style>
