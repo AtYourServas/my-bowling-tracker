@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { fetchDerivedScoresForGames, frameProgress, computeFrameRolls, FULL_RACK } from './scoring';
-import { leaveDisplayName, sortedLeave } from './leaves';
+import { isSplit, leaveDisplayName, sortedLeave } from './leaves';
 import type { SessionForHandicap, SessionHandicapResolver } from './handicap';
 import { laneForFrame, type LaneConfig } from './lanes';
 
@@ -426,6 +426,8 @@ export type RateStats = {
   spareOpportunities: number;
   openFrames: number;
   completedFrames: number;
+  splitAttempts: number;
+  splitConversions: number;
 };
 
 export type LeaveConversion = { name: string; attempts: number; converted: number };
@@ -443,9 +445,12 @@ function clearedRack(shot: StatShot): boolean {
  * is a spare attempt at the leave it faced. The rack-reset rule mirrors
  * pinsFacedBefore: a strike, a clearing ball, or a foul respots all ten -- so a
  * ball 2 after a foul is a spare attempt at a "Full Rack". Fouled deliveries
- * count as missed opportunities (they score zero). onSpareAttempt reports each
- * spare attempt's faced leave for the conversion-by-leave grouping. Callers
- * pass frames already sliced to their scope (a filter, a game, a session).
+ * count as missed opportunities (they score zero). Every spare attempt whose
+ * faced leave is a split (isSplit) also counts toward splitAttempts/
+ * splitConversions, so the split-conversion rate is a slice of the same walk.
+ * onSpareAttempt reports each spare attempt's faced leave for the
+ * conversion-by-leave grouping. Callers pass frames already sliced to their
+ * scope (a filter, a game, a session).
  */
 function walkDeliveries(
   frames: StatFrame[],
@@ -458,6 +463,8 @@ function walkDeliveries(
     spareOpportunities: 0,
     openFrames: 0,
     completedFrames: 0,
+    splitAttempts: 0,
+    splitConversions: 0,
   };
 
   for (const frame of frames) {
@@ -467,6 +474,7 @@ function walkDeliveries(
     frame.shots.forEach((shot, i) => {
       const freshRack = faced.length === 10;
       const cleared = clearedRack(shot);
+      const standingAfter = (shot.pins_standing ?? []) as number[];
 
       if (freshRack && (i === 0 || frame.frameNumber === 10)) {
         rates.strikeOpportunities += 1;
@@ -474,10 +482,13 @@ function walkDeliveries(
       } else {
         rates.spareOpportunities += 1;
         if (cleared) rates.spares += 1;
+        if (isSplit(faced)) {
+          rates.splitAttempts += 1;
+          if (cleared) rates.splitConversions += 1;
+        }
         onSpareAttempt?.(faced, cleared);
       }
 
-      const standingAfter = (shot.pins_standing ?? []) as number[];
       faced = shot.foul || shot.strike || standingAfter.length === 0 ? [...FULL_RACK] : [...standingAfter];
     });
 

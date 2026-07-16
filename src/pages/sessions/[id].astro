@@ -525,7 +525,7 @@ const setupSummary = [leagueName, laneLabel(laneConfig)].filter(Boolean).join(' 
       {sessionRates ? (
         <div class="score-box">
           <div class="sechead"><span class="chev"><i></i><i></i><i></i></span><h2>Rates Tonight</h2></div>
-          <div class="rate-grid">
+          <div class="rate-grid rate-grid-4">
             <div class="rate-stat">
               <span class="rate-label">Strike Rate</span>
               <span class="rate-value">{formatRate(sessionRates.strikes, sessionRates.strikeOpportunities)}</span>
@@ -542,6 +542,15 @@ const setupSummary = [leagueName, laneLabel(laneConfig)].filter(Boolean).join(' 
                 {sessionRates.spareOpportunities > 0
                   ? `${sessionRates.spares} of ${sessionRates.spareOpportunities} leaves`
                   : 'No leaves yet'}
+              </span>
+            </div>
+            <div class="rate-stat">
+              <span class="rate-label">Split Conversion</span>
+              <span class="rate-value">{formatRate(sessionRates.splitConversions, sessionRates.splitAttempts)}</span>
+              <span class="rate-sub">
+                {sessionRates.splitAttempts > 0
+                  ? `${sessionRates.splitConversions} of ${sessionRates.splitAttempts} splits`
+                  : 'No splits yet'}
               </span>
             </div>
             <div class="rate-stat">

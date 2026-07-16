@@ -448,9 +448,10 @@ export default function StatsCharts({
       )}
 
       {rateStats && (
-        <div className="rate-grid">
+        <div className="rate-grid rate-grid-4">
           <RateTile label="Strike Rate" made={rateStats.strikes} opportunities={rateStats.strikeOpportunities} noun="first balls" />
           <RateTile label="Spare Conversion" made={rateStats.spares} opportunities={rateStats.spareOpportunities} noun="leaves" />
+          <RateTile label="Split Conversion" made={rateStats.splitConversions} opportunities={rateStats.splitAttempts} noun="splits" />
           <RateTile label="Open Frames" made={rateStats.openFrames} opportunities={rateStats.completedFrames} noun="frames" />
         </div>
       )}
