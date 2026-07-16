@@ -997,5 +997,16 @@ a.ball-row:hover { text-decoration: none; box-shadow: var(--shadow-md); border-c
 .chart-table th, .chart-table td { text-align: left; padding: var(--s1) var(--s2); border-bottom: 1px solid var(--gridline); }
 .chart-table td { font-variant-numeric: tabular-nums; }
 .stats-charts details summary { font-size: var(--text-xs); cursor: pointer; color: var(--text-secondary); margin-top: var(--s1); }
+.chart-hint { font-size: var(--text-xs); color: var(--text-muted); margin: var(--s2) 0 0; text-align: center; }
+
+/* Pin Leave Frequency diagram: shaded pin glyphs (see .pin for the interactive picker) */
+.pin-freq-rows { display: flex; flex-direction: column; align-items: center; gap: var(--s2); }
+.pin-freq-row { display: flex; gap: var(--s3); }
+.pin-freq { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 2rem; }
+.pin-freq .pin-svg { width: 100%; height: auto; display: block; }
+.pin-freq .pin-body { fill: var(--series-1); stroke: var(--pin-down-stroke); stroke-width: 3; }
+.pin-freq .pin-num { fill: var(--text-secondary); font-family: var(--font-ui); font-size: 26px; font-weight: var(--fw-semi); }
+.pin-freq-count { font-size: var(--text-xs); font-weight: var(--fw-semi); color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.pin-freq-rate { font-size: var(--text-xs); color: var(--text-muted); font-variant-numeric: tabular-nums; }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }

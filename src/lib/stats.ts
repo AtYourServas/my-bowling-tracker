@@ -19,6 +19,8 @@ export type ScoredGame = {
 export type StatsFilter = {
   /** Include games from standalone practice sessions, not just league sessions. */
   includePracticeSessions: boolean;
+  /** Narrow every stat to one league's sessions; null/undefined = all leagues. */
+  leagueId?: string | null;
 };
 
 /**
@@ -67,7 +69,10 @@ export async function fetchAllGamesWithScores(supabase: SupabaseClient): Promise
  */
 export function filterScoredGames(allGames: ScoredGame[], filter: StatsFilter): ScoredGame[] {
   return allGames.filter(
-    (g) => !g.isPractice && (filter.includePracticeSessions || g.sessionType !== 'practice'),
+    (g) =>
+      !g.isPractice &&
+      (filter.includePracticeSessions || g.sessionType !== 'practice') &&
+      (!filter.leagueId || g.leagueId === filter.leagueId),
   );
 }
 
@@ -165,6 +170,7 @@ export type StatFrame = {
   gameId: string | null;
   isPractice: boolean;
   sessionType: string | null;
+  leagueId: string | null;
   /** Shots in delivery order. */
   shots: StatShot[];
 };
@@ -180,7 +186,7 @@ export async function fetchStatFrames(supabase: SupabaseClient): Promise<StatFra
   const { data: frames } = await supabase
     .from('frames')
     .select(
-      'frame_number, games(id, is_practice, sessions(session_type)), shots(pins_standing, strike, spare, foul, ball_id, created_at, lineup_position, slide_position, balls(name))',
+      'frame_number, games(id, is_practice, sessions(session_type, league_id)), shots(pins_standing, strike, spare, foul, ball_id, created_at, lineup_position, slide_position, balls(name))',
     )
     .order('created_at', { foreignTable: 'shots', ascending: true });
 
@@ -195,6 +201,7 @@ export async function fetchStatFrames(supabase: SupabaseClient): Promise<StatFra
       gameId: game.id ?? null,
       isPractice: game.is_practice,
       sessionType: game.sessions?.session_type ?? null,
+      leagueId: game.sessions?.league_id ?? null,
       shots: frame.shots ?? [],
     });
   }
@@ -210,7 +217,7 @@ export async function fetchSessionStatFrames(supabase: SupabaseClient, sessionId
   const { data: frames } = await supabase
     .from('frames')
     .select(
-      'frame_number, games!inner(id, session_id, is_practice, sessions(session_type)), shots(pins_standing, strike, spare, foul, ball_id, created_at, lineup_position, slide_position, balls(name))',
+      'frame_number, games!inner(id, session_id, is_practice, sessions(session_type, league_id)), shots(pins_standing, strike, spare, foul, ball_id, created_at, lineup_position, slide_position, balls(name))',
     )
     .eq('games.session_id', sessionId)
     .order('created_at', { foreignTable: 'shots', ascending: true });
@@ -222,6 +229,7 @@ export async function fetchSessionStatFrames(supabase: SupabaseClient, sessionId
     gameId: frame.games.id ?? null,
     isPractice: frame.games.is_practice,
     sessionType: frame.games.sessions?.session_type ?? null,
+    leagueId: frame.games.sessions?.league_id ?? null,
     shots: frame.shots ?? [],
   }));
 }
@@ -232,6 +240,7 @@ export async function fetchSessionStatFrames(supabase: SupabaseClient, sessionId
 function frameInFilter(frame: StatFrame, filter: StatsFilter): boolean {
   if (frame.isPractice) return false;
   if (!filter.includePracticeSessions && frame.sessionType === 'practice') return false;
+  if (filter.leagueId && frame.leagueId !== filter.leagueId) return false;
   return true;
 }
 
@@ -537,6 +546,34 @@ export function computeLeaveConversions(frames: StatFrame[], filter: StatsFilter
   return Array.from(groups.values())
     .map(({ pins, attempts, converted }) => ({ name: leaveDisplayName(pins), attempts, converted }))
     .sort((a, b) => b.attempts - a.attempts || a.name.localeCompare(b.name));
+}
+
+export type PinLeaveStat = { pin: number; attempts: number; converted: number };
+
+/**
+ * How often each pin (1-10) shows up in a faced spare leave, and how often
+ * that leave was converted -- the per-pin counterpart to
+ * computeLeaveConversions' exact-leave grouping. A leave with several pins
+ * standing counts toward EACH of its pins, so a 3-6-10 attempt adds one
+ * attempt to pins 3, 6, and 10 alike. Always returns all ten pins (zeroed if
+ * never faced) so a pin-diagram display doesn't need to backfill gaps.
+ */
+export function computePinLeaveStats(frames: StatFrame[], filter: StatsFilter): PinLeaveStat[] {
+  const counts = new Map<number, { attempts: number; converted: number }>();
+  for (let pin = 1; pin <= 10; pin += 1) counts.set(pin, { attempts: 0, converted: 0 });
+
+  walkDeliveries(frames.filter((f) => frameInFilter(f, filter)), (faced, converted) => {
+    for (const pin of faced) {
+      const entry = counts.get(pin);
+      if (!entry) continue;
+      entry.attempts += 1;
+      if (converted) entry.converted += 1;
+    }
+  });
+
+  return Array.from(counts.entries())
+    .map(([pin, { attempts, converted }]) => ({ pin, attempts, converted }))
+    .sort((a, b) => a.pin - b.pin);
 }
 
 export function fetchHandicappedAverage(games: ScoredGame[], handicapOf: SessionHandicapResolver): number | null {
