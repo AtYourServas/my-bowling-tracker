@@ -869,8 +869,13 @@ a.ball-row:hover { text-decoration: none; box-shadow: var(--shadow-md); border-c
 .lane-strip-slide      .lane-swatch { background: var(--good); }
 .lane-strip-label { font-weight: var(--fw-semi); color: var(--text-secondary); }
 .lane-strip-value { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.lane-board-input {
+  margin-left: auto; width: 4.5rem; padding: 2px 6px; font-size: var(--text-xs);
+  background: var(--surface); color: var(--text-primary); border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+}
 .lane-clear {
-  margin-left: auto; padding: 2px 10px; font-size: var(--text-xs);
+  padding: 2px 10px; font-size: var(--text-xs);
   background: var(--surface); color: var(--text-secondary); border-color: var(--border-strong);
 }
 .lane-clear:hover { background: var(--surface-sunk); filter: none; }

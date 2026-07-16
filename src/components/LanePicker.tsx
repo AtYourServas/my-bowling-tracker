@@ -118,6 +118,22 @@ function LaneStrip({
         <span className="lane-swatch" aria-hidden="true" />
         <span className="lane-strip-label">{meta.label}</span>
         <span className="lane-strip-value">{detail}</span>
+        <input
+          type="number"
+          className="lane-board-input"
+          min={1}
+          max={BOARDS}
+          step={STEP}
+          value={value ?? ''}
+          placeholder="Board"
+          aria-label={`${meta.label} board number`}
+          onChange={(e) => {
+            const raw = e.target.value;
+            if (raw === '') return;
+            const n = Number(raw);
+            if (!Number.isNaN(n)) onPlace(snap(n));
+          }}
+        />
         {value != null && (
           <button type="button" className="lane-clear" onClick={onClear} aria-label={`Clear ${meta.label}`}>
             Clear
@@ -278,7 +294,9 @@ const LanePicker = forwardRef<LanePickerHandle, Props>(function LanePicker(
         <input type="hidden" name={field.slide} value={slide != null ? String(slide) : ''} />
       )}
 
-      <p className="lane-hint">Tap a strip or use the arrows to set each mark. Board 1 is on the right, 20 is center.</p>
+      <p className="lane-hint">
+        Tap a strip, use the arrows, or type a board number to set each mark. Board 1 is on the right, 20 is center.
+      </p>
 
       {shown.map((mark) => {
         const [value, setValue] = state[mark];
