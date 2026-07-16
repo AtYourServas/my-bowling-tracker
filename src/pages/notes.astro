@@ -13,19 +13,21 @@ const filterAlley = params.get('alley') ?? '';
 const filterBall = params.get('ball') ?? '';
 const filterFrom = params.get('from') ?? '';
 const filterTo = params.get('to') ?? '';
+const filterQuery = params.get('q') ?? '';
 const hasFilters = view === 'session'
-  ? Boolean(filterLeague || filterSession || filterAlley || filterBall)
-  : Boolean(filterLeague || filterFrom || filterTo);
+  ? Boolean(filterLeague || filterSession || filterAlley || filterBall || filterQuery)
+  : Boolean(filterLeague || filterFrom || filterTo || filterQuery);
 
 // By-session view groups notes under their session (league / session / alley /
-// ball filters); by-leave groups every note under the leave its ball faced,
-// across sessions (league / date-range filters).
+// ball / search filters); by-leave groups every note under the leave its ball
+// faced, across sessions (league / date-range / search filters).
 const groups = view === 'session'
   ? await fetchAllNotes(supabase, {
       leagueId: filterLeague || undefined,
       sessionId: filterSession || undefined,
       alley: filterAlley || undefined,
       ballId: filterBall || undefined,
+      query: filterQuery || undefined,
     })
   : [];
 const leaveGroups = view === 'leave'
@@ -33,6 +35,7 @@ const leaveGroups = view === 'leave'
       leagueId: filterLeague || undefined,
       from: filterFrom || undefined,
       to: filterTo || undefined,
+      query: filterQuery || undefined,
     })
   : [];
 
@@ -76,6 +79,10 @@ const groupHeading = (g: (typeof groups)[number]['session']) =>
       {hasFilters && <span class="filter-badge">Active</span>}
     </summary>
     <form method="GET" class="filter-form">
+      <label class="wide">
+        Search
+        <input type="search" name="q" value={filterQuery} placeholder="Search note text…" />
+      </label>
       <label>
         League
         <select name="league">
@@ -128,6 +135,10 @@ const groupHeading = (g: (typeof groups)[number]['session']) =>
     </summary>
     <form method="GET" class="filter-form">
       <input type="hidden" name="view" value="leave" />
+      <label class="wide">
+        Search
+        <input type="search" name="q" value={filterQuery} placeholder="Search note text…" />
+      </label>
       <label class="wide">
         League
         <select name="league">

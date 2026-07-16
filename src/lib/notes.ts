@@ -144,8 +144,10 @@ export type SessionNoteGroup = {
 // ordered newest session first. Optional filters narrow to one session/league.
 export async function fetchAllNotes(
   supabase: SupabaseClient,
-  filters: { leagueId?: string; sessionId?: string; alley?: string; ballId?: string } = {},
+  filters: { leagueId?: string; sessionId?: string; alley?: string; ballId?: string; query?: string } = {},
 ): Promise<SessionNoteGroup[]> {
+  const q = filters.query?.trim().toLowerCase();
+  const matches = (body: string) => !q || body.toLowerCase().includes(q);
   let sessionsQuery = supabase
     .from('sessions')
     .select('id, alley_name, session_date, session_type, league_id, leagues(name)')
@@ -194,7 +196,7 @@ export async function fetchAllNotes(
 
   for (const note of notesRes.data ?? []) {
     const body = (note.body ?? '').trim();
-    if (!body) continue;
+    if (!body || !matches(body)) continue;
     const linked = note.shot_id ? shotById.get(note.shot_id) : undefined;
     // ball filter keeps only notes tied to a shot with that ball; standalone
     // (shot-less) notes carry no ball, so they drop out when it's active
@@ -212,7 +214,7 @@ export async function fetchAllNotes(
   }
 
   for (const [shotId, s] of shotById) {
-    if (!s.note) continue;
+    if (!s.note || !matches(s.note)) continue;
     if (filters.ballId && s.ballId !== filters.ballId) continue;
     push(s.sessionId, {
       id: shotId,
@@ -266,6 +268,7 @@ export type LeaveNoteFilters = {
   leagueId?: string;
   from?: string; // inclusive 'YYYY-MM-DD'
   to?: string; // inclusive 'YYYY-MM-DD'
+  query?: string; // plain substring match on note body, case-insensitive
 };
 
 // All note entries, grouped by the leave the noted ball *faced* (the pins
@@ -279,6 +282,9 @@ export async function fetchLeaveNotes(
   supabase: SupabaseClient,
   filters: LeaveNoteFilters = {},
 ): Promise<LeaveGroup[]> {
+  const q = filters.query?.trim().toLowerCase();
+  const matches = (body: string) => !q || body.toLowerCase().includes(q);
+
   const { data: sessions } = await supabase.from('sessions').select('id, session_date, league_id');
   const dateBySession = new Map<string, string | null>((sessions ?? []).map((s: any) => [s.id, s.session_date]));
 
@@ -363,7 +369,7 @@ export async function fetchLeaveNotes(
 
   for (const shot of notedRes.data ?? []) {
     const body = (shot.note ?? '').trim();
-    if (body) addNote(shot, shot.id, 'shot', body, shot.created_at);
+    if (body && matches(body)) addNote(shot, shot.id, 'shot', body, shot.created_at);
   }
 
   for (const note of sessionNotes ?? []) {
@@ -371,7 +377,7 @@ export async function fetchLeaveNotes(
     const shot = shotById.get(note.shot_id);
     if (!shot) continue;
     const body = (note.body ?? '').trim();
-    if (body) addNote(shot, note.id, 'note', body, note.created_at);
+    if (body && matches(body)) addNote(shot, note.id, 'note', body, note.created_at);
   }
 
   const groups: LeaveGroup[] = [];
