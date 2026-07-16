@@ -2,6 +2,7 @@
 import Layout from '../layouts/Layout.astro';
 
 let error: string | null = null;
+const notice = Astro.url.searchParams.get('reset') === '1' ? 'Your password has been updated. Log in with your new password.' : null;
 
 if (Astro.request.method === 'POST') {
   const formData = await Astro.request.formData();
@@ -29,6 +30,7 @@ if (Astro.request.method === 'POST') {
   <h1>Log In</h1>
 
   {error && <p class="error">{error}</p>}
+  {notice && <p class="notice">{notice}</p>}
 
   <form method="POST">
     <label>
@@ -42,5 +44,6 @@ if (Astro.request.method === 'POST') {
     <button type="submit">Log In</button>
   </form>
 
+  <p class="switch"><a href="/forgot-password">Forgot your password?</a></p>
   <p class="switch">Need an account? <a href="/signup">Sign Up</a></p>
 </Layout>
