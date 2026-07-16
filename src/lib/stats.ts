@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { fetchDerivedScoresForGames, frameProgress, computeFrameRolls, FULL_RACK } from './scoring';
-import { leaveDisplayName, sortedLeave } from './leaves';
+import { isSplit, leaveDisplayName, sortedLeave } from './leaves';
 import type { SessionForHandicap, SessionHandicapResolver } from './handicap';
 import { laneForFrame, type LaneConfig } from './lanes';
 
@@ -426,6 +426,7 @@ export type RateStats = {
   spareOpportunities: number;
   openFrames: number;
   completedFrames: number;
+  splits: number;
 };
 
 export type LeaveConversion = { name: string; attempts: number; converted: number };
@@ -458,6 +459,7 @@ function walkDeliveries(
     spareOpportunities: 0,
     openFrames: 0,
     completedFrames: 0,
+    splits: 0,
   };
 
   for (const frame of frames) {
@@ -467,17 +469,18 @@ function walkDeliveries(
     frame.shots.forEach((shot, i) => {
       const freshRack = faced.length === 10;
       const cleared = clearedRack(shot);
+      const standingAfter = (shot.pins_standing ?? []) as number[];
 
       if (freshRack && (i === 0 || frame.frameNumber === 10)) {
         rates.strikeOpportunities += 1;
         if (cleared) rates.strikes += 1;
+        else if (!shot.foul && isSplit(standingAfter)) rates.splits += 1;
       } else {
         rates.spareOpportunities += 1;
         if (cleared) rates.spares += 1;
         onSpareAttempt?.(faced, cleared);
       }
 
-      const standingAfter = (shot.pins_standing ?? []) as number[];
       faced = shot.foul || shot.strike || standingAfter.length === 0 ? [...FULL_RACK] : [...standingAfter];
     });
 
