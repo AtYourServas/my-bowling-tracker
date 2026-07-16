@@ -180,6 +180,7 @@ export default function ShotForm({
         initialFoul={initial?.foul ?? false}
         allowStrike={allowStrike}
         allowSpare={allowSpare}
+        facedPins={standingPins}
       />
 
       <label>
