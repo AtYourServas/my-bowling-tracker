@@ -9,6 +9,7 @@ import {
   computeDriftStat,
   computeRateStats,
   computeLeaveConversions,
+  computePinLeaveStats,
   groupByLaneCondition,
   fetchLeagueStats,
   average,
@@ -21,8 +22,11 @@ import { buildSessionHandicapResolver } from '../lib/handicap';
 const { supabase } = Astro.locals;
 
 const includePracticeSessions = Astro.url.searchParams.get('practice') !== 'exclude';
-const filter = { includePracticeSessions };
-const hasFilters = !includePracticeSessions;
+const leagueId = Astro.url.searchParams.get('league') || null;
+const filter = { includePracticeSessions, leagueId };
+const hasFilters = !includePracticeSessions || !!leagueId;
+
+const { data: leagues } = await supabase.from('leagues').select('id, name').order('name');
 
 // Fetch every game (with a bulk-derived score) and every frame+shot in
 // parallel, then compute every stat below in memory -- no per-game or
@@ -39,6 +43,7 @@ const ballStats = computeBallStats(statFrames, filter);
 const driftStat = computeDriftStat(statFrames, filter);
 const rateStats = computeRateStats(statFrames, filter);
 const leaveConversions = computeLeaveConversions(statFrames, filter);
+const pinLeaveStats = computePinLeaveStats(statFrames, filter);
 
 const handicapOf = await buildSessionHandicapResolver(supabase, allGamesEver);
 
@@ -107,6 +112,15 @@ const bestSeries = fetchBestSeriesStats(allGamesEver, handicapOf);
         <option value="exclude" selected={!includePracticeSessions}>League Only</option>
       </select>
     </label>
+    <label style="grid-column: span 2;">
+      League
+      <select name="league">
+        <option value="" selected={!leagueId}>All Leagues</option>
+        {(leagues ?? []).map((l) => (
+          <option value={l.id} selected={l.id === leagueId}>{l.name}</option>
+        ))}
+      </select>
+    </label>
     <button type="submit">Apply</button>
     {hasFilters && <a href="/stats">Clear Filters</a>}
   </form>
@@ -128,6 +142,7 @@ const bestSeries = fetchBestSeriesStats(allGamesEver, handicapOf);
       driftShotCount={driftStat ? driftStat.shotCount : 0}
       rateStats={rateStats}
       leaveConversions={leaveConversions}
+      pinLeaveStats={pinLeaveStats}
     />
   )}
 </Layout>

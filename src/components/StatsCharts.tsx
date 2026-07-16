@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { RateStats, LeaveConversion } from '../lib/stats';
+import type { RateStats, LeaveConversion, PinLeaveStat } from '../lib/stats';
 
 type BarDatum = { label: string; value: number; count: number };
 type TimeDatum = { date: string; score: number };
@@ -16,6 +16,7 @@ type Props = {
   driftShotCount: number;
   rateStats: RateStats | null;
   leaveConversions: LeaveConversion[];
+  pinLeaveStats: PinLeaveStat[];
 };
 
 /** Signed drift (stance − slide) → "Straight" or "2.3 boards right/left". */
@@ -69,6 +70,87 @@ function LeaveConversionTable({ data }: { data: LeaveConversion[] }) {
             ))}
           </tbody>
         </table>
+      )}
+    </div>
+  );
+}
+
+const PIN_ROWS = [
+  [7, 8, 9, 10],
+  [4, 5, 6],
+  [2, 3],
+  [1],
+];
+
+const PIN_PATH =
+  'M20,4 C27,4 27,14 24,20 C22,24 22,26 24,30 C30,38 33,58 30,76 C29,88 25,96 20,96 C15,96 11,88 10,76 C7,58 10,38 16,30 C18,26 18,24 16,20 C13,14 13,4 20,4 Z';
+
+/** Read-only pin glyph shaded by how often that pin gets left standing --
+ *  darker/filled = left more often, relative to the pin left most. */
+function PinFrequencyGlyph({ pin, attempts, converted, maxAttempts }: PinLeaveStat & { maxAttempts: number }) {
+  const intensity = maxAttempts === 0 ? 0 : attempts / maxAttempts;
+  return (
+    <div className="pin-freq" title={`Pin ${pin}: left ${attempts}x, converted ${formatRate(converted, attempts)}`}>
+      <svg className="pin-svg" viewBox="0 0 40 100" aria-hidden="true">
+        <path
+          className="pin-body"
+          d={PIN_PATH}
+          style={{ fillOpacity: 0.15 + intensity * 0.85 }}
+        />
+        <text className="pin-num" x="20" y="64" textAnchor="middle" dominantBaseline="middle">
+          {pin}
+        </text>
+      </svg>
+      <span className="pin-freq-count">{attempts}</span>
+      <span className="pin-freq-rate">{attempts === 0 ? '—' : formatRate(converted, attempts)}</span>
+    </div>
+  );
+}
+
+function PinLeaveDiagram({ data }: { data: PinLeaveStat[] }) {
+  const maxAttempts = Math.max(...data.map((d) => d.attempts), 0);
+  const byPin = new Map(data.map((d) => [d.pin, d]));
+
+  return (
+    <div className="chart-card">
+      <h2>Pin Leave Frequency</h2>
+      {maxAttempts === 0 ? (
+        <p className="chart-empty">Not enough data yet.</p>
+      ) : (
+        <>
+          <div className="pin-freq-rows">
+            {PIN_ROWS.map((row, i) => (
+              <div className="pin-freq-row" key={i}>
+                {row.map((pin) => {
+                  const d = byPin.get(pin)!;
+                  return <PinFrequencyGlyph key={pin} {...d} maxAttempts={maxAttempts} />;
+                })}
+              </div>
+            ))}
+          </div>
+          <p className="chart-hint">Shade = how often left standing; number below = times converted.</p>
+          <details>
+            <summary>View as Table</summary>
+            <table className="chart-table">
+              <thead>
+                <tr>
+                  <th>Pin</th>
+                  <th>Left</th>
+                  <th>Converted</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.map((d) => (
+                  <tr key={d.pin}>
+                    <td>{d.pin}</td>
+                    <td>{d.attempts}</td>
+                    <td>{formatRate(d.converted, d.attempts)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </details>
+        </>
       )}
     </div>
   );
@@ -262,6 +344,7 @@ export default function StatsCharts({
   driftShotCount,
   rateStats,
   leaveConversions,
+  pinLeaveStats,
 }: Props) {
   return (
     <div className="stats-charts">
@@ -293,6 +376,7 @@ export default function StatsCharts({
       )}
 
       {rateStats && <LeaveConversionTable data={leaveConversions} />}
+      {rateStats && <PinLeaveDiagram data={pinLeaveStats} />}
 
       <LineChart title="Average Over Time" data={averageOverTime} />
       <BarChart title="Average by League" data={byLeague} unit="avg score" />
