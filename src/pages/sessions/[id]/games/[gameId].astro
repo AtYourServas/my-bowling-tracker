@@ -619,7 +619,13 @@ function ballResult(i: number): string {
   <hr />
 
   {isWarmup && !game.ended_early && (
-    <form method="POST" class="row-actions" data-confirm="End practice? Everything logged so far stays saved -- you can still come back and add more.">
+    <form
+      method="POST"
+      class="row-actions"
+      data-confirm="End practice? Everything logged so far stays saved -- you can still come back and add more."
+      data-confirm-label="End Practice"
+      data-confirm-style="secondary"
+    >
       <input type="hidden" name="intent" value="end_practice_early" />
       <button type="submit" class="secondary">End Practice</button>
     </form>
