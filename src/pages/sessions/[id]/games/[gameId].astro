@@ -2,7 +2,21 @@
 import Layout from '../../../../layouts/Layout.astro';
 import ShotForm from '../../../../components/ShotForm';
 import NoteCard from '../../../../components/NoteCard.astro';
-import { fetchScoresheetForGame, fetchRunningScoreForGame, frameProgress, computeFrameRolls, allowedMarks, pinsStandingBefore, pinsFacedBefore, parseShotShorthand, fetchEarliestIncompleteFrame } from '../../../../lib/scoring';
+import {
+  fetchScoresheetForGame,
+  fetchRunningScoreForGame,
+  frameProgress,
+  computeFrameRolls,
+  allowedMarks,
+  pinsStandingBefore,
+  pinsFacedBefore,
+  parseShotShorthand,
+  fetchEarliestIncompleteFrame,
+  fetchWarmupFrames,
+  computeWarmupSheet,
+  fetchEarliestIncompleteWarmupFrame,
+  WARMUP_FRAME,
+} from '../../../../lib/scoring';
 import type { ShotLite } from '../../../../lib/scoring';
 import { fetchSessionHandicap } from '../../../../lib/handicap';
 import { fetchLeaveNotes, notesForLeave, leaveAnchor } from '../../../../lib/notes';
@@ -13,6 +27,25 @@ const { supabase, user } = Astro.locals;
 const { id: sessionId, gameId } = Astro.params;
 
 let error: string | null = null;
+
+// Fetched up front (rather than after POST handling, as before) so isWarmup is known
+// before frame-number parsing and the resume redirect below need to branch on it. Reads
+// are unaffected by any mutation a POST intent below performs -- is_practice never
+// changes, and the sessions join is read-only context.
+const { data: game } = await supabase
+  .from('games')
+  .select('*, sessions(alley_name, session_date, session_type, league_id, manual_handicap, lane_number, second_lane_number, default_ball_id, default_spare_ball_id)')
+  .eq('id', gameId)
+  .maybeSingle();
+
+if (!game) {
+  return Astro.redirect(`/sessions/${sessionId}`);
+}
+
+// The League session's Practice slot: an unbounded warmup, not a normal capped 10-frame
+// game -- see PR 67. (Standalone practice *sessions* use is_practice=false freeform
+// games and keep the normal capped logger below.)
+const isWarmup = game.is_practice;
 
 // Score-entry mode: an explicit ?mode= (set by the on-page toggle) wins and
 // sticks frame-to-frame; otherwise fall back to the profile's saved default.
@@ -28,11 +61,17 @@ const modeQ = `&mode=${mode}`;
 // so you resume where you left off instead of always starting at frame 1.
 const frameParam = Astro.url.searchParams.get('frame');
 if (Astro.request.method === 'GET' && frameParam == null) {
-  const resume = await fetchEarliestIncompleteFrame(supabase, gameId!);
+  const resume = isWarmup
+    ? await fetchEarliestIncompleteWarmupFrame(supabase, gameId!)
+    : await fetchEarliestIncompleteFrame(supabase, gameId!);
   return Astro.redirect(`/sessions/${sessionId}/games/${gameId}?frame=${resume}${modeQ}`);
 }
 
-const frameNumber = Math.min(10, Math.max(1, Number(frameParam) || 1));
+const frameNumber = isWarmup ? Math.max(1, Number(frameParam) || 1) : Math.min(10, Math.max(1, Number(frameParam) || 1));
+// frame number normalized so frame-shot rules (frameProgress/allowedMarks/parseShotShorthand)
+// never apply the real 10th-frame bonus-ball special case to a warmup game, even on its
+// literal frame 10, 20, ... -- see WARMUP_FRAME.
+const ruleFrameNumber = isWarmup ? WARMUP_FRAME : frameNumber;
 
 if (Astro.request.method === 'POST') {
   const formData = await Astro.request.formData();
@@ -64,31 +103,36 @@ if (Astro.request.method === 'POST') {
       return Astro.redirect(`/sessions/${sessionId}/games/${gameId}?frame=${frameNumber}${postModeQ}`);
     }
   } else if (intent === 'end_practice_early') {
-    const { data: gameRow } = await supabase
-      .from('games')
-      .select('is_practice, sessions(session_type)')
-      .eq('id', gameId)
-      .maybeSingle();
-
-    const eligible = gameRow != null && (gameRow.is_practice || (gameRow.sessions as any)?.session_type === 'practice');
-
-    if (!eligible) {
-      error = 'This game cannot be ended early.';
-    } else {
-      const partial = await fetchRunningScoreForGame(supabase, gameId!);
-
-      if (partial == null) {
-        error = 'Log at least one ball before ending the game early.';
+    if (isWarmup) {
+      // warmup has no score to card -- ending it just marks it done, even with
+      // zero shots logged (e.g. you started it and changed your mind)
+      const { error: endError } = await supabase.from('games').update({ ended_early: true }).eq('id', gameId);
+      if (endError) {
+        error = endError.message;
       } else {
-        const { error: endError } = await supabase
-          .from('games')
-          .update({ final_score: partial.score, ended_early: true })
-          .eq('id', gameId);
+        return Astro.redirect(`/sessions/${sessionId}`);
+      }
+    } else {
+      const eligible = game.is_practice || game.sessions?.session_type === 'practice';
 
-        if (endError) {
-          error = endError.message;
+      if (!eligible) {
+        error = 'This game cannot be ended early.';
+      } else {
+        const partial = await fetchRunningScoreForGame(supabase, gameId!);
+
+        if (partial == null) {
+          error = 'Log at least one ball before ending the game early.';
         } else {
-          return Astro.redirect(`/sessions/${sessionId}`);
+          const { error: endError } = await supabase
+            .from('games')
+            .update({ final_score: partial.score, ended_early: true })
+            .eq('id', gameId);
+
+          if (endError) {
+            error = endError.message;
+          } else {
+            return Astro.redirect(`/sessions/${sessionId}`);
+          }
         }
       }
     }
@@ -135,7 +179,7 @@ if (Astro.request.method === 'POST') {
         .order('created_at', { ascending: true });
       const existingShots = (existing ?? []) as ShotLite[];
 
-      if (!frameProgress(frameNumber, existingShots).canAdd) {
+      if (!frameProgress(ruleFrameNumber, existingShots).canAdd) {
         error = `Frame ${frameNumber} already has all of its shots.`;
       } else if (intent === 'log_shorthand') {
         // typed straight into the scoresheet frame: parse the shorthand into the
@@ -146,7 +190,7 @@ if (Astro.request.method === 'POST') {
         const parsed = parseShotShorthand(rawShort, {
           priorStanding: pinsStandingBefore(existingShots),
           ballIndex,
-          frameNumber,
+          frameNumber: ruleFrameNumber,
         });
 
         if (!parsed.ok) {
@@ -173,8 +217,8 @@ if (Astro.request.method === 'POST') {
           if (insertError) {
             error = insertError.message;
           } else {
-            const after = frameProgress(frameNumber, [...existingShots, { pins_standing: standing, strike, spare, foul }]);
-            const target = after.complete && frameNumber < 10 ? frameNumber + 1 : frameNumber;
+            const after = frameProgress(ruleFrameNumber, [...existingShots, { pins_standing: standing, strike, spare, foul }]);
+            const target = after.complete && (isWarmup || frameNumber < 10) ? frameNumber + 1 : frameNumber;
             return Astro.redirect(`/sessions/${sessionId}/games/${gameId}?frame=${target}${postModeQ}`);
           }
         }
@@ -227,8 +271,8 @@ if (Astro.request.method === 'POST') {
         } else {
           // auto-advance: a completed frame jumps to the next; an unfinished
           // one stays put so the form reappears for the next ball
-          const after = frameProgress(frameNumber, [...existingShots, { pins_standing, strike, spare, foul }]);
-          const target = after.complete && frameNumber < 10 ? frameNumber + 1 : frameNumber;
+          const after = frameProgress(ruleFrameNumber, [...existingShots, { pins_standing, strike, spare, foul }]);
+          const target = after.complete && (isWarmup || frameNumber < 10) ? frameNumber + 1 : frameNumber;
           return Astro.redirect(`/sessions/${sessionId}/games/${gameId}?frame=${target}${postModeQ}`);
         }
       }
@@ -236,36 +280,29 @@ if (Astro.request.method === 'POST') {
   }
 }
 
-const { data: game } = await supabase
-  .from('games')
-  .select('*, sessions(alley_name, session_date, session_type, league_id, manual_handicap, lane_number, second_lane_number, default_ball_id, default_spare_ball_id)')
-  .eq('id', gameId)
-  .maybeSingle();
-
-if (!game) {
-  return Astro.redirect(`/sessions/${sessionId}`);
-}
-
-const cells = await fetchScoresheetForGame(supabase, gameId!);
+const cells = isWarmup
+  ? computeWarmupSheet(await fetchWarmupFrames(supabase, gameId!), frameNumber)
+  : await fetchScoresheetForGame(supabase, gameId!);
 const through = [...cells].reverse().find((c) => c.cumulative != null);
 const runningTotal = through?.cumulative ?? null;
-const finalDerived = cells[9]?.cumulative ?? null; // full total once all 10 resolve
+const finalDerived = !isWarmup ? cells[9]?.cumulative ?? null : null; // full total once all 10 resolve
 const scratchScore = game.final_score ?? finalDerived ?? runningTotal;
 
-// Practice games (standalone practice sessions, or a league night's Practice
-// slot) can be ended before frame 10 -- competitive league games can't. The
-// partial score uses computeRunningScore (face-value on any unresolved
-// trailing bonus), not the strict cumulative above, so a couple of strikes in
-// a row at the start of a game don't leave the End Game Here button unable to
+// Practice-session games (standalone practice, is_practice=false) can be ended
+// before frame 10 with a partial score -- competitive league games can't.
+// Warmup (is_practice=true) has its own always-available "End Practice" below,
+// no score involved. The partial score uses computeRunningScore (face-value on
+// any unresolved trailing bonus), not the strict cumulative above, so a couple
+// of strikes in a row at the start of a game don't leave the button unable to
 // show a score.
-const isPracticeGame = game.is_practice || game.sessions?.session_type === 'practice';
+const isPracticeSessionGame = !isWarmup && game.sessions?.session_type === 'practice';
 const partialScore =
-  isPracticeGame && game.final_score == null && finalDerived == null
+  isPracticeSessionGame && game.final_score == null && finalDerived == null
     ? await fetchRunningScoreForGame(supabase, gameId!)
     : null;
 const canEndEarly = partialScore != null;
 const lastBowled = [...cells].reverse().find((c) => c.bowled) ?? null;
-const sessionHandicap = await fetchSessionHandicap(supabase, { id: sessionId!, ...game.sessions });
+const sessionHandicap = isWarmup ? null : await fetchSessionHandicap(supabase, { id: sessionId!, ...game.sessions });
 
 const sessionMeta = [
   game.sessions?.alley_name,
@@ -318,8 +355,8 @@ const showFrameLane = laneConfig.secondLaneNumber != null && frameLane != null;
 
 // current-frame state (reuses the scoresheet's roll + completeness logic)
 const frameShots = (shots ?? []) as any[];
-const progress = frameProgress(frameNumber, frameShots as ShotLite[]);
-const marks = allowedMarks(frameNumber, frameShots as ShotLite[]);
+const progress = frameProgress(ruleFrameNumber, frameShots as ShotLite[]);
+const marks = allowedMarks(ruleFrameNumber, frameShots as ShotLite[]);
 const knockedPerBall = computeFrameRolls(frameShots as ShotLite[]);
 const frameMarks = cells[frameNumber - 1].balls;
 const ordinals = ['First', 'Second', 'Third'];
@@ -347,19 +384,20 @@ const defaultBallId =
 const defaultApproachId = startingPins.length === 0 ? prefRow?.default_approach_id ?? null : null;
 
 // frames 1-9 that completed on a lone strike: a 2nd ball needs the strike edited away
-const strikeLockShot = frameNumber < 10 && progress.complete && frameShots.length === 1 ? frameShots[0] : null;
+const strikeLockShot = (isWarmup || frameNumber < 10) && progress.complete && frameShots.length === 1 ? frameShots[0] : null;
 
 const prevFrame = frameNumber > 1 ? frameNumber - 1 : null;
-const nextFrame = frameNumber < 10 ? frameNumber + 1 : null;
+const nextFrame = isWarmup ? frameNumber + 1 : frameNumber < 10 ? frameNumber + 1 : null;
 const frameHref = (n: number, m: 'pick' | 'type' = mode) => `/sessions/${sessionId}/games/${gameId}?frame=${n}&mode=${m}`;
 
 // the ball box (0-based) awaiting entry in the active frame, when typing
 const activeBox = progress.nextBall != null ? progress.nextBall - 1 : -1;
 
-// A struck frame (1-9) shows the X alone in the top-right corner box, the
-// traditional scoresheet look — drop the placeholder empty 2nd-ball square.
+// A struck frame (1-9, or any warmup frame) shows the X alone in the top-right
+// corner box, the traditional scoresheet look — drop the placeholder empty
+// 2nd-ball square. Warmup never has a real 10th-frame 3-ball layout.
 function displayBalls(cell: (typeof cells)[number]) {
-  return cell.frameNumber < 10 && cell.balls[0]?.kind === 'strike'
+  return (isWarmup || cell.frameNumber < 10) && cell.balls[0]?.kind === 'strike'
     ? cell.balls.slice(0, 1)
     : cell.balls;
 }
@@ -378,7 +416,9 @@ function ballResult(i: number): string {
   <nav class="top"><a href={`/sessions/${sessionId}`}>&larr; Session</a></nav>
   <h1>{gameLabel}</h1>
   {sessionMeta && <p class="meta">{sessionMeta}</p>}
-  {game.ended_early && lastBowled && <p class="empty">Ended early &middot; through frame {lastBowled.frameNumber}</p>}
+  {game.ended_early && lastBowled && (
+    <p class="empty">{isWarmup ? 'Practice complete' : 'Ended early'} &middot; through frame {lastBowled.frameNumber}</p>
+  )}
 
   {error && <p class="error">{error}</p>}
 
@@ -410,7 +450,7 @@ function ballResult(i: number): string {
         {cells.map((cell) => {
           const isActive = cell.frameNumber === frameNumber;
           const typeHere = mode === 'type' && isActive && progress.nextBall != null;
-          const cls = ['cell', { active: isActive, future: !cell.bowled && !isActive, f10: cell.frameNumber === 10 }];
+          const cls = ['cell', { active: isActive, future: !cell.bowled && !isActive, f10: !isWarmup && cell.frameNumber === 10 }];
           return typeHere ? (
             <div class:list={[...cls, 'typing']} aria-current="true" aria-label={`Frame ${cell.frameNumber}, entering ball ${progress.nextBall}`}>
               <span class="fnum">{cell.frameNumber}</span>
@@ -461,32 +501,34 @@ function ballResult(i: number): string {
     )}
   </form>
 
-  <div class="scorecard">
-    <div class="scorenow">
-      <div class="row">
-        <span class="n">{runningTotal ?? '—'}</span>
-        <span class="lbl">{through ? `through ${through.frameNumber}` : 'no frames yet'}</span>
+  {!isWarmup && (
+    <div class="scorecard">
+      <div class="scorenow">
+        <div class="row">
+          <span class="n">{runningTotal ?? '—'}</span>
+          <span class="lbl">{through ? `through ${through.frameNumber}` : 'no frames yet'}</span>
+        </div>
+        {scratchScore != null && sessionHandicap != null && (
+          <span class="hcap">+ handicap {sessionHandicap} = <b>{scratchScore + sessionHandicap}</b></span>
+        )}
       </div>
-      {scratchScore != null && sessionHandicap != null && (
-        <span class="hcap">+ handicap {sessionHandicap} = <b>{scratchScore + sessionHandicap}</b></span>
-      )}
+      <form class="finalscore" method="POST">
+        <input type="hidden" name="intent" value="set_score" />
+        <input type="hidden" name="mode" value={mode} />
+        <label for="final_score">Final Score</label>
+        <input
+          id="final_score"
+          type="number"
+          name="final_score"
+          min="0"
+          max="300"
+          value={game.final_score ?? ''}
+          placeholder="&#8212;"
+        />
+        <button type="submit" class="secondary">Save</button>
+      </form>
     </div>
-    <form class="finalscore" method="POST">
-      <input type="hidden" name="intent" value="set_score" />
-      <input type="hidden" name="mode" value={mode} />
-      <label for="final_score">Final Score</label>
-      <input
-        id="final_score"
-        type="number"
-        name="final_score"
-        min="0"
-        max="300"
-        value={game.final_score ?? ''}
-        placeholder="&#8212;"
-      />
-      <button type="submit" class="secondary">Save</button>
-    </form>
-  </div>
+  )}
 
   <div class="sechead"><span class="chev"><i></i><i></i><i></i></span><h2>Now Bowling &middot; Frame {frameNumber}{progress.nextBall != null && ` · Ball ${progress.nextBall}`}{showFrameLane && ` · Lane ${frameLane}`}</h2></div>
   <div class="framenav-row">
@@ -576,6 +618,13 @@ function ballResult(i: number): string {
 
   <hr />
 
+  {isWarmup && !game.ended_early && (
+    <form method="POST" class="row-actions" data-confirm="End practice? Everything logged so far stays saved -- you can still come back and add more.">
+      <input type="hidden" name="intent" value="end_practice_early" />
+      <button type="submit" class="secondary">End Practice</button>
+    </form>
+  )}
+
   {canEndEarly && partialScore && (
     <form method="POST" class="row-actions" data-confirm={`End this game after frame ${partialScore.throughFrame} with a score of ${partialScore.score}? You can keep bowling later and re-save the score to correct it.`}>
       <input type="hidden" name="intent" value="end_practice_early" />
@@ -583,10 +632,17 @@ function ballResult(i: number): string {
     </form>
   )}
 
-  <form method="POST" class="row-actions" data-confirm="Delete this game? Its throws and scores will be permanently removed.">
-    <input type="hidden" name="intent" value="delete_game" />
-    <button type="submit" class="danger">Delete Game</button>
-  </form>
+  {isWarmup ? (
+    <form method="POST" class="row-actions" data-confirm="Discard this practice? Nothing logged will be saved.">
+      <input type="hidden" name="intent" value="delete_game" />
+      <button type="submit" class="danger">Close Without Logging</button>
+    </form>
+  ) : (
+    <form method="POST" class="row-actions" data-confirm="Delete this game? Its throws and scores will be permanently removed.">
+      <input type="hidden" name="intent" value="delete_game" />
+      <button type="submit" class="danger">Delete Game</button>
+    </form>
+  )}
 
   <div class="retry-banner" id="retry-banner" role="alert" hidden>
     <span class="retry-msg">Couldn't reach the server — your ball is held here. Retry when the connection's back.</span>

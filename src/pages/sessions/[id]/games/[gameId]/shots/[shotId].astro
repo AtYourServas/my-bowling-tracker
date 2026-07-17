@@ -1,7 +1,7 @@
 ---
 import Layout from '../../../../../../layouts/Layout.astro';
 import ShotForm from '../../../../../../components/ShotForm';
-import { allowedMarks, pinsFacedBefore } from '../../../../../../lib/scoring';
+import { allowedMarks, pinsFacedBefore, WARMUP_FRAME } from '../../../../../../lib/scoring';
 import type { ShotLite } from '../../../../../../lib/scoring';
 
 const { supabase } = Astro.locals;
@@ -16,7 +16,7 @@ let error: string | null = null;
 
 const { data: shot } = await supabase
   .from('shots')
-  .select('*, frames(frame_number)')
+  .select('*, frames(frame_number, games(is_practice))')
   .eq('id', shotId)
   .maybeSingle();
 
@@ -25,6 +25,9 @@ if (!shot) {
 }
 
 const frameNumber = shot.frames.frame_number;
+// warmup (the League session's Practice slot) never applies the real 10th-frame
+// bonus-ball rules, even on literal frame 10 -- see WARMUP_FRAME.
+const ruleFrameNumber = (shot.frames as any).games?.is_practice ? WARMUP_FRAME : frameNumber;
 
 if (Astro.request.method === 'POST') {
   const formData = await Astro.request.formData();
@@ -104,7 +107,7 @@ const { data: siblingShots } = await supabase
   .eq('frame_id', shot.frame_id)
   .order('created_at', { ascending: true });
 const priorShots = (siblingShots ?? []).filter((s) => s.created_at < shot.created_at) as ShotLite[];
-const marks = allowedMarks(frameNumber, priorShots);
+const marks = allowedMarks(ruleFrameNumber, priorShots);
 
 // the leave this ball faced, so the picker's Missed/quick-count shortcuts work
 // on the right pins when editing (ShotForm treats [] as a fresh rack)

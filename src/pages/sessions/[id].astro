@@ -2,7 +2,7 @@
 import Layout from '../../layouts/Layout.astro';
 import GameScoreValue from '../../components/GameScoreValue.astro';
 import MiniScoresheet from '../../components/MiniScoresheet.astro';
-import { fetchDerivedScoreForGame, fetchMiniScoresheets } from '../../lib/scoring';
+import { fetchDerivedScoreForGame, fetchMiniScoresheets, fetchWarmupFrames } from '../../lib/scoring';
 import type { MiniSheet } from '../../lib/scoring';
 import { fetchSessionHandicapDetail } from '../../lib/handicap';
 import { fetchSessionLaneStats, fetchSessionStatFrames, computeSessionRates, computeGameRates } from '../../lib/stats';
@@ -200,15 +200,16 @@ function gameLabel(game: { is_practice: boolean; game_number: number | null }, i
   return game.is_practice ? 'Practice' : game.game_number ? `Game ${game.game_number}` : 'Game';
 }
 
-// Games view: derived scores + per-game marks/score strips (+ first-ball pinfall)
+// Games view: derived scores + per-game marks/score strips (+ first-ball pinfall).
+// The Practice slot (is_practice) is excluded -- it's an uncapped warmup with its own
+// dedicated summary below, and these are all fixed-at-10-frames computations.
+const scoredGames = (games ?? []).filter((g) => !g.is_practice);
 const derivedScores = new Map<string, number | null>(
   view === 'games'
-    ? await Promise.all(
-        (games ?? []).map(async (g) => [g.id, await fetchDerivedScoreForGame(supabase, g.id)] as const),
-      )
+    ? await Promise.all(scoredGames.map(async (g) => [g.id, await fetchDerivedScoreForGame(supabase, g.id)] as const))
     : [],
 );
-const miniSheets = view === 'games' ? await fetchMiniScoresheets(supabase, (games ?? []).map((g) => g.id)) : new Map<string, MiniSheet>();
+const miniSheets = view === 'games' ? await fetchMiniScoresheets(supabase, scoredGames.map((g) => g.id)) : new Map<string, MiniSheet>();
 const miniSheet = (gameId: string) => {
   const mini = miniSheets.get(gameId);
   return mini && mini.cells.some((c) => c.bowled) ? mini : null;
@@ -275,12 +276,17 @@ function formatRate(made: number, opportunities: number): string {
 const notes = view === 'notes' ? await fetchSessionNotes(supabase, id!) : [];
 
 const practiceGame = games?.find((g) => g.is_practice);
+// Practice's shot count -- an uncapped warmup has no score, so this (not a
+// mini-scoresheet) is its whole summary on the games list.
+const practiceShotCount =
+  view === 'games' && practiceGame
+    ? (await fetchWarmupFrames(supabase, practiceGame.id)).reduce((n, f) => n + f.shots.length, 0)
+    : 0;
 const game1 = games?.find((g) => g.game_number === 1);
 const game2 = games?.find((g) => g.game_number === 2);
 const game3 = games?.find((g) => g.game_number === 3);
 
 const leagueSlots = [
-  { key: 'practice', label: 'Practice', game: practiceGame },
   { key: 'game1', label: 'Game 1', game: game1 },
   { key: 'game2', label: 'Game 2', game: game2 },
   { key: 'game3', label: 'Game 3', game: game3 },
@@ -322,6 +328,29 @@ const setupSummary = [leagueName, laneLabel(laneConfig)].filter(Boolean).join(' 
 
       {session.session_type === 'league' ? (
         <ul class="list">
+          <li>
+            {practiceGame ? (
+              <>
+                <a class="card game-card" href={`/sessions/${id}/games/${practiceGame.id}`}>
+                  <div class="game-card-main">
+                    <strong>Practice</strong>
+                    <div class="game-card-detail">
+                      {practiceShotCount} shot{practiceShotCount === 1 ? '' : 's'}
+                      {practiceGame.ended_early ? ' · Complete' : ''}
+                    </div>
+                  </div>
+                </a>
+              </>
+            ) : (
+              <div class="add-slot">
+                <strong>Practice</strong>
+                <form method="POST" class="add-game">
+                  <input type="hidden" name="slot" value="practice" />
+                  <button type="submit" name="action" value="log">Start Warmup</button>
+                </form>
+              </div>
+            )}
+          </li>
           {leagueSlots.map((slot) => {
             const score = slot.game ? gameScore(slot.game) : null;
             return (
