@@ -33,7 +33,7 @@ export type StatsFilter = {
 export async function fetchAllGamesWithScores(supabase: SupabaseClient): Promise<ScoredGame[]> {
   const { data: games } = await supabase
     .from('games')
-    .select('id, final_score, session_id, is_practice, sessions(session_date, lane_condition_notes, session_type, league_id, manual_handicap)');
+    .select('id, final_score, session_id, is_practice, ended_early, sessions(session_date, lane_condition_notes, session_type, league_id, manual_handicap)');
 
   if (!games) return [];
 
@@ -44,6 +44,10 @@ export async function fetchAllGamesWithScores(supabase: SupabaseClient): Promise
 
   const results: ScoredGame[] = [];
   for (const game of games as any[]) {
+    // a game ended early on purpose (partial-score practice) never counts
+    // toward averages/bests/handicap trend -- it still bowled real shots, so
+    // shot-level rate stats (strike%, spare%, carry) are unaffected
+    if (game.ended_early) continue;
     const score = game.final_score ?? derivedByGame.get(game.id) ?? null;
     if (score == null) continue;
     results.push({
