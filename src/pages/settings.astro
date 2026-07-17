@@ -6,32 +6,69 @@ import { APPROACH_FIELDS, APPROACH_FIELD_KEYS } from '../lib/approachFields';
 const { supabase, user } = Astro.locals;
 
 let error: string | null = null;
-// Post/Redirect/Get: a successful save redirects to ?saved=1, so reloading or
-// revisiting the page is always a fresh GET (never a stale or re-posted form).
-const saved = Astro.url.searchParams.get('saved') === '1';
+// Post/Redirect/Get: a successful save redirects to ?saved=..., so reloading
+// or revisiting the page is always a fresh GET (never a stale or re-posted form).
+const savedParam = Astro.url.searchParams.get('saved');
+const saved = savedParam === '1';
+const passwordSaved = savedParam === 'password';
 
 if (Astro.request.method === 'POST') {
   const formData = await Astro.request.formData();
-  const display_name = formData.get('display_name')?.toString().trim() || null;
-  const default_ball_id = formData.get('default_ball_id')?.toString() || null;
-  const default_spare_ball_id = formData.get('default_spare_ball_id')?.toString() || null;
-  const default_approach_id = formData.get('default_approach_id')?.toString() || null;
-  const default_entry_mode = formData.get('default_entry_mode')?.toString() === 'type' ? 'type' : 'pick';
-  // each shown checkbox posts show_<key>='on'; anything not checked is hidden
-  const hidden_shot_fields = SHOT_FIELD_KEYS.filter((key) => formData.get(`show_${key}`) !== 'on');
-  const hidden_approach_fields = APPROACH_FIELD_KEYS.filter((key) => formData.get(`approach_show_${key}`) !== 'on');
+  const intent = formData.get('intent')?.toString();
 
-  // upsert, not update: an account from before the handle_new_user trigger
-  // has no profiles row, and an update matching zero rows "succeeds" without
-  // saving anything. Upsert creates the row on first save instead.
-  const { error: updateError } = await supabase
-    .from('profiles')
-    .upsert({ id: user!.id, display_name, default_ball_id, default_spare_ball_id, default_approach_id, default_entry_mode, hidden_shot_fields, hidden_approach_fields });
+  if (intent === 'change_password') {
+    const current_password = formData.get('current_password')?.toString() ?? '';
+    const new_password = formData.get('new_password')?.toString() ?? '';
+    const confirm_password = formData.get('confirm_password')?.toString() ?? '';
 
-  if (updateError) {
-    error = updateError.message;
+    if (!current_password || !new_password || !confirm_password) {
+      error = 'Fill in all three password fields.';
+    } else if (new_password !== confirm_password) {
+      error = 'New password and confirmation do not match.';
+    } else if (new_password.length < 6) {
+      error = 'New password must be at least 6 characters.';
+    } else {
+      // re-verify the current password before allowing the change, so a
+      // left-open session on a shared device can't be used to lock the
+      // account's real owner out
+      const { error: reauthError } = await supabase.auth.signInWithPassword({
+        email: user!.email!,
+        password: current_password,
+      });
+
+      if (reauthError) {
+        error = 'Current password is incorrect.';
+      } else {
+        const { error: updateError } = await supabase.auth.updateUser({ password: new_password });
+        if (updateError) {
+          error = updateError.message;
+        } else {
+          return Astro.redirect('/settings?saved=password');
+        }
+      }
+    }
   } else {
-    return Astro.redirect('/settings?saved=1');
+    const display_name = formData.get('display_name')?.toString().trim() || null;
+    const default_ball_id = formData.get('default_ball_id')?.toString() || null;
+    const default_spare_ball_id = formData.get('default_spare_ball_id')?.toString() || null;
+    const default_approach_id = formData.get('default_approach_id')?.toString() || null;
+    const default_entry_mode = formData.get('default_entry_mode')?.toString() === 'type' ? 'type' : 'pick';
+    // each shown checkbox posts show_<key>='on'; anything not checked is hidden
+    const hidden_shot_fields = SHOT_FIELD_KEYS.filter((key) => formData.get(`show_${key}`) !== 'on');
+    const hidden_approach_fields = APPROACH_FIELD_KEYS.filter((key) => formData.get(`approach_show_${key}`) !== 'on');
+
+    // upsert, not update: an account from before the handle_new_user trigger
+    // has no profiles row, and an update matching zero rows "succeeds" without
+    // saving anything. Upsert creates the row on first save instead.
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .upsert({ id: user!.id, display_name, default_ball_id, default_spare_ball_id, default_approach_id, default_entry_mode, hidden_shot_fields, hidden_approach_fields });
+
+    if (updateError) {
+      error = updateError.message;
+    } else {
+      return Astro.redirect('/settings?saved=1');
+    }
   }
 }
 
@@ -60,6 +97,7 @@ const strikeApproaches = (approaches ?? []).filter((a) => (a.leave ?? []).length
 
   {error && <p class="error">{error}</p>}
   {saved && <p class="empty">Settings saved.</p>}
+  {passwordSaved && <p class="empty">Password updated.</p>}
 
   <form method="POST">
     <label>
@@ -153,6 +191,24 @@ const strikeApproaches = (approaches ?? []).filter((a) => (a.leave ?? []).length
     )}
 
     <button type="submit">Save Settings</button>
+  </form>
+
+  <div class="sechead"><span class="chev"><i></i><i></i><i></i></span><h2>Change Password</h2></div>
+  <form method="POST">
+    <input type="hidden" name="intent" value="change_password" />
+    <label>
+      Current Password
+      <input type="password" name="current_password" required autocomplete="current-password" />
+    </label>
+    <label>
+      New Password
+      <input type="password" name="new_password" required minlength="6" autocomplete="new-password" />
+    </label>
+    <label>
+      Confirm New Password
+      <input type="password" name="confirm_password" required minlength="6" autocomplete="new-password" />
+    </label>
+    <button type="submit" class="secondary">Update Password</button>
   </form>
 
   <script>
