@@ -2,7 +2,7 @@
 import Layout from '../../../../layouts/Layout.astro';
 import ShotForm from '../../../../components/ShotForm';
 import NoteCard from '../../../../components/NoteCard.astro';
-import { fetchScoresheetForGame, frameProgress, computeFrameRolls, allowedMarks, pinsStandingBefore, pinsFacedBefore, parseShotShorthand, fetchEarliestIncompleteFrame } from '../../../../lib/scoring';
+import { fetchScoresheetForGame, fetchRunningScoreForGame, frameProgress, computeFrameRolls, allowedMarks, pinsStandingBefore, pinsFacedBefore, parseShotShorthand, fetchEarliestIncompleteFrame } from '../../../../lib/scoring';
 import type { ShotLite } from '../../../../lib/scoring';
 import { fetchSessionHandicap } from '../../../../lib/handicap';
 import { fetchLeaveNotes, notesForLeave, leaveAnchor } from '../../../../lib/notes';
@@ -75,15 +75,14 @@ if (Astro.request.method === 'POST') {
     if (!eligible) {
       error = 'This game cannot be ended early.';
     } else {
-      const cells = await fetchScoresheetForGame(supabase, gameId!);
-      const through = [...cells].reverse().find((c) => c.cumulative != null);
+      const partial = await fetchRunningScoreForGame(supabase, gameId!);
 
-      if (through?.cumulative == null) {
-        error = 'Log at least one full frame before ending the game early.';
+      if (partial == null) {
+        error = 'Log at least one ball before ending the game early.';
       } else {
         const { error: endError } = await supabase
           .from('games')
-          .update({ final_score: through.cumulative, ended_early: true })
+          .update({ final_score: partial.score, ended_early: true })
           .eq('id', gameId);
 
         if (endError) {
@@ -254,9 +253,18 @@ const finalDerived = cells[9]?.cumulative ?? null; // full total once all 10 res
 const scratchScore = game.final_score ?? finalDerived ?? runningTotal;
 
 // Practice games (standalone practice sessions, or a league night's Practice
-// slot) can be ended before frame 10 -- competitive league games can't.
+// slot) can be ended before frame 10 -- competitive league games can't. The
+// partial score uses computeRunningScore (face-value on any unresolved
+// trailing bonus), not the strict cumulative above, so a couple of strikes in
+// a row at the start of a game don't leave the End Game Here button unable to
+// show a score.
 const isPracticeGame = game.is_practice || game.sessions?.session_type === 'practice';
-const canEndEarly = isPracticeGame && game.final_score == null && finalDerived == null && runningTotal != null;
+const partialScore =
+  isPracticeGame && game.final_score == null && finalDerived == null
+    ? await fetchRunningScoreForGame(supabase, gameId!)
+    : null;
+const canEndEarly = partialScore != null;
+const lastBowled = [...cells].reverse().find((c) => c.bowled) ?? null;
 const sessionHandicap = await fetchSessionHandicap(supabase, { id: sessionId!, ...game.sessions });
 
 const sessionMeta = [
@@ -370,7 +378,7 @@ function ballResult(i: number): string {
   <nav class="top"><a href={`/sessions/${sessionId}`}>&larr; Session</a></nav>
   <h1>{gameLabel}</h1>
   {sessionMeta && <p class="meta">{sessionMeta}</p>}
-  {game.ended_early && through && <p class="empty">Ended early &middot; through frame {through.frameNumber}</p>}
+  {game.ended_early && lastBowled && <p class="empty">Ended early &middot; through frame {lastBowled.frameNumber}</p>}
 
   {error && <p class="error">{error}</p>}
 
@@ -568,10 +576,10 @@ function ballResult(i: number): string {
 
   <hr />
 
-  {canEndEarly && (
-    <form method="POST" class="row-actions" data-confirm={`End this game after frame ${through?.frameNumber} with a score of ${runningTotal}? You can keep bowling later and re-save the score to correct it.`}>
+  {canEndEarly && partialScore && (
+    <form method="POST" class="row-actions" data-confirm={`End this game after frame ${partialScore.throughFrame} with a score of ${partialScore.score}? You can keep bowling later and re-save the score to correct it.`}>
       <input type="hidden" name="intent" value="end_practice_early" />
-      <button type="submit" class="secondary">End Game Here &middot; Score {runningTotal}</button>
+      <button type="submit" class="secondary">End Game Here &middot; Score {partialScore.score}</button>
     </form>
   )}
 

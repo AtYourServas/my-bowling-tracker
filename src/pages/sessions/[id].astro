@@ -238,8 +238,11 @@ function gameScore(game: { id: string; final_score: number | null; ended_early: 
 
   let detail = '';
   if (game.ended_early) {
-    const through = [...(miniSheets.get(game.id)?.cells ?? [])].reverse().find((c) => c.cumulative != null);
-    detail = through ? `through frame ${through.frameNumber}` : 'ended early';
+    // last frame with any roll logged, not the last one with a fully-resolved
+    // cumulative -- a trailing unresolved strike/spare bonus shouldn't hide
+    // how far the game actually got
+    const lastBowled = [...(miniSheets.get(game.id)?.cells ?? [])].reverse().find((c) => c.bowled);
+    detail = lastBowled ? `through frame ${lastBowled.frameNumber}` : 'ended early';
   } else if (game.final_score != null && derived != null && derived !== game.final_score) {
     detail = `derived ${derived}`;
   } else if (game.final_score == null && derived != null) {
