@@ -484,6 +484,75 @@ export function computeScoresheet(frames: FrameLite[]): FrameCell[] {
   return cells;
 }
 
+/**
+ * "Score if the game stopped right now": like computeScoresheet's cumulative,
+ * but never blocks on an unresolved strike/spare bonus -- a bonus that hasn't
+ * happened yet just counts as 0 rather than leaving the whole running total
+ * null. So two or three strikes in a row at the start of a game already gives
+ * a concrete score (30 face-value, no bonus credit) instead of nothing.
+ * throughFrame is the last frame with any roll logged (bowled, not
+ * necessarily complete). Used to let a practice game end early with an
+ * honest partial score. Returns null if no frame has been started.
+ */
+export function computeRunningScore(frames: FrameLite[]): { score: number; throughFrame: number } | null {
+  const byNumber = new Map(frames.map((f) => [f.frame_number, f]));
+
+  const frameRolls: number[][] = [];
+  for (let n = 1; n <= 10; n++) {
+    const frame = byNumber.get(n);
+    frameRolls.push(frame ? frameRollsDetailed(frame.shots).map((r) => r.knocked) : []);
+  }
+
+  const flatRolls: number[] = [];
+  const frameStartIndex: number[] = [];
+  for (let n = 1; n <= 10; n++) {
+    frameStartIndex.push(flatRolls.length);
+    flatRolls.push(...frameRolls[n - 1]);
+  }
+
+  let total = 0;
+  let throughFrame = 0;
+
+  for (let n = 1; n <= 9; n++) {
+    const r = frameRolls[n - 1];
+    if (r.length === 0) break;
+    const start = frameStartIndex[n - 1];
+    const isStrike = r[0] === 10;
+    const isSpare = !isStrike && r.length >= 2 && r[0] + r[1] === 10;
+
+    if (isStrike) {
+      total += 10 + (flatRolls[start + 1] ?? 0) + (flatRolls[start + 2] ?? 0);
+    } else if (isSpare) {
+      total += 10 + (flatRolls[start + 2] ?? 0);
+    } else {
+      total += r[0] + (r[1] ?? 0);
+    }
+    throughFrame = n;
+  }
+
+  const tenRolls = frameRolls[9];
+  if (tenRolls.length > 0) {
+    total += tenRolls.reduce((a, b) => a + b, 0);
+    throughFrame = 10;
+  }
+
+  return throughFrame > 0 ? { score: total, throughFrame } : null;
+}
+
+export async function fetchRunningScoreForGame(
+  supabase: SupabaseClient,
+  gameId: string,
+): Promise<{ score: number; throughFrame: number } | null> {
+  const { data: frames } = await supabase
+    .from('frames')
+    .select('frame_number, shots(pins_standing, strike, spare, foul, created_at)')
+    .eq('game_id', gameId)
+    .order('frame_number', { ascending: true })
+    .order('created_at', { foreignTable: 'shots', ascending: true });
+
+  return computeRunningScore((frames ?? []) as unknown as FrameLite[]);
+}
+
 export async function fetchScoresheetForGame(
   supabase: SupabaseClient,
   gameId: string,

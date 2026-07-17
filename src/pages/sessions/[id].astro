@@ -228,7 +228,7 @@ const inProgress =
     : undefined;
 const inProgressLabel = inProgress ? gameLabel(inProgress, (games ?? []).indexOf(inProgress)) : null;
 
-function gameScore(game: { id: string; final_score: number | null }) {
+function gameScore(game: { id: string; final_score: number | null; ended_early: boolean }) {
   const derived = derivedScores.get(game.id) ?? null;
   const scratch = game.final_score ?? derived;
 
@@ -237,7 +237,13 @@ function gameScore(game: { id: string; final_score: number | null }) {
   }
 
   let detail = '';
-  if (game.final_score != null && derived != null && derived !== game.final_score) {
+  if (game.ended_early) {
+    // last frame with any roll logged, not the last one with a fully-resolved
+    // cumulative -- a trailing unresolved strike/spare bonus shouldn't hide
+    // how far the game actually got
+    const lastBowled = [...(miniSheets.get(game.id)?.cells ?? [])].reverse().find((c) => c.bowled);
+    detail = lastBowled ? `through frame ${lastBowled.frameNumber}` : 'ended early';
+  } else if (game.final_score != null && derived != null && derived !== game.final_score) {
     detail = `derived ${derived}`;
   } else if (game.final_score == null && derived != null) {
     detail = 'derived';

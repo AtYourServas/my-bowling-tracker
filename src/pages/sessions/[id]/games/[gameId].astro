@@ -2,7 +2,7 @@
 import Layout from '../../../../layouts/Layout.astro';
 import ShotForm from '../../../../components/ShotForm';
 import NoteCard from '../../../../components/NoteCard.astro';
-import { fetchScoresheetForGame, frameProgress, computeFrameRolls, allowedMarks, pinsStandingBefore, pinsFacedBefore, parseShotShorthand, fetchEarliestIncompleteFrame } from '../../../../lib/scoring';
+import { fetchScoresheetForGame, fetchRunningScoreForGame, frameProgress, computeFrameRolls, allowedMarks, pinsStandingBefore, pinsFacedBefore, parseShotShorthand, fetchEarliestIncompleteFrame } from '../../../../lib/scoring';
 import type { ShotLite } from '../../../../lib/scoring';
 import { fetchSessionHandicap } from '../../../../lib/handicap';
 import { fetchLeaveNotes, notesForLeave, leaveAnchor } from '../../../../lib/notes';
@@ -53,12 +53,44 @@ if (Astro.request.method === 'POST') {
     const raw = formData.get('final_score')?.toString().trim();
     const final_score = raw ? Number(raw) : null;
 
-    const { error: scoreError } = await supabase.from('games').update({ final_score }).eq('id', gameId);
+    // a manually-typed score always wins as the score of record -- clear
+    // ended_early so a game finished for real after being ended early
+    // doesn't stay flagged (and excluded from stats) forever
+    const { error: scoreError } = await supabase.from('games').update({ final_score, ended_early: false }).eq('id', gameId);
 
     if (scoreError) {
       error = scoreError.message;
     } else {
       return Astro.redirect(`/sessions/${sessionId}/games/${gameId}?frame=${frameNumber}${postModeQ}`);
+    }
+  } else if (intent === 'end_practice_early') {
+    const { data: gameRow } = await supabase
+      .from('games')
+      .select('is_practice, sessions(session_type)')
+      .eq('id', gameId)
+      .maybeSingle();
+
+    const eligible = gameRow != null && (gameRow.is_practice || (gameRow.sessions as any)?.session_type === 'practice');
+
+    if (!eligible) {
+      error = 'This game cannot be ended early.';
+    } else {
+      const partial = await fetchRunningScoreForGame(supabase, gameId!);
+
+      if (partial == null) {
+        error = 'Log at least one ball before ending the game early.';
+      } else {
+        const { error: endError } = await supabase
+          .from('games')
+          .update({ final_score: partial.score, ended_early: true })
+          .eq('id', gameId);
+
+        if (endError) {
+          error = endError.message;
+        } else {
+          return Astro.redirect(`/sessions/${sessionId}`);
+        }
+      }
     }
   } else if (intent === 'add_note') {
     const body = formData.get('body')?.toString().trim();
@@ -219,6 +251,20 @@ const through = [...cells].reverse().find((c) => c.cumulative != null);
 const runningTotal = through?.cumulative ?? null;
 const finalDerived = cells[9]?.cumulative ?? null; // full total once all 10 resolve
 const scratchScore = game.final_score ?? finalDerived ?? runningTotal;
+
+// Practice games (standalone practice sessions, or a league night's Practice
+// slot) can be ended before frame 10 -- competitive league games can't. The
+// partial score uses computeRunningScore (face-value on any unresolved
+// trailing bonus), not the strict cumulative above, so a couple of strikes in
+// a row at the start of a game don't leave the End Game Here button unable to
+// show a score.
+const isPracticeGame = game.is_practice || game.sessions?.session_type === 'practice';
+const partialScore =
+  isPracticeGame && game.final_score == null && finalDerived == null
+    ? await fetchRunningScoreForGame(supabase, gameId!)
+    : null;
+const canEndEarly = partialScore != null;
+const lastBowled = [...cells].reverse().find((c) => c.bowled) ?? null;
 const sessionHandicap = await fetchSessionHandicap(supabase, { id: sessionId!, ...game.sessions });
 
 const sessionMeta = [
@@ -332,6 +378,7 @@ function ballResult(i: number): string {
   <nav class="top"><a href={`/sessions/${sessionId}`}>&larr; Session</a></nav>
   <h1>{gameLabel}</h1>
   {sessionMeta && <p class="meta">{sessionMeta}</p>}
+  {game.ended_early && lastBowled && <p class="empty">Ended early &middot; through frame {lastBowled.frameNumber}</p>}
 
   {error && <p class="error">{error}</p>}
 
@@ -528,6 +575,13 @@ function ballResult(i: number): string {
   )}
 
   <hr />
+
+  {canEndEarly && partialScore && (
+    <form method="POST" class="row-actions" data-confirm={`End this game after frame ${partialScore.throughFrame} with a score of ${partialScore.score}? You can keep bowling later and re-save the score to correct it.`}>
+      <input type="hidden" name="intent" value="end_practice_early" />
+      <button type="submit" class="secondary">End Game Here &middot; Score {partialScore.score}</button>
+    </form>
+  )}
 
   <form method="POST" class="row-actions" data-confirm="Delete this game? Its throws and scores will be permanently removed.">
     <input type="hidden" name="intent" value="delete_game" />

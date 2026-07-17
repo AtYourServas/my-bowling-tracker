@@ -184,6 +184,7 @@ type GameRow = {
   final_score: number | null;
   is_practice: boolean;
   game_number: number | null;
+  ended_early: boolean;
 };
 type SessionRow = {
   id: string;
@@ -196,7 +197,7 @@ type SessionRow = {
 
 const { data: latestRows } = await supabase
   .from('sessions')
-  .select('id, session_date, session_type, alley_name, leagues(name), games(id, final_score, is_practice, game_number, created_at)')
+  .select('id, session_date, session_type, alley_name, leagues(name), games(id, final_score, is_practice, game_number, ended_early, created_at)')
   .order('session_date', { ascending: false })
   .order('created_at', { ascending: false })
   .order('created_at', { foreignTable: 'games', ascending: true })
@@ -244,7 +245,7 @@ if (recapSessionId && latest && recapSessionId === latest.id) {
 } else if (recapSessionId) {
   const { data: recapRows } = await supabase
     .from('sessions')
-    .select('id, session_date, session_type, alley_name, leagues(name), games(id, final_score, is_practice, game_number, created_at)')
+    .select('id, session_date, session_type, alley_name, leagues(name), games(id, final_score, is_practice, game_number, ended_early, created_at)')
     .eq('id', recapSessionId)
     .order('created_at', { foreignTable: 'games', ascending: true })
     .limit(1);
@@ -363,7 +364,7 @@ const showOnboarding = !onboardProfile?.onboarding_dismissed && onboardSteps.som
         return (
           <div class="recap-game">
             <div class="recap-game-head">
-              <span>{gameLabel(game, i)}</span>
+              <span>{gameLabel(game, i)}{game.ended_early ? ' · ended early' : ''}</span>
               <b>{score ?? 'In Progress'}</b>
             </div>
             <MiniScoresheet cells={sheet.cells} pinfall={sheet.pinfall} label={gameLabel(game, i)} />
