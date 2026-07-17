@@ -97,11 +97,15 @@ const isActive = (href: string) => path === href || path.startsWith(href + '/');
     </script>
     <script is:inline>
       // Forms marked data-confirm="message" get a styled <dialog> instead of
-      // the browser's native confirm() before actually submitting.
+      // the browser's native confirm() before actually submitting. The OK
+      // button defaults to a red "Delete" (most uses are destructive); a form
+      // can override it with data-confirm-label="…" and data-confirm-style="secondary"
+      // for a non-destructive confirm (e.g. "End Practice").
       (function () {
         var dialog = document.getElementById('confirm-dialog');
         var message = document.getElementById('confirm-dialog-message');
-        if (!dialog || !message) return;
+        var okButton = dialog && dialog.querySelector('[data-confirm-ok]');
+        if (!dialog || !message || !okButton) return;
         var pendingForm = null;
 
         document.addEventListener(
@@ -114,6 +118,8 @@ const isActive = (href: string) => path === href || path.startsWith(href + '/');
             e.preventDefault();
             pendingForm = form;
             message.textContent = text;
+            okButton.textContent = form.getAttribute('data-confirm-label') || 'Delete';
+            okButton.className = form.getAttribute('data-confirm-style') || 'danger';
             dialog.showModal();
           },
           true

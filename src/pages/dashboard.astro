@@ -1,7 +1,7 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import MiniScoresheet from '../components/MiniScoresheet.astro';
-import { fetchMiniScoresheets, fetchEarliestIncompleteFrame, type MiniSheet } from '../lib/scoring';
+import { fetchMiniScoresheets, fetchEarliestIncompleteFrame, fetchEarliestIncompleteWarmupFrame, type MiniSheet } from '../lib/scoring';
 import { fetchAllGamesWithScores, filterScoredGames, average } from '../lib/stats';
 
 const { supabase, user } = Astro.locals;
@@ -218,17 +218,24 @@ function sessionName(s: SessionRow) {
   return s.leagues?.name ?? s.alley_name ?? (s.session_type === 'league' ? 'League' : 'Practice');
 }
 
-// A game is done once it has a manual final score or a fully resolvable sheet.
+// A game is done once it has a manual final score, is explicitly marked ended
+// (covers a warmup's "End Practice", which never gets a final_score), or has a
+// fully resolvable sheet.
 function gameComplete(game: GameRow, sheets: Map<string, MiniSheet>) {
-  if (game.final_score != null) return true;
+  if (game.final_score != null || game.ended_early) return true;
   const sheet = sheets.get(game.id);
   return sheet != null && sheet.cells[9].cumulative != null;
 }
 
-// Resume = the earliest unfinished game of the most recent session.
+// Resume = the earliest unfinished game of the most recent session. A warmup
+// (is_practice) has no frame cap, so its resume frame is fetched uncapped.
 const resumeIndex = latest ? latest.games.findIndex((g) => !gameComplete(g, latestSheets)) : -1;
 const resumeGame = resumeIndex >= 0 ? latest!.games[resumeIndex] : null;
-const resumeFrame = resumeGame ? await fetchEarliestIncompleteFrame(supabase, resumeGame.id) : null;
+const resumeFrame = resumeGame
+  ? resumeGame.is_practice
+    ? await fetchEarliestIncompleteWarmupFrame(supabase, resumeGame.id)
+    : await fetchEarliestIncompleteFrame(supabase, resumeGame.id)
+  : null;
 
 // ---- Last-session recap ------------------------------------------------------
 // The most recent session with at least one scored game. Usually the latest

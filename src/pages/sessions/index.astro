@@ -1,7 +1,7 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 import { laneLabel, laneConfigFromSession } from '../../lib/lanes';
-import { fetchMiniScoresheets, fetchEarliestIncompleteFrame, type MiniSheet } from '../../lib/scoring';
+import { fetchMiniScoresheets, fetchEarliestIncompleteFrame, fetchEarliestIncompleteWarmupFrame, type MiniSheet } from '../../lib/scoring';
 
 const { supabase } = Astro.locals;
 
@@ -14,7 +14,7 @@ const hasFilters = Boolean(filterType || filterAlley || filterFrom || filterTo);
 
 let sessionsQuery = supabase
   .from('sessions')
-  .select('*, leagues(name), games(id, final_score, created_at)')
+  .select('*, leagues(name), games(id, final_score, ended_early, is_practice, created_at)')
   .order('session_date', { ascending: false })
   .order('created_at', { ascending: false })
   .order('created_at', { foreignTable: 'games', ascending: true });
@@ -38,16 +38,18 @@ const { data: alleyRows } = await supabase.from('sessions').select('alley_name')
 const alleyOptions = Array.from(new Set((alleyRows ?? []).map((r) => r.alley_name))).sort();
 
 // ---- Resume link per session (in-progress game) -----------------------------
-// A game is done once it has a manual final score; only unscored games need a
-// mini-scoresheet to tell "in progress" from "not started yet" (dashboard rule).
-type GameRow = { id: string; final_score: number | null; created_at: string };
+// A game is done once it has a manual final score or is explicitly marked ended
+// (covers a warmup's "End Practice", which never gets a final_score); only
+// unfinished games need a mini-scoresheet to tell "in progress" from "not
+// started yet" (dashboard rule).
+type GameRow = { id: string; final_score: number | null; ended_early: boolean; is_practice: boolean; created_at: string };
 const unfinishedGameIds = (sessions ?? []).flatMap((s) =>
-  (s.games as GameRow[]).filter((g) => g.final_score == null).map((g) => g.id),
+  (s.games as GameRow[]).filter((g) => g.final_score == null && !g.ended_early).map((g) => g.id),
 );
 const sheets = await fetchMiniScoresheets(supabase, unfinishedGameIds);
 
 function gameComplete(game: GameRow) {
-  if (game.final_score != null) return true;
+  if (game.final_score != null || game.ended_early) return true;
   const sheet = sheets.get(game.id);
   return sheet != null && sheet.cells[9].cumulative != null;
 }
@@ -58,8 +60,15 @@ for (const s of sessions ?? []) {
   if (game) resumeBySession.set(s.id, game.id);
 }
 const resumeFrames = new Map<string, number>(); // game id -> earliest incomplete frame
-for (const gameId of resumeBySession.values()) {
-  resumeFrames.set(gameId, await fetchEarliestIncompleteFrame(supabase, gameId));
+for (const [sessionId, gameId] of resumeBySession) {
+  const session = (sessions ?? []).find((s) => s.id === sessionId);
+  const game = (session?.games as GameRow[] | undefined)?.find((g) => g.id === gameId);
+  resumeFrames.set(
+    gameId,
+    game?.is_practice
+      ? await fetchEarliestIncompleteWarmupFrame(supabase, gameId)
+      : await fetchEarliestIncompleteFrame(supabase, gameId),
+  );
 }
 ---
 

@@ -372,6 +372,30 @@ export type FrameCell = {
   bowled: boolean;
 };
 
+const ball = (text: string, kind: BallKind): BallMark => ({ text, kind });
+const pinBall = (n: number) => ball(n === 0 ? '-' : String(n), 'pins');
+const foulBall = ball('F', 'foul');
+const emptyBall = ball('', 'empty');
+
+/**
+ * Display marks for a single frame's balls under standard frames-1-9 rules
+ * (2 boxes, strike ends the frame in one) -- shared by computeScoresheet's
+ * frames 1-9 and the uncapped warmup sheet, neither of which ever apply the
+ * 10th frame's 3-ball bonus layout.
+ */
+export function frameBallMarks(shots: ShotLite[]): BallMark[] {
+  const detailed = frameRollsDetailed(shots);
+  const r = detailed.map((d) => d.knocked);
+  const f = detailed.map((d) => d.foul);
+  if (r.length === 0) return [emptyBall, emptyBall];
+  if (!f[0] && r[0] === 10) return [ball('X', 'strike'), emptyBall];
+  const m0 = f[0] ? foulBall : pinBall(r[0]);
+  if (r.length < 2) return [m0, emptyBall];
+  // a first-ball foul respots the rack, so ball 2 clearing all 10 is a spare (0 + 10)
+  const m1 = f[1] ? foulBall : r[0] + r[1] === 10 ? ball('/', 'spare') : pinBall(r[1]);
+  return [m0, m1];
+}
+
 /**
  * Builds a standard ten-pin scoresheet from per-shot pin state: the display
  * mark for each ball (X / spare / pin count / miss), plus the cumulative
@@ -400,22 +424,13 @@ export function computeScoresheet(frames: FrameLite[]): FrameCell[] {
     flatRolls.push(...frameRolls[n - 1]);
   }
 
-  const ball = (text: string, kind: BallKind): BallMark => ({ text, kind });
-  const pinBall = (n: number) => ball(n === 0 ? '-' : String(n), 'pins');
-  const foulBall = ball('F', 'foul');
-  const empty = ball('', 'empty');
+  const empty = emptyBall;
 
   function marks(n: number): BallMark[] {
     const r = frameRolls[n - 1];
     const f = frameFouls[n - 1];
     if (n < 10) {
-      if (r.length === 0) return [empty, empty];
-      if (!f[0] && r[0] === 10) return [ball('X', 'strike'), empty];
-      const m0 = f[0] ? foulBall : pinBall(r[0]);
-      if (r.length < 2) return [m0, empty];
-      // a first-ball foul respots the rack, so ball 2 clearing all 10 is a spare (0 + 10)
-      const m1 = f[1] ? foulBall : r[0] + r[1] === 10 ? ball('/', 'spare') : pinBall(r[1]);
-      return [m0, m1];
+      return frameBallMarks(byNumber.get(n)?.shots ?? []);
     }
     // tenth frame: up to three balls; a strike or foul respots a fresh rack for
     // the next ball. Spare notation uses the two balls sharing a rack.
@@ -565,6 +580,77 @@ export async function fetchScoresheetForGame(
     .order('created_at', { foreignTable: 'shots', ascending: true });
 
   return computeScoresheet((frames ?? []) as unknown as FrameLite[]);
+}
+
+/**
+ * A sentinel frame number to pass into frameProgress/allowedMarks/parseShotShorthand for a
+ * warmup (uncapped-frame practice) game -- those functions special-case frameNumber === 10
+ * for the real 10th-frame bonus-ball rules, which never apply to warmup. Any value other
+ * than 10 produces identical frames-1-9 behavior, so callers normalize the real (uncapped)
+ * frame number to this constant before calling into that shared frame-shot logic.
+ */
+export const WARMUP_FRAME = 1;
+
+/**
+ * frames+shots for a warmup game, uncapped at 10 -- the same shape fetchScoresheetForGame
+ * uses, but the caller decides how far to render/walk rather than looping a fixed 1..10.
+ */
+export async function fetchWarmupFrames(supabase: SupabaseClient, gameId: string): Promise<FrameLite[]> {
+  const { data: frames } = await supabase
+    .from('frames')
+    .select('frame_number, shots(pins_standing, strike, spare, foul, created_at)')
+    .eq('game_id', gameId)
+    .order('frame_number', { ascending: true })
+    .order('created_at', { foreignTable: 'shots', ascending: true });
+
+  return (frames ?? []) as unknown as FrameLite[];
+}
+
+/**
+ * Scoresheet cells for a warmup game: every frame uses the frames-1-9 (2-ball) mark
+ * layout via frameBallMarks, never the 10th-frame 3-ball bonus layout, and cumulative is
+ * always null since there is no fixed-length score to resolve. Spans frame 1 through
+ * whichever is larger of throughFrame (the frame currently being logged) and the highest
+ * frame number with any shots, so the sheet always shows the active frame even if it's
+ * the first ball of a brand new one.
+ */
+export function computeWarmupSheet(frames: FrameLite[], throughFrame: number): FrameCell[] {
+  const byNumber = new Map(frames.map((f) => [f.frame_number, f]));
+  const highestBowled = frames.reduce((max, f) => (f.shots.length > 0 ? Math.max(max, f.frame_number) : max), 0);
+  const lastFrame = Math.max(1, throughFrame, highestBowled);
+
+  const cells: FrameCell[] = [];
+  for (let n = 1; n <= lastFrame; n++) {
+    const shots = byNumber.get(n)?.shots ?? [];
+    cells.push({
+      frameNumber: n,
+      balls: frameBallMarks(shots),
+      cumulative: null,
+      bowled: shots.length > 0,
+    });
+  }
+  return cells;
+}
+
+/**
+ * The earliest not-yet-complete frame in a warmup game, uncapped -- mirrors
+ * earliestIncompleteFrame but keeps walking past frame 10 instead of stopping there, and
+ * always applies frames-1-9 completion rules (via WARMUP_FRAME) rather than the 10th-frame
+ * bonus rules. Falls back to one past the highest frame reached once every frame so far is
+ * complete (or 1 if nothing has been bowled yet).
+ */
+export function earliestIncompleteWarmupFrame(frames: FrameLite[]): number {
+  const byNumber = new Map(frames.map((f) => [f.frame_number, f]));
+  const highest = frames.reduce((max, f) => Math.max(max, f.frame_number), 0);
+  for (let n = 1; n <= highest; n++) {
+    const shots = byNumber.get(n)?.shots ?? [];
+    if (!frameProgress(WARMUP_FRAME, shots).complete) return n;
+  }
+  return highest + 1;
+}
+
+export async function fetchEarliestIncompleteWarmupFrame(supabase: SupabaseClient, gameId: string): Promise<number> {
+  return earliestIncompleteWarmupFrame(await fetchWarmupFrames(supabase, gameId));
 }
 
 /** Pins left standing after ball 1 / ball 2 of a frame (null = that ball wasn't thrown). */
