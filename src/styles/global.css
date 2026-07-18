@@ -795,6 +795,11 @@ details.collapsible[open] > summary { margin-bottom: var(--s3); }
 .scorenow .n { font-size: var(--text-2xl); font-weight: var(--fw-semi); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; line-height: 1; }
 .scorenow .lbl { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); }
 
+/* handicap conversion under the scoresheet -- a slim line, not a whole box,
+   since the scratch score itself is already visible in the frame cells */
+.hcap { margin: var(--s3) 0 0; font-size: var(--text-sm); color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.hcap b { color: var(--text-primary); font-weight: var(--fw-semi); }
+
 /* manual final-score entry, tucked behind a "Set Final Score" text link
    (overrides the frame-derived total) */
 .setscore { margin: var(--s2) 0 0; }

@@ -18,6 +18,7 @@ import {
   WARMUP_FRAME,
 } from '../../../../lib/scoring';
 import type { ShotLite } from '../../../../lib/scoring';
+import { fetchSessionHandicap } from '../../../../lib/handicap';
 import { fetchLeaveNotes, notesForLeave, leaveAnchor } from '../../../../lib/notes';
 import { leaveDisplayName, suggestedApproachName } from '../../../../lib/leaves';
 import { laneForFrame, laneConfigFromSession } from '../../../../lib/lanes';
@@ -329,7 +330,9 @@ if (Astro.request.method === 'POST') {
 const cells = isWarmup
   ? computeWarmupSheet(await fetchWarmupFrames(supabase, gameId!), frameNumber)
   : await fetchScoresheetForGame(supabase, gameId!);
+const runningTotal = [...cells].reverse().find((c) => c.cumulative != null)?.cumulative ?? null;
 const finalDerived = !isWarmup ? cells[9]?.cumulative ?? null : null; // full total once all 10 resolve
+const scratchScore = game.final_score ?? finalDerived ?? runningTotal;
 
 // Practice-session games (standalone practice, is_practice=false) can be ended
 // before frame 10 with a partial score -- competitive league games can't.
@@ -345,6 +348,7 @@ const partialScore =
     : null;
 const canEndEarly = partialScore != null;
 const lastBowled = [...cells].reverse().find((c) => c.bowled) ?? null;
+const sessionHandicap = isWarmup ? null : await fetchSessionHandicap(supabase, { id: sessionId!, ...game.sessions });
 
 const sessionMeta = [
   game.sessions?.alley_name,
@@ -542,6 +546,10 @@ function ballResult(i: number): string {
       </div>
     )}
   </form>
+
+  {!isWarmup && scratchScore != null && sessionHandicap != null && (
+    <p class="hcap">+ handicap {sessionHandicap} = <b>{scratchScore + sessionHandicap}</b></p>
+  )}
 
   {!isWarmup && (
     <details class="setscore">
