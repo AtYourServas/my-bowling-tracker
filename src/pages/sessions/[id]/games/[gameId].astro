@@ -588,6 +588,40 @@ function ballResult(i: number): string {
       : <span class="framenav disabled" aria-hidden="true">Next Frame &rarr;</span>}
   </div>
 
+  {progress.nextBall != null ? (
+    mode === 'pick' ? (
+      <>
+        <p class="logball">+ Log Ball {progress.nextBall}</p>
+        <ShotForm
+          client:load
+          balls={balls ?? []}
+          approaches={approaches ?? []}
+          frameNumber={frameNumber}
+          startingPins={startingPins}
+          allowStrike={marks.strike}
+          allowSpare={marks.spare}
+          defaultBallId={defaultBallId}
+          defaultApproachId={defaultApproachId}
+          mode={mode}
+          hiddenFields={hiddenShotFields}
+          submitLabel={`Log Ball ${progress.nextBall}`}
+        />
+      </>
+    ) : (
+      <p class="logball">Type ball {progress.nextBall} into frame {frameNumber} above, then press Enter.</p>
+    )
+  ) : strikeLockShot ? (
+    <p class="framedone">
+      Strike &mdash; frame {frameNumber} complete. To add a second ball,{' '}
+      <a href={`/sessions/${sessionId}/games/${gameId}/shots/${strikeLockShot.id}?mode=${mode}`}>edit the strike</a> first.
+    </p>
+  ) : (
+    <p class="framedone">
+      Frame {frameNumber} complete.{' '}
+      {nextFrame && <a href={frameHref(nextFrame)}>Go to frame {nextFrame} &rarr;</a>}
+    </p>
+  )}
+
   <details class="game-note" id="note">
     <summary>+ Add a Note</summary>
     <form method="POST" class="add-note">
@@ -628,40 +662,6 @@ function ballResult(i: number): string {
         <a class="leave-more" href={`/notes?view=leave#${leaveAnchor(facedNow)}`}>See all {leaveNotes.length} &rarr;</a>
       )}
     </details>
-  )}
-
-  {progress.nextBall != null ? (
-    mode === 'pick' ? (
-      <>
-        <p class="logball">+ Log Ball {progress.nextBall}</p>
-        <ShotForm
-          client:load
-          balls={balls ?? []}
-          approaches={approaches ?? []}
-          frameNumber={frameNumber}
-          startingPins={startingPins}
-          allowStrike={marks.strike}
-          allowSpare={marks.spare}
-          defaultBallId={defaultBallId}
-          defaultApproachId={defaultApproachId}
-          mode={mode}
-          hiddenFields={hiddenShotFields}
-          submitLabel={`Log Ball ${progress.nextBall}`}
-        />
-      </>
-    ) : (
-      <p class="logball">Type ball {progress.nextBall} into frame {frameNumber} above, then press Enter.</p>
-    )
-  ) : strikeLockShot ? (
-    <p class="framedone">
-      Strike &mdash; frame {frameNumber} complete. To add a second ball,{' '}
-      <a href={`/sessions/${sessionId}/games/${gameId}/shots/${strikeLockShot.id}?mode=${mode}`}>edit the strike</a> first.
-    </p>
-  ) : (
-    <p class="framedone">
-      Frame {frameNumber} complete.{' '}
-      {nextFrame && <a href={frameHref(nextFrame)}>Go to frame {nextFrame} &rarr;</a>}
-    </p>
   )}
 
   <hr />
@@ -744,8 +744,32 @@ function ballResult(i: number): string {
   let pending: { form: HTMLFormElement; data: FormData } | null = null;
   let sending = false;
 
+  // While a throw is in flight, the tapped submit button disables and reads
+  // "Saving…" so a slow alley connection doesn't look like a dead tap. (The
+  // FormData is captured before the disable, so nothing drops from the post.)
+  // Restored on failure — the Retry banner takes over from there.
+  let savingButton: HTMLButtonElement | null = null;
+  let savingLabel = '';
+
+  function showSaving(form: HTMLFormElement) {
+    const btn = form.querySelector('button[type="submit"]');
+    if (!(btn instanceof HTMLButtonElement)) return;
+    savingButton = btn;
+    savingLabel = btn.textContent ?? '';
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+  }
+
+  function hideSaving() {
+    if (!savingButton) return;
+    savingButton.disabled = false;
+    savingButton.textContent = savingLabel;
+    savingButton = null;
+  }
+
   function showRetry() {
     sending = false;
+    hideSaving();
     if (retryBtn instanceof HTMLButtonElement) {
       retryBtn.disabled = false;
       retryBtn.textContent = 'Retry';
@@ -819,6 +843,7 @@ function ballResult(i: number): string {
       if (sending) return; // ignore double-taps while a send is in flight
       if (banner) banner.hidden = true;
       pending = { form, data: new FormData(form) };
+      showSaving(form);
       void send();
     });
   }
@@ -830,6 +855,16 @@ function ballResult(i: number): string {
       e.preventDefault();
       e.returnValue = '';
     }
+  });
+
+  // Back/forward can restore this page from bfcache with the interceptor
+  // frozen mid-flight (sending stuck true, button stuck on "Saving…") —
+  // reset so the entry form works again.
+  window.addEventListener('pageshow', (e) => {
+    if (!e.persisted) return;
+    sending = false;
+    pending = null;
+    hideSaving();
   });
 </script>
 
