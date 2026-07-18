@@ -108,23 +108,25 @@ const { data: profile } = await supabase
         <option value="practice">Practice</option>
       </select>
     </label>
-    <label>
-      League (if league)
-      <select name="league_id">
-        <option value="" data-team="">None</option>
-        {leagues?.map((league) => (
-          <option value={league.id} data-team={league.team_name ?? ''}>{league.name}</option>
-        ))}
-      </select>
-    </label>
-    <label>
-      Team Name (if league)
-      <input type="text" name="league_team_name" placeholder="Fills from the league — edit to override" />
-    </label>
-    <label>
-      Handicap Override (optional — overrides the league's calculated handicap)
-      <input type="number" name="manual_handicap" />
-    </label>
+    <div class="league-only">
+      <label>
+        League
+        <select name="league_id">
+          <option value="" data-team="">None</option>
+          {leagues?.map((league) => (
+            <option value={league.id} data-team={league.team_name ?? ''}>{league.name}</option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Team Name
+        <input type="text" name="league_team_name" placeholder="Fills from the league — edit to override" />
+      </label>
+      <label>
+        Handicap Override (optional — overrides the league's calculated handicap)
+        <input type="number" name="manual_handicap" />
+      </label>
+    </div>
     {balls && balls.length > 0 && (
       <>
         <label>
@@ -155,6 +157,20 @@ const { data: profile } = await supabase
   </form>
 </Layout>
 
+<style>
+  .league-only {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s3);
+  }
+  /* Author display:flex above beats the UA [hidden] rule (author origin always
+     wins over UA origin regardless of specificity) -- same class of bug fixed
+     for details>form in PR 76. Restate it explicitly so JS-toggled hidden works. */
+  .league-only[hidden] {
+    display: none;
+  }
+</style>
+
 <script>
   // Selecting a league fills the team-name field from that league, while
   // leaving any name the user has typed themselves untouched (override).
@@ -169,5 +185,18 @@ const { data: profile } = await supabase
         autoValue = team;
       }
     });
+  }
+
+  // League/Team/Handicap Override only apply to a league session -- hide them
+  // for Practice so a first-time practice bowler isn't shown fields that
+  // don't apply (the server already ignores them outside session_type='league').
+  const sessionTypeSelect = document.querySelector<HTMLSelectElement>('select[name="session_type"]');
+  const leagueOnly = document.querySelector<HTMLDivElement>('.league-only');
+  if (sessionTypeSelect && leagueOnly) {
+    const sync = () => {
+      leagueOnly.hidden = sessionTypeSelect.value !== 'league';
+    };
+    sessionTypeSelect.addEventListener('change', sync);
+    sync();
   }
 </script>

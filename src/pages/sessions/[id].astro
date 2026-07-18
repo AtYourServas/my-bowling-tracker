@@ -382,10 +382,11 @@ const setupSummary = [leagueName, laneLabel(laneConfig)].filter(Boolean).join(' 
                     <strong>{slot.label}</strong>
                     <form method="POST" class="add-game">
                       <input type="hidden" name="slot" value={slot.key} />
+                      <input type="hidden" name="action" value="" />
                       <input type="number" name="final_score" min="0" max="300" placeholder="final score (optional)" aria-label={`Score for ${slot.label}`} />
                       <div class="add-game-actions">
-                        <button type="submit" name="action" value="score" class="secondary">Log Final Score</button>
-                        <button type="submit" name="action" value="log">Log Each Frame</button>
+                        <button type="button" data-action="score" class="secondary">Log Final Score</button>
+                        <button type="button" data-action="log">Log Each Frame</button>
                       </div>
                     </form>
                   </div>
@@ -440,10 +441,11 @@ const setupSummary = [leagueName, laneLabel(laneConfig)].filter(Boolean).join(' 
             <summary>+ Add a Game</summary>
             <form method="POST" class="add-game">
               <input type="hidden" name="slot" value="new" />
+              <input type="hidden" name="action" value="" />
               <input type="number" name="final_score" min="0" max="300" placeholder="final score (optional)" aria-label="Score for new game" />
               <div class="add-game-actions">
-                <button type="submit" name="action" value="score" class="secondary">Log Final Score</button>
-                <button type="submit" name="action" value="log">Log Each Frame</button>
+                <button type="button" data-action="score" class="secondary">Log Final Score</button>
+                <button type="button" data-action="log">Log Each Frame</button>
               </div>
             </form>
           </details>
@@ -694,6 +696,38 @@ const setupSummary = [leagueName, laneLabel(laneConfig)].filter(Boolean).join(' 
     </>
   )}
 </Layout>
+
+<script>
+  // Each "add-game" form has two actions (Log Final Score / Log Each Frame)
+  // sharing one final_score input. Log Each Frame ignores the typed score
+  // (frame-by-frame logging builds the real score up shot by shot) -- if the
+  // field isn't empty, that would otherwise silently discard whatever the
+  // user just typed. Route both buttons through the shared confirm-dialog
+  // (data-confirm, from Layout.astro) instead of a plain submit so that case
+  // gets a heads-up; an empty field or the Log Final Score button submit
+  // straight through.
+  document.querySelectorAll<HTMLFormElement>('form.add-game').forEach((form) => {
+    const scoreInput = form.querySelector<HTMLInputElement>('input[name="final_score"]');
+    const actionInput = form.querySelector<HTMLInputElement>('input[name="action"]');
+    if (!scoreInput || !actionInput) return;
+    form.querySelectorAll<HTMLButtonElement>('button[data-action]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        actionInput.value = btn.dataset.action ?? '';
+        if (btn.dataset.action === 'log' && scoreInput.value.trim()) {
+          form.setAttribute(
+            'data-confirm',
+            `Log frame by frame instead? The score you typed ("${scoreInput.value}") won't be saved -- you'll build the score up as you log each frame.`,
+          );
+          form.setAttribute('data-confirm-label', 'Log Each Frame');
+          form.setAttribute('data-confirm-style', 'secondary');
+        } else {
+          form.removeAttribute('data-confirm');
+        }
+        form.requestSubmit();
+      });
+    });
+  });
+</script>
 
 <style>
   .session-tabs {
