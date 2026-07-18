@@ -20,7 +20,7 @@ import {
 import type { ShotLite } from '../../../../lib/scoring';
 import { fetchSessionHandicap } from '../../../../lib/handicap';
 import { fetchLeaveNotes, notesForLeave, leaveAnchor } from '../../../../lib/notes';
-import { leaveDisplayName } from '../../../../lib/leaves';
+import { leaveDisplayName, suggestedApproachName } from '../../../../lib/leaves';
 import { laneForFrame, laneConfigFromSession } from '../../../../lib/lanes';
 
 const { supabase, user } = Astro.locals;
@@ -147,6 +147,53 @@ if (Astro.request.method === 'POST') {
       else return Astro.redirect(`/sessions/${sessionId}/games/${gameId}?frame=${frameNumber}${postModeQ}#note`);
     } else {
       return Astro.redirect(`/sessions/${sessionId}/games/${gameId}?frame=${frameNumber}${postModeQ}#note`);
+    }
+  } else if (intent === 'save_as_approach') {
+    // the leave the ACTIVE frame currently faces -- same rule the picker
+    // itself uses, computed fresh rather than relying on frames not yet
+    // created for a not-yet-thrown first ball
+    const { data: activeFrame } = await supabase
+      .from('frames')
+      .select('id')
+      .eq('game_id', gameId)
+      .eq('frame_number', frameNumber)
+      .maybeSingle();
+    const { data: existing } = activeFrame
+      ? await supabase
+          .from('shots')
+          .select('pins_standing, strike, spare, foul, created_at')
+          .eq('frame_id', activeFrame.id)
+          .order('created_at', { ascending: true })
+      : { data: [] };
+    const faced = pinsFacedBefore((existing ?? []) as ShotLite[]);
+    const facedLeave = faced.length === 10 ? [] : faced;
+
+    const ball_id = formData.get('ball_id')?.toString() || null;
+    const lineup_position = formData.get('lineup_position')?.toString().trim() || null;
+    const slide_position = formData.get('slide_position')?.toString().trim() || null;
+    const target_type = formData.get('target_type')?.toString() || null;
+    const targetValueRaw = formData.get('target_value')?.toString().trim();
+    const target_value = targetValueRaw ? Number(targetValueRaw) : null;
+
+    const { data: inserted, error: insertError } = await supabase
+      .from('approaches')
+      .insert({
+        user_id: user!.id,
+        name: suggestedApproachName(facedLeave),
+        reference_ball_id: ball_id,
+        reference_lineup: lineup_position,
+        reference_slide: slide_position,
+        reference_target_type: target_type,
+        reference_target_value: target_value,
+        leave: facedLeave,
+      })
+      .select('id')
+      .single();
+
+    if (insertError) {
+      error = insertError.message;
+    } else {
+      return Astro.redirect(`/sessions/${sessionId}/games/${gameId}?frame=${frameNumber}${postModeQ}&saved=${inserted.id}`);
     }
   } else if (intent === 'log_shot' || intent === 'log_shorthand') {
     let { data: frame } = await supabase
@@ -410,6 +457,8 @@ function ballResult(i: number): string {
   const knocked = knockedPerBall[i] ?? 0;
   return knocked === 0 ? 'Gutter — 0 down' : `${knocked} down`;
 }
+
+const savedApproachId = Astro.url.searchParams.get('saved');
 ---
 
 <Layout title={gameLabel}>
@@ -421,6 +470,9 @@ function ballResult(i: number): string {
   )}
 
   {error && <p class="error">{error}</p>}
+  {savedApproachId && (
+    <p class="empty">Saved as approach — <a href={`/approaches/${savedApproachId}`}>View &amp; edit &rarr;</a></p>
+  )}
 
   <div class="sechead"><span class="chev"><i></i><i></i><i></i></span><h2>Scoresheet</h2></div>
 

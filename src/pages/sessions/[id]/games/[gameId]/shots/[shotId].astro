@@ -59,31 +59,34 @@ if (Astro.request.method === 'POST') {
       return Astro.redirect(`/sessions/${sessionId}/games/${gameId}?frame=${frameNumber}${modeQ}`);
     }
   } else if (intent === 'save_as_approach') {
-    const name = formData.get('name')?.toString().trim();
-    if (!name) {
-      error = 'Approach name is required.';
-    } else {
-      const { data: inserted, error: insertError } = await supabase
-        .from('approaches')
-        .insert({
-          user_id: user!.id,
-          name,
-          reference_ball_id: shot.ball_id,
-          reference_lineup: shot.lineup_position,
-          reference_slide: shot.slide_position,
-          reference_target_type: shot.target_type,
-          reference_target_value: shot.target_value,
-          leave: facedLeave,
-          notes: shot.note,
-        })
-        .select('id')
-        .single();
+    // reads the form's CURRENT ball/marks (not the stored shot), so any tweak
+    // made before clicking Save as Approach is what gets saved
+    const ball_id = formData.get('ball_id')?.toString() || null;
+    const lineup_position = formData.get('lineup_position')?.toString().trim() || null;
+    const slide_position = formData.get('slide_position')?.toString().trim() || null;
+    const target_type = formData.get('target_type')?.toString() || null;
+    const targetValueRaw = formData.get('target_value')?.toString().trim();
+    const target_value = targetValueRaw ? Number(targetValueRaw) : null;
 
-      if (insertError) {
-        error = insertError.message;
-      } else {
-        return Astro.redirect(`/sessions/${sessionId}/games/${gameId}/shots/${shotId}?saved=${inserted.id}${modeQ}`);
-      }
+    const { data: inserted, error: insertError } = await supabase
+      .from('approaches')
+      .insert({
+        user_id: user!.id,
+        name: suggestedApproachName(facedLeave),
+        reference_ball_id: ball_id,
+        reference_lineup: lineup_position,
+        reference_slide: slide_position,
+        reference_target_type: target_type,
+        reference_target_value: target_value,
+        leave: facedLeave,
+      })
+      .select('id')
+      .single();
+
+    if (insertError) {
+      error = insertError.message;
+    } else {
+      return Astro.redirect(`/sessions/${sessionId}/games/${gameId}/shots/${shotId}?saved=${inserted.id}${modeQ}`);
     }
   } else {
     const pinsRaw = formData.get('pins_standing')?.toString() ?? '';
@@ -184,40 +187,8 @@ const savedApproachId = Astro.url.searchParams.get('saved');
     }}
   />
 
-  <details class="save-approach">
-    <summary>+ Save as Approach</summary>
-    <form method="POST" class="save-approach-form">
-      <input type="hidden" name="intent" value="save_as_approach" />
-      <label>
-        Name
-        <input type="text" name="name" required value={suggestedApproachName(facedLeave)} />
-      </label>
-      <button type="submit" class="secondary">Save as Approach</button>
-    </form>
-  </details>
-
   <form method="POST" class="row-actions" data-confirm="Delete this shot?">
     <input type="hidden" name="intent" value="delete" />
     <button type="submit" class="danger">Delete Shot</button>
   </form>
 </Layout>
-
-<style>
-  .save-approach {
-    margin: 0.5rem 0 1rem;
-  }
-  .save-approach summary {
-    cursor: pointer;
-    color: var(--accent);
-    font-weight: 600;
-  }
-  .save-approach-form {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    margin-top: 0.5rem;
-  }
-  .save-approach-form button {
-    align-self: flex-start;
-  }
-</style>

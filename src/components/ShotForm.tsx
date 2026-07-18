@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState, type MouseEvent } from 'react';
 import PinDiagram from './PinDiagram';
 import LanePicker, { type LanePickerHandle } from './LanePicker';
 import { leaveName } from '../lib/leaves';
@@ -116,6 +116,18 @@ export default function ShotForm({
   const [approachId, setApproachId] = useState(initial?.approach_id ?? defaultApproach?.id ?? '');
   const [filterApproaches, setFilterApproaches] = useState(false);
   const laneRef = useRef<LanePickerHandle>(null);
+  const intentRef = useRef<HTMLInputElement>(null);
+
+  // Two submit actions share one form (log the ball vs. save the current
+  // ball/marks as a reusable approach) -- flips the hidden intent field
+  // imperatively right before the native submit fires, rather than a second
+  // named submit button, so pages that intercept submit via new FormData(form)
+  // (no explicit submitter) still see the right intent.
+  function submitAs(nextIntent: string) {
+    return (_e: MouseEvent<HTMLButtonElement>) => {
+      if (intentRef.current) intentRef.current.value = nextIntent;
+    };
+  }
 
   const selectedApproach = useMemo(
     () => approaches.find((a) => a.id === approachId) ?? null,
@@ -170,7 +182,7 @@ export default function ShotForm({
   return (
     <form method="POST">
       <input type="hidden" name="frame_number" value={frameNumber} />
-      <input type="hidden" name="intent" value="log_shot" />
+      <input type="hidden" name="intent" defaultValue="log_shot" ref={intentRef} />
       <input type="hidden" name="mode" value={mode} />
 
       <PinDiagram
@@ -289,7 +301,10 @@ export default function ShotForm({
         </label>
       )}
 
-      <button type="submit">{submitLabel}</button>
+      <button type="submit" onClick={submitAs('log_shot')}>{submitLabel}</button>
+      <button type="submit" className="secondary" onClick={submitAs('save_as_approach')}>
+        Save as Approach
+      </button>
     </form>
   );
 }

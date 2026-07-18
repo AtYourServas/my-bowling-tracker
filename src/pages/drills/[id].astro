@@ -2,7 +2,7 @@
 import Layout from '../../layouts/Layout.astro';
 import ShotForm from '../../components/ShotForm';
 import LeavePicker from '../../components/LeavePicker';
-import { leaveLabel, sortedLeave } from '../../lib/leaves';
+import { leaveLabel, sortedLeave, suggestedApproachName } from '../../lib/leaves';
 import { isHit } from '../../lib/drills';
 
 const { supabase, user } = Astro.locals;
@@ -47,6 +47,35 @@ if (Astro.request.method === 'POST') {
       error = updateError.message;
     } else {
       return Astro.redirect(`/drills/${drillId}`);
+    }
+  } else if (intent === 'save_as_approach') {
+    const ball_id = formData.get('ball_id')?.toString() || null;
+    const lineup_position = formData.get('lineup_position')?.toString().trim() || null;
+    const slide_position = formData.get('slide_position')?.toString().trim() || null;
+    const target_type = formData.get('target_type')?.toString() || null;
+    const targetValueRaw = formData.get('target_value')?.toString().trim();
+    const target_value = targetValueRaw ? Number(targetValueRaw) : null;
+    const currentLeave = drill.leave ?? [];
+
+    const { data: inserted, error: insertError } = await supabase
+      .from('approaches')
+      .insert({
+        user_id: user!.id,
+        name: suggestedApproachName(currentLeave),
+        reference_ball_id: ball_id,
+        reference_lineup: lineup_position,
+        reference_slide: slide_position,
+        reference_target_type: target_type,
+        reference_target_value: target_value,
+        leave: currentLeave,
+      })
+      .select('id')
+      .single();
+
+    if (insertError) {
+      error = insertError.message;
+    } else {
+      return Astro.redirect(`/drills/${drillId}?saved=${inserted.id}`);
     }
   } else if (intent === 'log_shot') {
     const pinsRaw = formData.get('pins_standing')?.toString() ?? '';
@@ -156,6 +185,8 @@ function formatRate(hits: number, attempts: number): string {
   if (attempts === 0) return '—';
   return `${Math.round((hits / attempts) * 100)}%`;
 }
+
+const savedApproachId = Astro.url.searchParams.get('saved');
 ---
 
 <Layout title={leaveLabel(leave)}>
@@ -164,6 +195,9 @@ function formatRate(hits: number, attempts: number): string {
   {drill.ended_at && <p class="empty">Drill complete</p>}
 
   {error && <p class="error">{error}</p>}
+  {savedApproachId && (
+    <p class="empty">Saved as approach — <a href={`/approaches/${savedApproachId}`}>View &amp; edit &rarr;</a></p>
+  )}
 
   <details class="score-box collapsible target-box">
     <summary>
