@@ -244,6 +244,11 @@ button:disabled:active { transform: none; }
 button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 button.secondary { background: var(--surface); color: var(--text-primary); border-color: var(--border-strong); }
 button.secondary:hover { background: var(--surface-sunk); filter: none; }
+/* A non-destructive but consequential action (ends a game/practice early) --
+   more visual weight than a routine Save, short of the coral "destructive"
+   danger style since the data itself is kept, not discarded. */
+button.secondary.end-action { color: var(--mustard); border-color: var(--mustard); }
+button.secondary.end-action:hover { background: var(--mustard-weak); }
 button.danger { background: var(--coral); color: #fff; }
 
 /* Shared confirm dialog (replaces native confirm() for destructive actions). */
@@ -571,7 +576,16 @@ a.card:hover { text-decoration: none; box-shadow: var(--shadow-md); border-color
 .filter-form label { font-size: var(--text-xs); min-width: 0; }
 .filter-form select, .filter-form input { width: 100%; min-width: 0; }
 .filter-form button { grid-column: span 2; }
-.filter-form a { grid-column: span 2; text-align: center; font-size: var(--text-sm); }
+.filter-form a {
+  grid-column: span 2;
+  text-align: center;
+  font-size: var(--text-sm);
+  padding: var(--s2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+}
+.filter-form a:hover { background: var(--surface-sunk); }
 
 /* Collapsible wrapper around a .filter-form (approaches, sessions, notes, stats) */
 .filter-collapse {

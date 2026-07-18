@@ -290,6 +290,47 @@ const onboardSteps = [
   { label: 'Start Your First Session', href: '/sessions/new', done: latest != null },
 ];
 const showOnboarding = !onboardProfile?.onboarding_dismissed && onboardSteps.some((s) => !s.done);
+
+// ---- Start League Night preview -----------------------------------------
+// The button itself (POST intent="start_league_night") silently reuses the
+// most recent league session's alley/lane/ball -- mirror that same lookup
+// here (read-only) so the dashboard can show what it's about to reuse
+// *before* the tap, instead of only finding out on the new session page.
+let leagueStartPreview: string | null = null;
+if (!resumeGame && recap && (leagueCount ?? 0) > 0) {
+  const { data: mostRecentLeague } = await supabase
+    .from('sessions')
+    .select('alley_name, lane_number, default_ball_id, leagues(name)')
+    .eq('session_type', 'league')
+    .not('league_id', 'is', null)
+    .order('session_date', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle<{ alley_name: string | null; lane_number: number | null; default_ball_id: string | null; leagues: { name: string } | null }>();
+
+  let leagueName = mostRecentLeague?.leagues?.name ?? null;
+  let ballId = mostRecentLeague?.default_ball_id ?? null;
+  if (!leagueName) {
+    const { data: anyLeague } = await supabase.from('leagues').select('name').order('created_at', { ascending: false }).limit(1).maybeSingle();
+    leagueName = anyLeague?.name ?? null;
+  }
+  if (!ballId) {
+    const { data: profile } = await supabase.from('profiles').select('default_ball_id').eq('id', user!.id).maybeSingle();
+    ballId = profile?.default_ball_id ?? null;
+  }
+  let ballName: string | null = null;
+  if (ballId) {
+    const { data: ball } = await supabase.from('balls').select('name').eq('id', ballId).maybeSingle();
+    ballName = ball?.name ?? null;
+  }
+
+  const parts = [
+    leagueName,
+    mostRecentLeague?.alley_name ? `${mostRecentLeague.alley_name}${mostRecentLeague.lane_number ? ` · Lane ${mostRecentLeague.lane_number}` : ''}` : null,
+    ballName,
+  ].filter((p): p is string => !!p);
+  leagueStartPreview = parts.length > 0 ? `Using: ${parts.join(' · ')}` : null;
+}
 ---
 
 <Layout title="Dashboard">
@@ -325,6 +366,7 @@ const showOnboarding = !onboardProfile?.onboarding_dismissed && onboardSteps.som
         <form method="POST" class="dash-start-form" data-pending-label="Starting…">
           <input type="hidden" name="intent" value="start_league_night" />
           <button type="submit" class="button dash-start">🎳 Start League Night</button>
+          {leagueStartPreview && <p class="dash-start-preview">{leagueStartPreview}</p>}
         </form>
       )}
       <form method="POST" class="dash-start-form" data-pending-label="Starting…">
@@ -536,6 +578,12 @@ const showOnboarding = !onboardProfile?.onboarding_dismissed && onboardSteps.som
     gap: var(--s3);
     margin-top: var(--s4);
   }
-  .dash-start-form { flex: 1; margin: 0; }
+  .dash-start-form { flex: 1; margin: 0; gap: var(--s1); }
   .dash-start { display: block; width: 100%; text-align: center; margin: 0; }
+  .dash-start-preview {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+    text-align: center;
+    margin: 0;
+  }
 </style>
