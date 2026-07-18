@@ -1,7 +1,8 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 import ShotForm from '../../components/ShotForm';
-import { leaveLabel } from '../../lib/leaves';
+import LeavePicker from '../../components/LeavePicker';
+import { leaveLabel, sortedLeave } from '../../lib/leaves';
 import { isHit } from '../../lib/drills';
 
 const { supabase, user } = Astro.locals;
@@ -18,9 +19,6 @@ const { data: drill } = await supabase
 if (!drill) {
   return Astro.redirect('/drills');
 }
-
-const leave: number[] = drill.leave ?? [];
-const freshRack = leave.length === 0;
 
 if (Astro.request.method === 'POST') {
   const formData = await Astro.request.formData();
@@ -39,6 +37,16 @@ if (Astro.request.method === 'POST') {
       error = endError.message;
     } else {
       return Astro.redirect('/drills');
+    }
+  } else if (intent === 'update_target') {
+    const leaveRaw = formData.get('leave')?.toString() ?? '';
+    const newLeave = leaveRaw ? leaveRaw.split(',').map(Number).filter((n) => n >= 1 && n <= 10) : [];
+
+    const { error: updateError } = await supabase.from('drills').update({ leave: newLeave }).eq('id', drillId);
+    if (updateError) {
+      error = updateError.message;
+    } else {
+      return Astro.redirect(`/drills/${drillId}`);
     }
   } else if (intent === 'log_shot') {
     const pinsRaw = formData.get('pins_standing')?.toString() ?? '';
@@ -62,8 +70,11 @@ if (Astro.request.method === 'POST') {
     const breakpoint_board = breakpointRaw ? Number(breakpointRaw) : null;
     const note = formData.get('note')?.toString().trim() || null;
 
+    // snapshot the drill's CURRENT target onto the shot -- if the target gets
+    // changed later, this shot's history/stats stay attributed correctly
     const { error: insertError } = await supabase.from('drill_shots').insert({
       drill_id: drillId,
+      leave: drill.leave ?? [],
       ball_id,
       approach_id,
       lineup_position,
@@ -88,6 +99,9 @@ if (Astro.request.method === 'POST') {
   }
 }
 
+const leave: number[] = drill.leave ?? [];
+const freshRack = leave.length === 0;
+
 const { data: shots } = await supabase
   .from('drill_shots')
   .select('*, balls(name)')
@@ -97,6 +111,17 @@ const { data: shots } = await supabase
 const drillShots = (shots ?? []) as any[];
 const shotCount = drillShots.length;
 const hitCount = drillShots.filter(isHit).length;
+
+// per-target breakdown for this drill, in case the target changed mid-session
+const byLeave = new Map<string, { leave: number[]; attempts: number; hits: number }>();
+for (const shot of drillShots) {
+  const key = sortedLeave(shot.leave ?? []).join('-');
+  const row = byLeave.get(key) ?? { leave: shot.leave ?? [], attempts: 0, hits: 0 };
+  row.attempts += 1;
+  if (isHit(shot)) row.hits += 1;
+  byLeave.set(key, row);
+}
+const leaveBreakdown = [...byLeave.values()];
 
 const { data: balls } = await supabase.from('balls').select('id, name').order('name');
 const { data: approaches } = await supabase
@@ -111,10 +136,10 @@ const { data: prefRow } = await supabase
   .maybeSingle();
 const hiddenShotFields = prefRow?.hidden_shot_fields ?? [];
 
-// Every shot in a drill faces the same fixed target leave -- no per-frame
-// ball-count tracking needed. Strike is only offered on a fresh-rack (no
-// leave) drill; Spare only when there's a leave to clear. Mirrors
-// allowedMarks' rack-reset rule without any frame-progress bookkeeping.
+// Every shot faces the drill's CURRENT target -- no per-frame ball-count
+// tracking needed. Strike is only offered on a fresh-rack (no leave) target;
+// Spare only when there's a leave to clear. Mirrors allowedMarks' rack-reset
+// rule without any frame-progress bookkeeping.
 const allowStrike = freshRack;
 const allowSpare = !freshRack;
 const defaultBallId = freshRack ? prefRow?.default_ball_id ?? null : prefRow?.default_spare_ball_id ?? prefRow?.default_ball_id ?? null;
@@ -140,6 +165,18 @@ function formatRate(hits: number, attempts: number): string {
 
   {error && <p class="error">{error}</p>}
 
+  <details class="score-box collapsible target-box">
+    <summary>
+      <span class="sum-label">Target</span>
+      <span class="sum-value">{leaveLabel(leave)}</span>
+    </summary>
+    <form method="POST" class="change-target-form">
+      <input type="hidden" name="intent" value="update_target" />
+      <LeavePicker client:load variant="drill" initialLeave={leave} />
+      <button type="submit">Update Target</button>
+    </form>
+  </details>
+
   <div class="scorecard">
     <div class="scorenow">
       <div class="row">
@@ -149,6 +186,17 @@ function formatRate(hits: number, attempts: number): string {
     </div>
   </div>
 
+  {leaveBreakdown.length > 1 && (
+    <ul class="lane-stats">
+      {leaveBreakdown.map((row) => (
+        <li>
+          <strong>{leaveLabel(row.leave)}</strong>
+          <span>{formatRate(row.hits, row.attempts)} &middot; {row.hits} of {row.attempts} shots</span>
+        </li>
+      ))}
+    </ul>
+  )}
+
   {shotCount > 0 && (
     <ul class="ball-log">
       {drillShots.map((shot: any, i: number) => (
@@ -157,7 +205,7 @@ function formatRate(hits: number, attempts: number): string {
             <span class="ball-ord">Shot {i + 1}</span>
             <span class="ball-result">{shotResult(shot)}</span>
             <span class="ball-detail">
-              {[shot.balls?.name, shot.target_type && shot.target_value != null ? `${shot.target_type} ${shot.target_value}` : null, shot.hook_timing]
+              {[leaveLabel(shot.leave ?? []), shot.balls?.name, shot.target_type && shot.target_value != null ? `${shot.target_type} ${shot.target_value}` : null, shot.hook_timing]
                 .filter(Boolean)
                 .join(' · ')}
             </span>
@@ -202,3 +250,37 @@ function formatRate(hits: number, attempts: number): string {
     <button type="submit" class="danger">Close Without Logging</button>
   </form>
 </Layout>
+
+<style>
+  .target-box > summary {
+    cursor: pointer;
+  }
+  .change-target-form {
+    flex-direction: column;
+    align-items: stretch;
+    margin-top: 0.75rem;
+  }
+  .change-target-form button {
+    align-self: flex-start;
+  }
+  .lane-stats {
+    list-style: none;
+    margin: 0.75rem 0 0;
+    padding: 0;
+    display: grid;
+    gap: 0.5rem;
+  }
+  .lane-stats li {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+  .lane-stats strong {
+    font-variant-numeric: tabular-nums;
+  }
+  .lane-stats span {
+    color: var(--text-muted);
+    font-size: var(--text-sm);
+    font-variant-numeric: tabular-nums;
+  }
+</style>

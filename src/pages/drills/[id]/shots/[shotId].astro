@@ -9,7 +9,7 @@ let error: string | null = null;
 
 const { data: shot } = await supabase
   .from('drill_shots')
-  .select('*, drills(leave)')
+  .select('*')
   .eq('id', shotId)
   .maybeSingle();
 
@@ -17,7 +17,9 @@ if (!shot) {
   return Astro.redirect(`/drills/${drillId}`);
 }
 
-const leave: number[] = (shot.drills as any)?.leave ?? [];
+// the target THIS shot was actually thrown at, not the drill's current one
+// (which may have changed since) -- see the "Change Target" note on the drill page
+const leave: number[] = shot.leave ?? [];
 const freshRack = leave.length === 0;
 
 if (Astro.request.method === 'POST') {

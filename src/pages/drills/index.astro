@@ -49,7 +49,7 @@ function formatDate(iso: string): string {
 
   <div class="score-box">
     <div class="sechead"><span class="chev"><i></i><i></i><i></i></span><h2>Start a Drill</h2></div>
-    <form method="POST">
+    <form method="POST" class="start-drill-form">
       <LeavePicker client:load variant="drill" />
       <button type="submit">Start Drill</button>
     </form>
@@ -101,6 +101,15 @@ function formatDate(iso: string): string {
 </Layout>
 
 <style>
+  /* .score-box form defaults to a wrapping row (compact label+input+button
+     edit forms elsewhere) -- the pin picker + Start button need to stack. */
+  .start-drill-form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .start-drill-form button {
+    align-self: flex-start;
+  }
   .lane-stats {
     list-style: none;
     margin: 0.5rem 0 0;
