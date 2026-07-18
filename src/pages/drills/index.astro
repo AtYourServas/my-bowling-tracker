@@ -1,0 +1,138 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import LeavePicker from '../../components/LeavePicker';
+import { leaveLabel } from '../../lib/leaves';
+import { fetchDrillsWithStats, computeDrillOverallStats } from '../../lib/drills';
+
+const { supabase, user } = Astro.locals;
+
+let error: string | null = null;
+
+if (Astro.request.method === 'POST') {
+  const formData = await Astro.request.formData();
+  const leaveRaw = formData.get('leave')?.toString() ?? '';
+  const leave = leaveRaw
+    ? leaveRaw.split(',').map(Number).filter((n) => n >= 1 && n <= 10)
+    : [];
+
+  const { data, error: insertError } = await supabase
+    .from('drills')
+    .insert({ user_id: user!.id, leave })
+    .select('id')
+    .single();
+
+  if (insertError) {
+    error = insertError.message;
+  } else {
+    return Astro.redirect(`/drills/${data.id}`);
+  }
+}
+
+const drills = await fetchDrillsWithStats(supabase);
+const overall = computeDrillOverallStats(drills);
+
+function formatRate(hits: number, attempts: number): string {
+  if (attempts === 0) return '—';
+  return `${Math.round((hits / attempts) * 100)}%`;
+}
+
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+---
+
+<Layout title="Drills">
+  <nav class="top"><a href="/dashboard">&larr; Dashboard</a></nav>
+  <h1>Drills</h1>
+
+  {error && <p class="error">{error}</p>}
+
+  <div class="score-box">
+    <div class="sechead"><span class="chev"><i></i><i></i><i></i></span><h2>Start a Drill</h2></div>
+    <form method="POST" class="start-drill-form">
+      <LeavePicker client:load variant="drill" />
+      <button type="submit">Start Drill</button>
+    </form>
+  </div>
+
+  {overall.attempts > 0 && (
+    <div class="score-box">
+      <div class="sechead"><span class="chev"><i></i><i></i><i></i></span><h2>Conversion Rate</h2></div>
+      <div class="rate-grid">
+        <div class="rate-stat">
+          <span class="rate-label">Overall</span>
+          <span class="rate-value">{formatRate(overall.hits, overall.attempts)}</span>
+          <span class="rate-sub">{overall.hits} of {overall.attempts} shots</span>
+        </div>
+      </div>
+      {overall.byLeave.length > 1 && (
+        <ul class="lane-stats">
+          {overall.byLeave.map((row) => (
+            <li>
+              <strong>{row.name}</strong>
+              <span>{formatRate(row.hits, row.attempts)} &middot; {row.hits} of {row.attempts} shots</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )}
+
+  {drills.length > 0 ? (
+    <ul class="list">
+      {drills.map((drill) => (
+        <li>
+          <a class="card game-card" href={`/drills/${drill.id}`}>
+            <div class="game-card-main">
+              <strong>{leaveLabel(drill.leave)}</strong>
+              <div class="game-card-detail">
+                {formatDate(drill.createdAt)} &middot; {drill.shotCount} shot{drill.shotCount === 1 ? '' : 's'}
+                {drill.endedAt ? ' · Complete' : ''}
+              </div>
+            </div>
+            <span class="rate-value">{formatRate(drill.hitCount, drill.shotCount)}</span>
+          </a>
+        </li>
+      ))}
+    </ul>
+  ) : (
+    <p class="empty">No drills yet — pick a leave above and start one.</p>
+  )}
+</Layout>
+
+<style>
+  /* .score-box form defaults to a wrapping row (compact label+input+button
+     edit forms elsewhere) -- the pin picker + Start button need to stack. */
+  .start-drill-form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .start-drill-form button {
+    align-self: flex-start;
+  }
+  .lane-stats {
+    list-style: none;
+    margin: 0.5rem 0 0;
+    padding: 0;
+    display: grid;
+    gap: 0.5rem;
+  }
+  .lane-stats li {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+  .lane-stats strong {
+    font-variant-numeric: tabular-nums;
+  }
+  .lane-stats span {
+    color: var(--text-muted);
+    font-size: var(--text-sm);
+    font-variant-numeric: tabular-nums;
+  }
+  .game-card .rate-value {
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--accent);
+  }
+</style>

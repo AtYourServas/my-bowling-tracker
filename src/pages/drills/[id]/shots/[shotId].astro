@@ -1,0 +1,130 @@
+---
+import Layout from '../../../../layouts/Layout.astro';
+import ShotForm from '../../../../components/ShotForm';
+
+const { supabase } = Astro.locals;
+const { id: drillId, shotId } = Astro.params;
+
+let error: string | null = null;
+
+const { data: shot } = await supabase
+  .from('drill_shots')
+  .select('*')
+  .eq('id', shotId)
+  .maybeSingle();
+
+if (!shot) {
+  return Astro.redirect(`/drills/${drillId}`);
+}
+
+// the target THIS shot was actually thrown at, not the drill's current one
+// (which may have changed since) -- see the "Change Target" note on the drill page
+const leave: number[] = shot.leave ?? [];
+const freshRack = leave.length === 0;
+
+if (Astro.request.method === 'POST') {
+  const formData = await Astro.request.formData();
+  const intent = formData.get('intent')?.toString();
+
+  if (intent === 'delete') {
+    const { error: deleteError } = await supabase.from('drill_shots').delete().eq('id', shotId);
+    if (deleteError) {
+      error = deleteError.message;
+    } else {
+      return Astro.redirect(`/drills/${drillId}`);
+    }
+  } else {
+    const pinsRaw = formData.get('pins_standing')?.toString() ?? '';
+    const pins_standing = pinsRaw
+      ? pinsRaw.split(',').map(Number).filter((n) => n >= 1 && n <= 10)
+      : [];
+
+    const ball_id = formData.get('ball_id')?.toString() || null;
+    const approach_id = formData.get('approach_id')?.toString() || null;
+    const lineup_position = formData.get('lineup_position')?.toString().trim() || null;
+    const slide_position = formData.get('slide_position')?.toString().trim() || null;
+    const target_type = formData.get('target_type')?.toString() || null;
+    const targetValueRaw = formData.get('target_value')?.toString().trim();
+    const target_value = targetValueRaw ? Number(targetValueRaw) : null;
+    const strike = formData.get('strike') === 'true';
+    const spare = formData.get('spare') === 'true';
+    const foul = formData.get('foul') === 'true';
+    const hook_timing = formData.get('hook_timing')?.toString() || null;
+    const miss_direction = formData.get('miss_direction')?.toString() || null;
+    const breakpointRaw = formData.get('breakpoint_board')?.toString().trim();
+    const breakpoint_board = breakpointRaw ? Number(breakpointRaw) : null;
+    const note = formData.get('note')?.toString().trim() || null;
+
+    const { error: updateError } = await supabase
+      .from('drill_shots')
+      .update({
+        ball_id,
+        approach_id,
+        lineup_position,
+        slide_position,
+        target_type,
+        target_value,
+        pins_standing,
+        strike,
+        spare,
+        foul,
+        hook_timing,
+        miss_direction,
+        breakpoint_board,
+        note,
+      })
+      .eq('id', shotId);
+
+    if (updateError) {
+      error = updateError.message;
+    } else {
+      return Astro.redirect(`/drills/${drillId}`);
+    }
+  }
+}
+
+const { data: balls } = await supabase.from('balls').select('id, name').order('name');
+const { data: approaches } = await supabase
+  .from('approaches')
+  .select('id, name, reference_lineup, reference_slide, reference_target_type, reference_target_value, leave')
+  .order('name');
+---
+
+<Layout title="Edit Drill Shot">
+  <nav class="top"><a href={`/drills/${drillId}`}>&larr; Drill</a></nav>
+  <h1>Edit Shot</h1>
+
+  {error && <p class="error">{error}</p>}
+
+  <ShotForm
+    client:load
+    balls={balls ?? []}
+    approaches={approaches ?? []}
+    frameNumber={1}
+    submitLabel="Save Changes"
+    startingPins={leave}
+    allowStrike={freshRack}
+    allowSpare={!freshRack}
+    initial={{
+      approach_id: shot.approach_id,
+      ball_id: shot.ball_id,
+      lineup_position: shot.lineup_position,
+      slide_position: shot.slide_position,
+      target_type: shot.target_type,
+      target_value: shot.target_value,
+      pins_standing: shot.pins_standing ?? [],
+      strike: shot.strike,
+      spare: shot.spare,
+      foul: shot.foul,
+      hook_timing: shot.hook_timing,
+      miss_direction: shot.miss_direction,
+      breakpoint_board: shot.breakpoint_board,
+      note: shot.note,
+    }}
+  />
+
+  <form method="POST" class="row-actions" data-confirm="Delete this shot?">
+    <input type="hidden" name="intent" value="delete" />
+    <button type="submit" class="danger">Delete Shot</button>
+  </form>
+</Layout>
