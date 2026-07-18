@@ -201,6 +201,11 @@ input[type="number"], .num { font-variant-numeric: tabular-nums; }
    Forms
    ============================================================ */
 form { display: flex; flex-direction: column; gap: var(--s3); margin-top: var(--s4); }
+/* A closed <details> normally hides its non-summary children via the UA
+   stylesheet, but that rule is author-overridable -- our `display: flex`
+   above wins the cascade and leaves a direct-child form visibly rendered
+   even while collapsed. Force it back off explicitly. */
+details:not([open]) > form { display: none; }
 
 label { display: flex; flex-direction: column; gap: var(--s1); font-size: var(--text-sm); color: var(--text-secondary); }
 

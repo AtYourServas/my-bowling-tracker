@@ -444,14 +444,17 @@ const setupSummary = [leagueName, laneLabel(laneConfig)].filter(Boolean).join(' 
           ) : (
             <p class="empty">No games yet — add one below.</p>
           )}
-          <form method="POST" class="add-game" style="margin-top: 1rem;">
-            <input type="hidden" name="slot" value="new" />
-            <input type="number" name="final_score" min="0" max="300" placeholder="final score (optional)" aria-label="Score for new game" />
-            <div class="add-game-actions">
-              <button type="submit" name="action" value="score" class="secondary">Log Final Score</button>
-              <button type="submit" name="action" value="log">Log Each Frame</button>
-            </div>
-          </form>
+          <details class="add-game-toggle" open={!games || games.length === 0}>
+            <summary>+ Add a Game</summary>
+            <form method="POST" class="add-game">
+              <input type="hidden" name="slot" value="new" />
+              <input type="number" name="final_score" min="0" max="300" placeholder="final score (optional)" aria-label="Score for new game" />
+              <div class="add-game-actions">
+                <button type="submit" name="action" value="score" class="secondary">Log Final Score</button>
+                <button type="submit" name="action" value="log">Log Each Frame</button>
+              </div>
+            </form>
+          </details>
         </>
       )}
 
@@ -738,6 +741,15 @@ const setupSummary = [leagueName, laneLabel(laneConfig)].filter(Boolean).join(' 
   }
   .setup-box > details {
     margin-top: 0.75rem;
+  }
+  .add-game-toggle {
+    margin-top: 1rem;
+  }
+  .add-game-toggle > summary {
+    cursor: pointer;
+    font-size: var(--text-sm);
+    font-weight: var(--fw-semi);
+    color: var(--accent);
   }
   .pinfall-toggle {
     display: inline-flex;
