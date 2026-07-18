@@ -95,7 +95,7 @@ if (!league) {
     <button type="submit">Save Changes</button>
   </form>
 
-  <form method="POST" class="row-actions">
+  <form method="POST" class="row-actions" data-confirm={`Delete "${league.name}"? Sessions already linked to this league keep their data, but you won't be able to start new ones under it.`}>
     <input type="hidden" name="intent" value="delete" />
     <button type="submit" class="danger">Delete League</button>
   </form>

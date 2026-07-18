@@ -166,7 +166,7 @@ const initialTarget =
     <button type="submit">Save Changes</button>
   </form>
 
-  <form method="POST" class="row-actions">
+  <form method="POST" class="row-actions" data-confirm={`Delete "${approach.name}"? This can't be undone.`}>
     <input type="hidden" name="intent" value="delete" />
     <button type="submit" class="danger">Delete Approach</button>
   </form>
