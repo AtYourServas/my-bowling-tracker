@@ -33,13 +33,26 @@ const isActive = (href: string) => path === href || path.startsWith(href + '/');
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="generator" content={Astro.generator} />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-title" content="MyBowling" />
+    <meta name="theme-color" content="#f6f5f2" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#121211" media="(prefers-color-scheme: dark)" />
     <title>{title} · MyBowlingTracker</title>
     <script is:inline>
       // Apply saved theme before first paint to avoid a flash of the wrong theme.
+      // A saved theme overrides the OS, so the theme-color metas (which key off
+      // the OS scheme) must be forced to match — both get the explicit color.
       (function () {
         try {
           var t = localStorage.getItem('theme');
-          if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t);
+          if (t === 'dark' || t === 'light') {
+            document.documentElement.setAttribute('data-theme', t);
+            var c = t === 'dark' ? '#121211' : '#f6f5f2';
+            document.querySelectorAll('meta[name="theme-color"]').forEach(function (m) {
+              m.setAttribute('content', c);
+            });
+          }
         } catch (e) {}
       })();
     </script>
@@ -203,6 +216,10 @@ const isActive = (href: string) => path === href || path.startsWith(href + '/');
           var next = isDark() ? 'light' : 'dark';
           root.setAttribute('data-theme', next);
           try { localStorage.setItem('theme', next); } catch (e) {}
+          var c = next === 'dark' ? '#121211' : '#f6f5f2';
+          document.querySelectorAll('meta[name="theme-color"]').forEach(function (m) {
+            m.setAttribute('content', c);
+          });
           render();
         });
         render();
