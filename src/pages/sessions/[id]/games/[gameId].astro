@@ -458,7 +458,6 @@ function ballResult(i: number): string {
   return knocked === 0 ? 'Gutter — 0 down' : `${knocked} down`;
 }
 
-const savedApproachId = Astro.url.searchParams.get('saved');
 ---
 
 <Layout title={gameLabel}>
@@ -470,9 +469,6 @@ const savedApproachId = Astro.url.searchParams.get('saved');
   )}
 
   {error && <p class="error">{error}</p>}
-  {savedApproachId && (
-    <p class="empty">Saved as approach — <a href={`/approaches/${savedApproachId}`}>View &amp; edit &rarr;</a></p>
-  )}
 
   <div class="sechead"><span class="chev"><i></i><i></i><i></i></span><h2>Scoresheet</h2></div>
 

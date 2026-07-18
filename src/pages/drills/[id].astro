@@ -186,7 +186,6 @@ function formatRate(hits: number, attempts: number): string {
   return `${Math.round((hits / attempts) * 100)}%`;
 }
 
-const savedApproachId = Astro.url.searchParams.get('saved');
 ---
 
 <Layout title={leaveLabel(leave)}>
@@ -195,9 +194,6 @@ const savedApproachId = Astro.url.searchParams.get('saved');
   {drill.ended_at && <p class="empty">Drill complete</p>}
 
   {error && <p class="error">{error}</p>}
-  {savedApproachId && (
-    <p class="empty">Saved as approach — <a href={`/approaches/${savedApproachId}`}>View &amp; edit &rarr;</a></p>
-  )}
 
   <details class="score-box collapsible target-box">
     <summary>

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type MouseEvent } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import PinDiagram from './PinDiagram';
 import LanePicker, { type LanePickerHandle } from './LanePicker';
 import { leaveName } from '../lib/leaves';
@@ -116,17 +116,30 @@ export default function ShotForm({
   const [approachId, setApproachId] = useState(initial?.approach_id ?? defaultApproach?.id ?? '');
   const [filterApproaches, setFilterApproaches] = useState(false);
   const laneRef = useRef<LanePickerHandle>(null);
-  const intentRef = useRef<HTMLInputElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
 
-  // Two submit actions share one form (log the ball vs. save the current
-  // ball/marks as a reusable approach) -- flips the hidden intent field
-  // imperatively right before the native submit fires, rather than a second
-  // named submit button, so pages that intercept submit via new FormData(form)
-  // (no explicit submitter) still see the right intent.
-  function submitAs(nextIntent: string) {
-    return (_e: MouseEvent<HTMLButtonElement>) => {
-      if (intentRef.current) intentRef.current.value = nextIntent;
-    };
+  // "Save as Approach" posts in the background (fetch, not a real form submit)
+  // so the page never reloads -- a native submit-and-redirect would land you
+  // back on a fresh server render with the ball/references you'd just picked
+  // gone (nothing seeds them back in for a not-yet-logged shot). This also
+  // means it doesn't need to fight the game page's own fetch-based retry
+  // interceptor, since that only listens for a real 'submit' event.
+  type SaveApproachState = { status: 'idle' | 'saving' | 'error' } | { status: 'saved'; id: string };
+  const [saveApproach, setSaveApproach] = useState<SaveApproachState>({ status: 'idle' });
+
+  async function handleSaveApproach() {
+    if (!formRef.current) return;
+    setSaveApproach({ status: 'saving' });
+    const data = new FormData(formRef.current);
+    data.set('intent', 'save_as_approach');
+    try {
+      const res = await fetch(window.location.href, { method: 'POST', body: data, credentials: 'same-origin' });
+      const id = res.ok ? new URL(res.url).searchParams.get('saved') : null;
+      if (!id) throw new Error('save failed');
+      setSaveApproach({ status: 'saved', id });
+    } catch {
+      setSaveApproach({ status: 'error' });
+    }
   }
 
   const selectedApproach = useMemo(
@@ -180,9 +193,9 @@ export default function ShotForm({
         : (defaultBoards?.target ?? null);
 
   return (
-    <form method="POST">
+    <form method="POST" ref={formRef}>
       <input type="hidden" name="frame_number" value={frameNumber} />
-      <input type="hidden" name="intent" defaultValue="log_shot" ref={intentRef} />
+      <input type="hidden" name="intent" value="log_shot" />
       <input type="hidden" name="mode" value={mode} />
 
       <PinDiagram
@@ -301,10 +314,21 @@ export default function ShotForm({
         </label>
       )}
 
-      <button type="submit" onClick={submitAs('log_shot')}>{submitLabel}</button>
-      <button type="submit" className="secondary" onClick={submitAs('save_as_approach')}>
-        Save as Approach
+      <button type="submit">{submitLabel}</button>
+      <button
+        type="button"
+        className="secondary"
+        disabled={saveApproach.status === 'saving'}
+        onClick={handleSaveApproach}
+      >
+        {saveApproach.status === 'saving' ? 'Saving…' : 'Save as Approach'}
       </button>
+      {saveApproach.status === 'saved' && (
+        <p className="empty">
+          Saved as approach — <a href={`/approaches/${saveApproach.id}`}>View &amp; edit &rarr;</a>
+        </p>
+      )}
+      {saveApproach.status === 'error' && <p className="error">Couldn't save the approach — try again.</p>}
     </form>
   );
 }

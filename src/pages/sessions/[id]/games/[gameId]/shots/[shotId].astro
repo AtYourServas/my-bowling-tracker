@@ -147,7 +147,6 @@ const { data: approaches } = await supabase
   .select('id, name, reference_lineup, reference_slide, reference_target_type, reference_target_value, leave')
   .order('name');
 
-const savedApproachId = Astro.url.searchParams.get('saved');
 ---
 
 <Layout title={`Frame ${frameNumber} shot`}>
@@ -155,9 +154,6 @@ const savedApproachId = Astro.url.searchParams.get('saved');
   <h1>Edit Shot</h1>
 
   {error && <p class="error">{error}</p>}
-  {savedApproachId && (
-    <p class="empty">Saved as approach — <a href={`/approaches/${savedApproachId}`}>View &amp; edit &rarr;</a></p>
-  )}
 
   <ShotForm
     client:load
