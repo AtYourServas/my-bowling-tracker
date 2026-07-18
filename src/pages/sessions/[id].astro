@@ -717,12 +717,14 @@ const setupSummary = [leagueName, laneLabel(laneConfig)].filter(Boolean).join(' 
   }
   /* on phones the tab row sticks to the top so long game lists can still
      switch views; the bg-coloured halo hides content scrolling behind the
-     toggle's rounded corners */
+     toggle's rounded corners. Right padding keeps the last tab clear of the
+     fixed theme toggle, which sits at a higher z-index above this row. */
   @media (max-width: 640px) {
     .session-tabs {
       position: sticky;
       top: 0;
       z-index: 30;
+      padding-right: 2.75rem;
       box-shadow: 0 0 0 4px var(--bg);
     }
   }

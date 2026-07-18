@@ -338,7 +338,8 @@ nav.top {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 10px;
+  min-height: 2.75rem;
+  padding: 4px 14px;
   font-size: var(--text-sm);
   font-weight: var(--fw-med);
   color: var(--text-secondary);
@@ -827,9 +828,11 @@ details.collapsible[open] > summary { margin-bottom: var(--s3); }
   color: inherit;
 }
 a.ball-row:hover { text-decoration: none; box-shadow: var(--shadow-md); border-color: var(--border-strong); }
-.ball-ord { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
-.ball-result { font-weight: var(--fw-semi); }
-.ball-detail { font-size: var(--text-sm); color: var(--text-muted); text-align: right; }
+.ball-ord { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); min-width: 0; }
+.ball-result { font-weight: var(--fw-semi); min-width: 0; }
+/* min-width:0 lets this auto-width grid track shrink + wrap instead of
+   forcing the row wider than the screen when the joined detail string is long */
+.ball-detail { font-size: var(--text-sm); color: var(--text-muted); text-align: right; min-width: 0; }
 
 .logball { font-size: var(--text-sm); font-weight: var(--fw-semi); color: var(--text-secondary); margin: var(--s3) 0 calc(-1 * var(--s1)); }
 
@@ -891,7 +894,7 @@ a.ball-row:hover { text-decoration: none; box-shadow: var(--shadow-md); border-c
 
 .lane-strip-body { display: flex; align-items: center; gap: var(--s2); }
 .lane-nudge {
-  flex: none; width: 2rem; height: 2rem; padding: 0;
+  flex: none; width: 2.75rem; height: 2.75rem; padding: 0;
   display: flex; align-items: center; justify-content: center; font-size: var(--text-xs);
   background: var(--surface); color: var(--text-primary); border-color: var(--border-strong);
 }
@@ -925,7 +928,7 @@ a.ball-row:hover { text-decoration: none; box-shadow: var(--shadow-md); border-c
 .pin-rows { display: flex; flex-direction: column; align-items: center; gap: var(--s2); }
 .pin-row { display: flex; gap: var(--s2); }
 .pin {
-  width: 2.25rem;
+  width: 2.75rem;
   padding: 0;
   border: none;
   background: none;
