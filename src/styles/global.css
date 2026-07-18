@@ -690,30 +690,30 @@ details.collapsible[open] > summary { margin-bottom: var(--s3); }
   box-shadow: var(--shadow-sm);
 }
 .cell {
-  width: 56px;
+  width: 62px;
   flex: none;
   border-right: 1px solid var(--border);
   display: grid;
-  grid-template-rows: 26px 1fr;
+  grid-template-rows: 28px 1fr;
   position: relative;
   text-decoration: none;
   color: var(--text-primary);
 }
 .cell:hover { text-decoration: none; background: var(--surface-sunk); }
 .cell:last-child { border-right: none; }
-.cell.f10 { width: 78px; }
+.cell.f10 { width: 86px; }
 .cell:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; z-index: 2; }
 .cell .fnum { position: absolute; left: 5px; top: 4px; font-family: var(--font-mono); font-size: 0.6rem; color: var(--text-muted); }
 .cell .balls { display: flex; justify-content: flex-end; padding: 3px 3px 0; }
 .bbox {
-  width: 17px;
-  height: 17px;
+  width: 19px;
+  height: 19px;
   border: 1px solid var(--border-strong);
   display: flex;
   align-items: center;
   justify-content: center;
   font-family: var(--font-mono);
-  font-size: 0.72rem;
+  font-size: 0.76rem;
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
 }
@@ -762,12 +762,12 @@ details.collapsible[open] > summary { margin-bottom: var(--s3); }
 
 /* type-into-the-frame: the active ball box becomes a text input */
 .bbox-input {
-  width: 17px; height: 17px; padding: 0; border: 1px solid var(--accent); border-radius: 0;
+  width: 19px; height: 19px; padding: 0; border: 1px solid var(--accent); border-radius: 0;
   background: var(--surface); color: var(--text-primary); text-align: center; text-transform: uppercase;
-  font-family: var(--font-mono); font-size: 0.72rem; font-weight: var(--fw-semi); line-height: 1;
+  font-family: var(--font-mono); font-size: 0.76rem; font-weight: var(--fw-semi); line-height: 1;
 }
-.bbox-input:focus { outline: none; box-shadow: 0 0 0 2px var(--accent-weak); }
-.f10 .bbox-input { width: 17px; }
+.bbox-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.f10 .bbox-input { width: 19px; }
 
 /* the frame you're typing into gets a bigger, easier-to-tap cell + input */
 .cell.typing { width: 82px; grid-template-rows: 44px 1fr; }
@@ -794,22 +794,11 @@ details.collapsible[open] > summary { margin-bottom: var(--s3); }
 .scorenow .row { display: flex; align-items: baseline; gap: var(--s2); }
 .scorenow .n { font-size: var(--text-2xl); font-weight: var(--fw-semi); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; line-height: 1; }
 .scorenow .lbl { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); }
-.hcap { font-size: var(--text-sm); color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+
+/* handicap conversion under the scoresheet -- a slim line, not a whole box,
+   since the scratch score itself is already visible in the frame cells */
+.hcap { margin: var(--s3) 0 0; font-size: var(--text-sm); color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 .hcap b { color: var(--text-primary); font-weight: var(--fw-semi); }
-/* Frame nav + running score in one strip (game page): compact Prev/Next
-   flanking the running total, replacing the old scorecard + button row. */
-.navscore {
-  display: flex;
-  align-items: center;
-  gap: var(--s2);
-  margin-top: var(--s3);
-  padding: var(--s2);
-  background: var(--surface-sunk);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-}
-.navscore .framenav { flex: none; padding: 0 var(--s3); }
-.navscore .scorenow { flex: 1; align-items: center; text-align: center; }
 
 /* manual final-score entry, tucked behind a "Set Final Score" text link
    (overrides the frame-derived total) */
@@ -820,27 +809,8 @@ details.collapsible[open] > summary { margin-bottom: var(--s3); }
 .finalscore button { padding: 4px 12px; font-size: var(--text-xs); }
 
 /* ============================================================
-   Now-bowling frame: nav arrows, ball history, log/complete states
+   Now-bowling frame: ball history, log/complete states
    ============================================================ */
-.framenav-row { display: flex; gap: var(--s2); margin: 0 0 var(--s3); }
-.framenav {
-  flex: 1;
-  min-height: 2.25rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--s1);
-  font-size: var(--text-sm);
-  font-weight: var(--fw-med);
-  line-height: 1;
-  color: var(--text-primary);
-  background: var(--surface);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  text-decoration: none;
-}
-.framenav:hover { text-decoration: none; background: var(--surface-sunk); border-color: var(--accent); }
-.framenav.disabled { color: var(--border-strong); background: transparent; border-color: var(--border); cursor: default; }
 
 .ball-log { list-style: none; margin: 0 0 var(--s3); padding: 0; display: flex; flex-direction: column; gap: var(--s2); }
 .ball-row {

@@ -330,8 +330,7 @@ if (Astro.request.method === 'POST') {
 const cells = isWarmup
   ? computeWarmupSheet(await fetchWarmupFrames(supabase, gameId!), frameNumber)
   : await fetchScoresheetForGame(supabase, gameId!);
-const through = [...cells].reverse().find((c) => c.cumulative != null);
-const runningTotal = through?.cumulative ?? null;
+const runningTotal = [...cells].reverse().find((c) => c.cumulative != null)?.cumulative ?? null;
 const finalDerived = !isWarmup ? cells[9]?.cumulative ?? null : null; // full total once all 10 resolve
 const scratchScore = game.final_score ?? finalDerived ?? runningTotal;
 
@@ -433,7 +432,6 @@ const defaultApproachId = startingPins.length === 0 ? prefRow?.default_approach_
 // frames 1-9 that completed on a lone strike: a 2nd ball needs the strike edited away
 const strikeLockShot = (isWarmup || frameNumber < 10) && progress.complete && frameShots.length === 1 ? frameShots[0] : null;
 
-const prevFrame = frameNumber > 1 ? frameNumber - 1 : null;
 const nextFrame = isWarmup ? frameNumber + 1 : frameNumber < 10 ? frameNumber + 1 : null;
 const frameHref = (n: number, m: 'pick' | 'type' = mode) => `/sessions/${sessionId}/games/${gameId}?frame=${n}&mode=${m}`;
 
@@ -549,53 +547,29 @@ function ballResult(i: number): string {
     )}
   </form>
 
-  {!isWarmup ? (
-    <>
-      <div class="navscore">
-        {prevFrame
-          ? <a class="framenav" href={frameHref(prevFrame)} aria-label={`Go to frame ${prevFrame}`} rel="prev">&larr; Prev</a>
-          : <span class="framenav disabled" aria-hidden="true">&larr; Prev</span>}
-        <div class="scorenow">
-          <div class="row">
-            <span class="n">{runningTotal ?? '—'}</span>
-            <span class="lbl">{through ? `through ${through.frameNumber}` : 'no frames yet'}</span>
-          </div>
-          {scratchScore != null && sessionHandicap != null && (
-            <span class="hcap">+ handicap {sessionHandicap} = <b>{scratchScore + sessionHandicap}</b></span>
-          )}
-        </div>
-        {nextFrame
-          ? <a class="framenav" href={frameHref(nextFrame)} aria-label={`Go to frame ${nextFrame}`} rel="next">Next &rarr;</a>
-          : <span class="framenav disabled" aria-hidden="true">Next &rarr;</span>}
-      </div>
-      <details class="setscore">
-        <summary>{game.final_score != null ? `Final Score · ${game.final_score}` : 'Set Final Score'}</summary>
-        <form class="finalscore" method="POST">
-          <input type="hidden" name="intent" value="set_score" />
-          <input type="hidden" name="mode" value={mode} />
-          <input
-            id="final_score"
-            type="number"
-            name="final_score"
-            min="0"
-            max="300"
-            value={game.final_score ?? ''}
-            placeholder="&#8212;"
-            aria-label="Final Score"
-          />
-          <button type="submit" class="secondary">Save</button>
-        </form>
-      </details>
-    </>
-  ) : (
-    <div class="framenav-row">
-      {prevFrame
-        ? <a class="framenav" href={frameHref(prevFrame)} aria-label={`Go to frame ${prevFrame}`} rel="prev">&larr; Prev Frame</a>
-        : <span class="framenav disabled" aria-hidden="true">&larr; Prev Frame</span>}
-      {nextFrame
-        ? <a class="framenav" href={frameHref(nextFrame)} aria-label={`Go to frame ${nextFrame}`} rel="next">Next Frame &rarr;</a>
-        : <span class="framenav disabled" aria-hidden="true">Next Frame &rarr;</span>}
-    </div>
+  {!isWarmup && scratchScore != null && sessionHandicap != null && (
+    <p class="hcap">+ handicap {sessionHandicap} = <b>{scratchScore + sessionHandicap}</b></p>
+  )}
+
+  {!isWarmup && (
+    <details class="setscore">
+      <summary>{game.final_score != null ? `Final Score · ${game.final_score}` : 'Set Final Score'}</summary>
+      <form class="finalscore" method="POST">
+        <input type="hidden" name="intent" value="set_score" />
+        <input type="hidden" name="mode" value={mode} />
+        <input
+          id="final_score"
+          type="number"
+          name="final_score"
+          min="0"
+          max="300"
+          value={game.final_score ?? ''}
+          placeholder="&#8212;"
+          aria-label="Final Score"
+        />
+        <button type="submit" class="secondary">Save</button>
+      </form>
+    </details>
   )}
 
   <div class="sechead"><span class="chev"><i></i><i></i><i></i></span><h2>Now Bowling &middot; Frame {frameNumber}{progress.nextBall != null && ` · Ball ${progress.nextBall}`}{showFrameLane && ` · Lane ${frameLane}`}</h2></div>
