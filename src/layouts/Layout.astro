@@ -57,7 +57,7 @@ const isActive = (href: string) => path === href || path.startsWith(href + '/');
             {navItems.map((item) => (
               <a href={item.href} aria-current={isActive(item.href) ? 'page' : undefined}>{item.label}</a>
             ))}
-            <form class="logout" method="POST" action="/api/auth/logout">
+            <form class="logout" method="POST" action="/api/auth/logout" data-pending-label="Logging Out…">
               <button type="submit">Log Out</button>
             </form>
           </nav>
@@ -141,6 +141,51 @@ const isActive = (href: string) => path === href || path.startsWith(href + '/');
         });
         dialog.addEventListener('cancel', function () {
           pendingForm = null;
+        });
+      })();
+    </script>
+    <script is:inline>
+      // A full-page POST gives no feedback until the server answers — on
+      // submit, disable the form's submit buttons and relabel the tapped one
+      // "Saving…" (override via data-pending-label) so slow connections don't
+      // read as a dead tap or invite double-taps. Skips submits something else
+      // intercepted (the confirm dialog's first pass, the game page's fetch
+      // retry path — those own their own feedback) and GET filter forms.
+      (function () {
+        var SUBMITS = 'button[type="submit"], button:not([type]), input[type="submit"]';
+
+        document.addEventListener('submit', function (e) {
+          var form = e.target;
+          if (!(form instanceof HTMLFormElement) || e.defaultPrevented) return;
+          if ((form.getAttribute('method') || 'get').toLowerCase() !== 'post') return;
+          if (form.hasAttribute('data-pending')) { e.preventDefault(); return; }
+          form.setAttribute('data-pending', '');
+          var label = form.getAttribute('data-pending-label') || 'Saving…';
+          var target = e.submitter instanceof HTMLButtonElement
+            ? e.submitter
+            : form.querySelector('button[type="submit"], button:not([type])');
+          // Deferred a tick so the submitting button's own name/value still posts.
+          setTimeout(function () {
+            form.querySelectorAll(SUBMITS).forEach(function (b) { b.disabled = true; });
+            if (target) {
+              target.setAttribute('data-label', target.textContent || '');
+              target.textContent = label;
+            }
+          }, 0);
+        });
+
+        // Back/forward can restore a page from bfcache frozen in the pending
+        // state — reset so its forms are usable again.
+        window.addEventListener('pageshow', function (e) {
+          if (!e.persisted) return;
+          document.querySelectorAll('form[data-pending]').forEach(function (form) {
+            form.removeAttribute('data-pending');
+            form.querySelectorAll(SUBMITS).forEach(function (b) { b.disabled = false; });
+            form.querySelectorAll('[data-label]').forEach(function (b) {
+              b.textContent = b.getAttribute('data-label');
+              b.removeAttribute('data-label');
+            });
+          });
         });
       })();
     </script>

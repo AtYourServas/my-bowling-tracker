@@ -322,12 +322,12 @@ const showOnboarding = !onboardProfile?.onboarding_dismissed && onboardSteps.som
   {!resumeGame && recap && (
     <div class="dash-start-row">
       {(leagueCount ?? 0) > 0 && (
-        <form method="POST" class="dash-start-form">
+        <form method="POST" class="dash-start-form" data-pending-label="Starting…">
           <input type="hidden" name="intent" value="start_league_night" />
           <button type="submit" class="button dash-start">🎳 Start League Night</button>
         </form>
       )}
-      <form method="POST" class="dash-start-form">
+      <form method="POST" class="dash-start-form" data-pending-label="Starting…">
         <input type="hidden" name="intent" value="start_practice" />
         <button type="submit" class:list={['button', 'dash-start', { secondary: (leagueCount ?? 0) > 0 }]}>🎯 Start Practice</button>
       </form>

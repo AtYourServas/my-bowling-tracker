@@ -34,7 +34,7 @@ if (Astro.request.method === 'POST') {
   {error && <p class="error">{error}</p>}
   {notice && <p class="notice">{notice}</p>}
 
-  <form method="POST">
+  <form method="POST" data-pending-label="Signing Up…">
     <label>
       Email
       <input type="email" name="email" required autocomplete="email" />
