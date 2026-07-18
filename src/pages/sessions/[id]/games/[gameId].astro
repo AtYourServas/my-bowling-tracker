@@ -433,7 +433,6 @@ const defaultApproachId = startingPins.length === 0 ? prefRow?.default_approach_
 // frames 1-9 that completed on a lone strike: a 2nd ball needs the strike edited away
 const strikeLockShot = (isWarmup || frameNumber < 10) && progress.complete && frameShots.length === 1 ? frameShots[0] : null;
 
-const prevFrame = frameNumber > 1 ? frameNumber - 1 : null;
 const nextFrame = isWarmup ? frameNumber + 1 : frameNumber < 10 ? frameNumber + 1 : null;
 const frameHref = (n: number, m: 'pick' | 'type' = mode) => `/sessions/${sessionId}/games/${gameId}?frame=${n}&mode=${m}`;
 
@@ -549,24 +548,17 @@ function ballResult(i: number): string {
     )}
   </form>
 
-  {!isWarmup ? (
+  {!isWarmup && (
     <>
       <div class="navscore">
-        {prevFrame
-          ? <a class="framenav" href={frameHref(prevFrame)} aria-label={`Go to frame ${prevFrame}`} rel="prev">&larr; Prev</a>
-          : <span class="framenav disabled" aria-hidden="true">&larr; Prev</span>}
         <div class="scorenow">
           <div class="row">
             <span class="n">{runningTotal ?? '—'}</span>
-            <span class="lbl">{through ? `through ${through.frameNumber}` : 'no frames yet'}</span>
           </div>
           {scratchScore != null && sessionHandicap != null && (
             <span class="hcap">+ handicap {sessionHandicap} = <b>{scratchScore + sessionHandicap}</b></span>
           )}
         </div>
-        {nextFrame
-          ? <a class="framenav" href={frameHref(nextFrame)} aria-label={`Go to frame ${nextFrame}`} rel="next">Next &rarr;</a>
-          : <span class="framenav disabled" aria-hidden="true">Next &rarr;</span>}
       </div>
       <details class="setscore">
         <summary>{game.final_score != null ? `Final Score · ${game.final_score}` : 'Set Final Score'}</summary>
@@ -587,15 +579,6 @@ function ballResult(i: number): string {
         </form>
       </details>
     </>
-  ) : (
-    <div class="framenav-row">
-      {prevFrame
-        ? <a class="framenav" href={frameHref(prevFrame)} aria-label={`Go to frame ${prevFrame}`} rel="prev">&larr; Prev Frame</a>
-        : <span class="framenav disabled" aria-hidden="true">&larr; Prev Frame</span>}
-      {nextFrame
-        ? <a class="framenav" href={frameHref(nextFrame)} aria-label={`Go to frame ${nextFrame}`} rel="next">Next Frame &rarr;</a>
-        : <span class="framenav disabled" aria-hidden="true">Next Frame &rarr;</span>}
-    </div>
   )}
 
   <div class="sechead"><span class="chev"><i></i><i></i><i></i></span><h2>Now Bowling &middot; Frame {frameNumber}{progress.nextBall != null && ` · Ball ${progress.nextBall}`}{showFrameLane && ` · Lane ${frameLane}`}</h2></div>
