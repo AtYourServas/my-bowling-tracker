@@ -659,14 +659,14 @@ function ballResult(i: number): string {
       data-confirm-style="secondary"
     >
       <input type="hidden" name="intent" value="end_practice_early" />
-      <button type="submit" class="secondary">End Practice</button>
+      <button type="submit" class="secondary end-action">End Practice</button>
     </form>
   )}
 
   {canEndEarly && partialScore && (
     <form method="POST" class="row-actions" data-confirm={`End this game after frame ${partialScore.throughFrame} with a score of ${partialScore.score}? You can keep bowling later and re-save the score to correct it.`}>
       <input type="hidden" name="intent" value="end_practice_early" />
-      <button type="submit" class="secondary">End Game Here &middot; Score {partialScore.score}</button>
+      <button type="submit" class="secondary end-action">End Game Here &middot; Score {partialScore.score}</button>
     </form>
   )}
 

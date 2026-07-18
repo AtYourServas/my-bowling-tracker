@@ -83,6 +83,17 @@ const groupHeading = (g: (typeof groups)[number]['session']) =>
         Search
         <input type="search" name="q" value={filterQuery} placeholder="Search note text…" />
       </label>
+      {balls && balls.length > 0 && (
+        <label>
+          Ball
+          <select name="ball">
+            <option value="">All</option>
+            {balls.map((b) => (
+              <option value={b.id} selected={b.id === filterBall}>{b.name}</option>
+            ))}
+          </select>
+        </label>
+      )}
       <label>
         League
         <select name="league">
@@ -108,17 +119,6 @@ const groupHeading = (g: (typeof groups)[number]['session']) =>
             <option value="">All</option>
             {alleys.map((a) => (
               <option value={a} selected={a === filterAlley}>{a}</option>
-            ))}
-          </select>
-        </label>
-      )}
-      {balls && balls.length > 0 && (
-        <label>
-          Ball
-          <select name="ball">
-            <option value="">All</option>
-            {balls.map((b) => (
-              <option value={b.id} selected={b.id === filterBall}>{b.name}</option>
             ))}
           </select>
         </label>

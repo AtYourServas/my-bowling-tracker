@@ -23,7 +23,11 @@ if (filterType === 'league' || filterType === 'practice') {
   sessionsQuery = sessionsQuery.eq('session_type', filterType);
 }
 if (filterAlley) {
-  sessionsQuery = sessionsQuery.eq('alley_name', filterAlley);
+  // Partial/case-insensitive match, not an exact .eq() -- the alley field is
+  // free-text now (a datalist suggests known names but doesn't enforce an
+  // exact pick), so a typo or partial name should still narrow the list
+  // instead of silently returning zero results.
+  sessionsQuery = sessionsQuery.ilike('alley_name', `%${filterAlley}%`);
 }
 if (filterFrom) {
   sessionsQuery = sessionsQuery.gte('session_date', filterFrom);
@@ -95,12 +99,10 @@ for (const [sessionId, gameId] of resumeBySession) {
     </label>
     <label>
       Alley
-      <select name="alley">
-        <option value="">All</option>
-        {alleyOptions.map((alley) => (
-          <option value={alley} selected={alley === filterAlley}>{alley}</option>
-        ))}
-      </select>
+      <input type="text" name="alley" list="alley-options" value={filterAlley} placeholder="Type to search…" autocomplete="off" />
+      <datalist id="alley-options">
+        {alleyOptions.map((alley) => <option value={alley} />)}
+      </datalist>
     </label>
     <label>
       From
