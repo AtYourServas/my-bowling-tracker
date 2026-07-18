@@ -91,3 +91,9 @@ export function leaveLabel(pins: number[] | null | undefined): string {
 export function leaveDisplayName(pins: number[]): string {
   return pins.length === 10 ? 'Full Rack' : leaveName(pins);
 }
+
+// Default Name value for a new approach saved from a shot that faced this leave
+// -- matches the "e.g. Strike ball" placeholder on the manual add-approach form.
+export function suggestedApproachName(pins: number[]): string {
+  return isSpareLeave(pins) ? leaveName(pins) : 'Strike ball';
+}

@@ -3,8 +3,9 @@ import Layout from '../../../../../../layouts/Layout.astro';
 import ShotForm from '../../../../../../components/ShotForm';
 import { allowedMarks, pinsFacedBefore, WARMUP_FRAME } from '../../../../../../lib/scoring';
 import type { ShotLite } from '../../../../../../lib/scoring';
+import { suggestedApproachName } from '../../../../../../lib/leaves';
 
-const { supabase } = Astro.locals;
+const { supabase, user } = Astro.locals;
 const { id: sessionId, gameId, shotId } = Astro.params;
 
 // carried through from the game page so editing a shot returns you to the same
@@ -29,6 +30,23 @@ const frameNumber = shot.frames.frame_number;
 // bonus-ball rules, even on literal frame 10 -- see WARMUP_FRAME.
 const ruleFrameNumber = (shot.frames as any).games?.is_practice ? WARMUP_FRAME : frameNumber;
 
+// which marks are legal for this ball, based on the shots thrown before it in
+// the frame (so editing ball 2 of a normal frame won't offer Strike, etc.) --
+// computed up front so the save-as-approach POST branch below can use it too.
+const { data: siblingShots } = await supabase
+  .from('shots')
+  .select('pins_standing, strike, spare, foul, created_at')
+  .eq('frame_id', shot.frame_id)
+  .order('created_at', { ascending: true });
+const priorShots = (siblingShots ?? []).filter((s) => s.created_at < shot.created_at) as ShotLite[];
+const marks = allowedMarks(ruleFrameNumber, priorShots);
+
+// the leave this ball faced, so the picker's Missed/quick-count shortcuts work
+// on the right pins when editing (ShotForm treats [] as a fresh rack) -- and
+// what a "Save as Approach" from this shot targets.
+const faced = pinsFacedBefore(priorShots);
+const facedLeave = faced.length === 10 ? [] : faced;
+
 if (Astro.request.method === 'POST') {
   const formData = await Astro.request.formData();
   const intent = formData.get('intent')?.toString();
@@ -39,6 +57,33 @@ if (Astro.request.method === 'POST') {
       error = deleteError.message;
     } else {
       return Astro.redirect(`/sessions/${sessionId}/games/${gameId}?frame=${frameNumber}${modeQ}`);
+    }
+  } else if (intent === 'save_as_approach') {
+    const name = formData.get('name')?.toString().trim();
+    if (!name) {
+      error = 'Approach name is required.';
+    } else {
+      const { data: inserted, error: insertError } = await supabase
+        .from('approaches')
+        .insert({
+          user_id: user!.id,
+          name,
+          reference_ball_id: shot.ball_id,
+          reference_lineup: shot.lineup_position,
+          reference_slide: shot.slide_position,
+          reference_target_type: shot.target_type,
+          reference_target_value: shot.target_value,
+          leave: facedLeave,
+          notes: shot.note,
+        })
+        .select('id')
+        .single();
+
+      if (insertError) {
+        error = insertError.message;
+      } else {
+        return Astro.redirect(`/sessions/${sessionId}/games/${gameId}/shots/${shotId}?saved=${inserted.id}${modeQ}`);
+      }
     }
   } else {
     const pinsRaw = formData.get('pins_standing')?.toString() ?? '';
@@ -99,20 +144,7 @@ const { data: approaches } = await supabase
   .select('id, name, reference_lineup, reference_slide, reference_target_type, reference_target_value, leave')
   .order('name');
 
-// which marks are legal for this ball, based on the shots thrown before it in
-// the frame (so editing ball 2 of a normal frame won't offer Strike, etc.)
-const { data: siblingShots } = await supabase
-  .from('shots')
-  .select('pins_standing, strike, spare, foul, created_at')
-  .eq('frame_id', shot.frame_id)
-  .order('created_at', { ascending: true });
-const priorShots = (siblingShots ?? []).filter((s) => s.created_at < shot.created_at) as ShotLite[];
-const marks = allowedMarks(ruleFrameNumber, priorShots);
-
-// the leave this ball faced, so the picker's Missed/quick-count shortcuts work
-// on the right pins when editing (ShotForm treats [] as a fresh rack)
-const faced = pinsFacedBefore(priorShots);
-const facedLeave = faced.length === 10 ? [] : faced;
+const savedApproachId = Astro.url.searchParams.get('saved');
 ---
 
 <Layout title={`Frame ${frameNumber} shot`}>
@@ -120,6 +152,9 @@ const facedLeave = faced.length === 10 ? [] : faced;
   <h1>Edit Shot</h1>
 
   {error && <p class="error">{error}</p>}
+  {savedApproachId && (
+    <p class="empty">Saved as approach — <a href={`/approaches/${savedApproachId}`}>View &amp; edit &rarr;</a></p>
+  )}
 
   <ShotForm
     client:load
@@ -149,8 +184,40 @@ const facedLeave = faced.length === 10 ? [] : faced;
     }}
   />
 
+  <details class="save-approach">
+    <summary>+ Save as Approach</summary>
+    <form method="POST" class="save-approach-form">
+      <input type="hidden" name="intent" value="save_as_approach" />
+      <label>
+        Name
+        <input type="text" name="name" required value={suggestedApproachName(facedLeave)} />
+      </label>
+      <button type="submit" class="secondary">Save as Approach</button>
+    </form>
+  </details>
+
   <form method="POST" class="row-actions" data-confirm="Delete this shot?">
     <input type="hidden" name="intent" value="delete" />
     <button type="submit" class="danger">Delete Shot</button>
   </form>
 </Layout>
+
+<style>
+  .save-approach {
+    margin: 0.5rem 0 1rem;
+  }
+  .save-approach summary {
+    cursor: pointer;
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .save-approach-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+  }
+  .save-approach-form button {
+    align-self: flex-start;
+  }
+</style>
