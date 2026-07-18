@@ -10,6 +10,19 @@ const { title } = Astro.props;
 const user = Astro.locals.user;
 const path = Astro.url.pathname;
 
+// Drives the mini-scoresheet pinfall dots (see MiniScoresheet.astro) — a
+// per-profile setting rather than a page-local toggle, so it applies
+// everywhere a mini-scoresheet renders (dashboard, sessions list, session page).
+let showPinfall = true;
+if (user) {
+  const { data: profile } = await Astro.locals.supabase
+    .from('profiles')
+    .select('show_pinfall')
+    .eq('id', user.id)
+    .maybeSingle();
+  showPinfall = profile?.show_pinfall ?? true;
+}
+
 // Every item lives in the collapsible top menu; items with an icon also
 // appear in the mobile bottom tab bar.
 const navItems = [
@@ -27,7 +40,7 @@ const tabItems = navItems.filter((item) => item.icon);
 const isActive = (href: string) => path === href || path.startsWith(href + '/');
 ---
 
-<html lang="en">
+<html lang="en" class:list={{ 'show-pinfall': showPinfall }}>
   <head>
     <meta charset="utf-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
