@@ -84,22 +84,21 @@ const PIN_ROWS = [
   [1],
 ];
 
-const PIN_PATH =
-  'M20,4 C27,4 27,14 24,20 C22,24 22,26 24,30 C30,38 33,58 30,76 C29,88 25,96 20,96 C15,96 11,88 10,76 C7,58 10,38 16,30 C18,26 18,24 16,20 C13,14 13,4 20,4 Z';
-
 /** Read-only pin glyph shaded by how often that pin gets left standing --
  *  darker/filled = left more often, relative to the pin left most. */
 function PinFrequencyGlyph({ pin, attempts, converted, maxAttempts }: PinLeaveStat & { maxAttempts: number }) {
   const intensity = maxAttempts === 0 ? 0 : attempts / maxAttempts;
   return (
     <div className="pin-freq" title={`Pin ${pin}: left ${attempts}x, converted ${formatRate(converted, attempts)}`}>
-      <svg className="pin-svg" viewBox="0 0 40 100" aria-hidden="true">
-        <path
+      <svg className="pin-svg" viewBox="0 0 40 40" aria-hidden="true">
+        <circle
           className="pin-body"
-          d={PIN_PATH}
+          cx="20"
+          cy="20"
+          r="18"
           style={{ fillOpacity: 0.15 + intensity * 0.85 }}
         />
-        <text className="pin-num" x="20" y="64" textAnchor="middle" dominantBaseline="middle">
+        <text className="pin-num" x="20" y="20" textAnchor="middle" dominantBaseline="middle">
           {pin}
         </text>
       </svg>

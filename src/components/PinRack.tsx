@@ -5,16 +5,11 @@ export const PIN_ROWS = [
   [1],
 ];
 
-const PIN_PATH =
-  'M20,4 C27,4 27,14 24,20 C22,24 22,26 24,30 C30,38 33,58 30,76 C29,88 25,96 20,96 C15,96 11,88 10,76 C7,58 10,38 16,30 C18,26 18,24 16,20 C13,14 13,4 20,4 Z';
-
 export function PinIcon({ n }: { n: number }) {
   return (
-    <svg className="pin-svg" viewBox="0 0 40 100" aria-hidden="true">
-      <path className="pin-body" d={PIN_PATH} />
-      <rect className="pin-stripe" x="14" y="17" width="12" height="3" />
-      <rect className="pin-stripe" x="13.5" y="22.5" width="13" height="3" />
-      <text className="pin-num" x="20" y="64" textAnchor="middle" dominantBaseline="middle">
+    <svg className="pin-svg" viewBox="0 0 40 40" aria-hidden="true">
+      <circle className="pin-body" cx="20" cy="20" r="18" />
+      <text className="pin-num" x="20" y="20" textAnchor="middle" dominantBaseline="middle">
         {n}
       </text>
     </svg>

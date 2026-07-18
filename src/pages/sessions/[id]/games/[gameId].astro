@@ -730,22 +730,29 @@ function ballResult(i: number): string {
   // While a throw is in flight, the tapped submit button disables and reads
   // "Saving…" so a slow alley connection doesn't look like a dead tap. (The
   // FormData is captured before the disable, so nothing drops from the post.)
-  // Restored on failure — the Retry banner takes over from there.
+  // Restored on failure — the Retry banner takes over from there. ShotForm's
+  // sticky mobile shortcut is a second submit button in the same form (see
+  // ShotForm.tsx), so this relabels whichever one was actually tapped
+  // (e.submitter) and disables both to block a double-tap on the other.
   let savingButton: HTMLButtonElement | null = null;
   let savingLabel = '';
 
-  function showSaving(form: HTMLFormElement) {
-    const btn = form.querySelector('button[type="submit"]');
+  function showSaving(form: HTMLFormElement, submitter: EventTarget | null) {
+    const buttons = Array.from(form.querySelectorAll('button[type="submit"]'));
+    const btn = submitter instanceof HTMLButtonElement ? submitter : buttons[0];
     if (!(btn instanceof HTMLButtonElement)) return;
     savingButton = btn;
     savingLabel = btn.textContent ?? '';
-    btn.disabled = true;
+    buttons.forEach((b) => { if (b instanceof HTMLButtonElement) b.disabled = true; });
     btn.textContent = 'Saving…';
   }
 
   function hideSaving() {
     if (!savingButton) return;
-    savingButton.disabled = false;
+    const form = savingButton.closest('form');
+    form?.querySelectorAll('button[type="submit"]').forEach((b) => {
+      if (b instanceof HTMLButtonElement) b.disabled = false;
+    });
     savingButton.textContent = savingLabel;
     savingButton = null;
   }
@@ -826,7 +833,7 @@ function ballResult(i: number): string {
       if (sending) return; // ignore double-taps while a send is in flight
       if (banner) banner.hidden = true;
       pending = { form, data: new FormData(form) };
-      showSaving(form);
+      showSaving(form, e.submitter);
       void send();
     });
   }
