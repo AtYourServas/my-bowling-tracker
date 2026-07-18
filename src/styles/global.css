@@ -131,6 +131,24 @@
    ============================================================ */
 * { box-sizing: border-box; }
 
+/* Cross-document view transitions: page loads cross-fade on supporting
+   browsers, older ones keep the hard cut. Pure CSS — no client router, so
+   MPA behavior (incl. the game page's beforeunload guard) is untouched. */
+@view-transition {
+  navigation: auto;
+}
+/* Fixed chrome sits identically on every page — name it so it holds still
+   instead of fading with the rest of the page. */
+.theme-toggle { view-transition-name: theme-toggle; }
+.tabbar { view-transition-name: tabbar; }
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
+
 /* fixed light/dark toggle, top-right corner */
 .theme-toggle {
   position: fixed;
