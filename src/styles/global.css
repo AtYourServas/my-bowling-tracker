@@ -794,20 +794,6 @@ details.collapsible[open] > summary { margin-bottom: var(--s3); }
 .scorenow .row { display: flex; align-items: baseline; gap: var(--s2); }
 .scorenow .n { font-size: var(--text-2xl); font-weight: var(--fw-semi); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; line-height: 1; }
 .scorenow .lbl { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); }
-.hcap { font-size: var(--text-sm); color: var(--text-secondary); font-variant-numeric: tabular-nums; }
-.hcap b { color: var(--text-primary); font-weight: var(--fw-semi); }
-/* Running score strip (game page): frame-to-frame navigation happens by
-   tapping a cell in the scoresheet above, so this is just the live total. */
-.navscore {
-  display: flex;
-  justify-content: center;
-  margin-top: var(--s3);
-  padding: var(--s2);
-  background: var(--surface-sunk);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-}
-.navscore .scorenow { align-items: center; text-align: center; }
 
 /* manual final-score entry, tucked behind a "Set Final Score" text link
    (overrides the frame-derived total) */
