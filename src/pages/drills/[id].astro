@@ -1,0 +1,204 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import ShotForm from '../../components/ShotForm';
+import { leaveLabel } from '../../lib/leaves';
+import { isHit } from '../../lib/drills';
+
+const { supabase, user } = Astro.locals;
+const { id: drillId } = Astro.params;
+
+let error: string | null = null;
+
+const { data: drill } = await supabase
+  .from('drills')
+  .select('id, leave, ended_at, created_at')
+  .eq('id', drillId)
+  .maybeSingle();
+
+if (!drill) {
+  return Astro.redirect('/drills');
+}
+
+const leave: number[] = drill.leave ?? [];
+const freshRack = leave.length === 0;
+
+if (Astro.request.method === 'POST') {
+  const formData = await Astro.request.formData();
+  const intent = formData.get('intent')?.toString();
+
+  if (intent === 'delete_drill') {
+    const { error: deleteError } = await supabase.from('drills').delete().eq('id', drillId);
+    if (deleteError) {
+      error = deleteError.message;
+    } else {
+      return Astro.redirect('/drills');
+    }
+  } else if (intent === 'end_drill') {
+    const { error: endError } = await supabase.from('drills').update({ ended_at: new Date().toISOString() }).eq('id', drillId);
+    if (endError) {
+      error = endError.message;
+    } else {
+      return Astro.redirect('/drills');
+    }
+  } else if (intent === 'log_shot') {
+    const pinsRaw = formData.get('pins_standing')?.toString() ?? '';
+    const pins_standing = pinsRaw
+      ? pinsRaw.split(',').map(Number).filter((n) => n >= 1 && n <= 10)
+      : [];
+
+    const ball_id = formData.get('ball_id')?.toString() || null;
+    const approach_id = formData.get('approach_id')?.toString() || null;
+    const lineup_position = formData.get('lineup_position')?.toString().trim() || null;
+    const slide_position = formData.get('slide_position')?.toString().trim() || null;
+    const target_type = formData.get('target_type')?.toString() || null;
+    const targetValueRaw = formData.get('target_value')?.toString().trim();
+    const target_value = targetValueRaw ? Number(targetValueRaw) : null;
+    const strike = formData.get('strike') === 'true';
+    const spare = formData.get('spare') === 'true';
+    const foul = formData.get('foul') === 'true';
+    const hook_timing = formData.get('hook_timing')?.toString() || null;
+    const miss_direction = formData.get('miss_direction')?.toString() || null;
+    const breakpointRaw = formData.get('breakpoint_board')?.toString().trim();
+    const breakpoint_board = breakpointRaw ? Number(breakpointRaw) : null;
+    const note = formData.get('note')?.toString().trim() || null;
+
+    const { error: insertError } = await supabase.from('drill_shots').insert({
+      drill_id: drillId,
+      ball_id,
+      approach_id,
+      lineup_position,
+      slide_position,
+      target_type,
+      target_value,
+      pins_standing,
+      strike,
+      spare,
+      foul,
+      hook_timing,
+      miss_direction,
+      breakpoint_board,
+      note,
+    });
+
+    if (insertError) {
+      error = insertError.message;
+    } else {
+      return Astro.redirect(`/drills/${drillId}`);
+    }
+  }
+}
+
+const { data: shots } = await supabase
+  .from('drill_shots')
+  .select('*, balls(name)')
+  .eq('drill_id', drillId)
+  .order('created_at', { ascending: true });
+
+const drillShots = (shots ?? []) as any[];
+const shotCount = drillShots.length;
+const hitCount = drillShots.filter(isHit).length;
+
+const { data: balls } = await supabase.from('balls').select('id, name').order('name');
+const { data: approaches } = await supabase
+  .from('approaches')
+  .select('id, name, reference_lineup, reference_slide, reference_target_type, reference_target_value, leave')
+  .order('name');
+
+const { data: prefRow } = await supabase
+  .from('profiles')
+  .select('hidden_shot_fields, default_approach_id, default_ball_id, default_spare_ball_id')
+  .eq('id', user!.id)
+  .maybeSingle();
+const hiddenShotFields = prefRow?.hidden_shot_fields ?? [];
+
+// Every shot in a drill faces the same fixed target leave -- no per-frame
+// ball-count tracking needed. Strike is only offered on a fresh-rack (no
+// leave) drill; Spare only when there's a leave to clear. Mirrors
+// allowedMarks' rack-reset rule without any frame-progress bookkeeping.
+const allowStrike = freshRack;
+const allowSpare = !freshRack;
+const defaultBallId = freshRack ? prefRow?.default_ball_id ?? null : prefRow?.default_spare_ball_id ?? prefRow?.default_ball_id ?? null;
+const defaultApproachId = freshRack ? prefRow?.default_approach_id ?? null : null;
+
+function shotResult(shot: any): string {
+  if (shot.foul) return 'Foul — counts 0';
+  if (isHit(shot)) return shot.strike ? 'Strike' : shot.spare ? 'Spare' : 'Hit';
+  const standing = (shot.pins_standing ?? []) as number[];
+  return `Left ${[...standing].sort((a, b) => a - b).join('-')}`;
+}
+
+function formatRate(hits: number, attempts: number): string {
+  if (attempts === 0) return '—';
+  return `${Math.round((hits / attempts) * 100)}%`;
+}
+---
+
+<Layout title={leaveLabel(leave)}>
+  <nav class="top"><a href="/drills">&larr; Drills</a></nav>
+  <h1>{leaveLabel(leave)}</h1>
+  {drill.ended_at && <p class="empty">Drill complete</p>}
+
+  {error && <p class="error">{error}</p>}
+
+  <div class="scorecard">
+    <div class="scorenow">
+      <div class="row">
+        <span class="n">{formatRate(hitCount, shotCount)}</span>
+        <span class="lbl">{shotCount > 0 ? `${hitCount} of ${shotCount} shots` : 'no shots yet'}</span>
+      </div>
+    </div>
+  </div>
+
+  {shotCount > 0 && (
+    <ul class="ball-log">
+      {drillShots.map((shot: any, i: number) => (
+        <li>
+          <a class="ball-row" href={`/drills/${drillId}/shots/${shot.id}`}>
+            <span class="ball-ord">Shot {i + 1}</span>
+            <span class="ball-result">{shotResult(shot)}</span>
+            <span class="ball-detail">
+              {[shot.balls?.name, shot.target_type && shot.target_value != null ? `${shot.target_type} ${shot.target_value}` : null, shot.hook_timing]
+                .filter(Boolean)
+                .join(' · ')}
+            </span>
+          </a>
+        </li>
+      ))}
+    </ul>
+  )}
+
+  <p class="logball">+ Log Shot {shotCount + 1}</p>
+  <ShotForm
+    client:load
+    balls={balls ?? []}
+    approaches={approaches ?? []}
+    frameNumber={shotCount + 1}
+    startingPins={leave}
+    allowStrike={allowStrike}
+    allowSpare={allowSpare}
+    defaultBallId={defaultBallId}
+    defaultApproachId={defaultApproachId}
+    hiddenFields={hiddenShotFields}
+    submitLabel={`Log Shot ${shotCount + 1}`}
+  />
+
+  <hr />
+
+  {!drill.ended_at && (
+    <form
+      method="POST"
+      class="row-actions"
+      data-confirm="End this drill? Everything logged so far stays saved -- you can still come back and add more."
+      data-confirm-label="End Drill"
+      data-confirm-style="secondary"
+    >
+      <input type="hidden" name="intent" value="end_drill" />
+      <button type="submit" class="secondary">End Drill</button>
+    </form>
+  )}
+
+  <form method="POST" class="row-actions" data-confirm="Discard this drill? Nothing logged will be saved.">
+    <input type="hidden" name="intent" value="delete_drill" />
+    <button type="submit" class="danger">Close Without Logging</button>
+  </form>
+</Layout>

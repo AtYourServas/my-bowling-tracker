@@ -9,8 +9,9 @@ type Props = {
   nameFieldId?: string;
   /** Hidden input field name that carries the selected pins. */
   fieldName?: string;
-  /** 'approach' = setup form (name chip, strike wording); 'filter' = list filter. */
-  variant?: 'approach' | 'filter';
+  /** 'approach' = setup form (name chip, strike wording); 'filter' = list filter;
+   *  'drill' = drill-mode target picker (no name chip, drill wording). */
+  variant?: 'approach' | 'filter' | 'drill';
 };
 
 export default function LeavePicker({
@@ -38,6 +39,7 @@ export default function LeavePicker({
   const suggestion = leaveName(pins);
   const hasPins = pins.length > 0;
   const isApproach = variant === 'approach';
+  const isDrill = variant === 'drill';
 
   function applyName() {
     if (!suggestion) return;
@@ -52,7 +54,7 @@ export default function LeavePicker({
       <div className="pin-shortcuts">
         {hasPins && (
           <button type="button" className="clear" onClick={clearLeave}>
-            {isApproach ? 'Clear (Strike Ball)' : 'Clear'}
+            {isApproach || isDrill ? 'Clear (Strike Ball)' : 'Clear'}
           </button>
         )}
         {isApproach && suggestion && (
@@ -67,7 +69,11 @@ export default function LeavePicker({
           ? hasPins
             ? `Spare approach for the ${suggestion}`
             : 'No leave selected — a first-ball / strike approach. Highlight the pins this approach is for:'
-          : 'Highlight pins to show approaches whose leave includes them:'}
+          : isDrill
+            ? hasPins
+              ? `Drilling the ${suggestion}`
+              : 'No leave selected — a fresh-rack strike drill. Highlight the pins you want to drill:'
+            : 'Highlight pins to show approaches whose leave includes them:'}
       </p>
 
       <PinRows standing={standing} onToggle={togglePin} />
