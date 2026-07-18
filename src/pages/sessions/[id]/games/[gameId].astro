@@ -474,7 +474,7 @@ function ballResult(i: number): string {
 
   <div class="entry-toggle" role="group" aria-label="Score entry mode">
     <a class:list={['seg', { active: mode === 'pick' }]} href={frameHref(frameNumber, 'pick')} aria-current={mode === 'pick' ? 'true' : undefined}>Pick Pins</a>
-    <a class:list={['seg', { active: mode === 'type' }]} href={frameHref(frameNumber, 'type')} aria-current={mode === 'type' ? 'true' : undefined}>Type</a>
+    <a class:list={['seg', { active: mode === 'type' }]} href={frameHref(frameNumber, 'type')} aria-current={mode === 'type' ? 'true' : undefined}>Type Score</a>
   </div>
 
   {mode === 'type' && progress.nextBall != null && (
@@ -549,64 +549,73 @@ function ballResult(i: number): string {
     )}
   </form>
 
-  {!isWarmup && (
-    <div class="scorecard">
-      <div class="scorenow">
-        <div class="row">
-          <span class="n">{runningTotal ?? '—'}</span>
-          <span class="lbl">{through ? `through ${through.frameNumber}` : 'no frames yet'}</span>
+  {!isWarmup ? (
+    <>
+      <div class="navscore">
+        {prevFrame
+          ? <a class="framenav" href={frameHref(prevFrame)} aria-label={`Go to frame ${prevFrame}`} rel="prev">&larr; Prev</a>
+          : <span class="framenav disabled" aria-hidden="true">&larr; Prev</span>}
+        <div class="scorenow">
+          <div class="row">
+            <span class="n">{runningTotal ?? '—'}</span>
+            <span class="lbl">{through ? `through ${through.frameNumber}` : 'no frames yet'}</span>
+          </div>
+          {scratchScore != null && sessionHandicap != null && (
+            <span class="hcap">+ handicap {sessionHandicap} = <b>{scratchScore + sessionHandicap}</b></span>
+          )}
         </div>
-        {scratchScore != null && sessionHandicap != null && (
-          <span class="hcap">+ handicap {sessionHandicap} = <b>{scratchScore + sessionHandicap}</b></span>
-        )}
+        {nextFrame
+          ? <a class="framenav" href={frameHref(nextFrame)} aria-label={`Go to frame ${nextFrame}`} rel="next">Next &rarr;</a>
+          : <span class="framenav disabled" aria-hidden="true">Next &rarr;</span>}
       </div>
-      <form class="finalscore" method="POST">
-        <input type="hidden" name="intent" value="set_score" />
-        <input type="hidden" name="mode" value={mode} />
-        <label for="final_score">Final Score</label>
-        <input
-          id="final_score"
-          type="number"
-          name="final_score"
-          min="0"
-          max="300"
-          value={game.final_score ?? ''}
-          placeholder="&#8212;"
-        />
-        <button type="submit" class="secondary">Save</button>
-      </form>
+      <details class="setscore">
+        <summary>{game.final_score != null ? `Final Score · ${game.final_score}` : 'Set Final Score'}</summary>
+        <form class="finalscore" method="POST">
+          <input type="hidden" name="intent" value="set_score" />
+          <input type="hidden" name="mode" value={mode} />
+          <input
+            id="final_score"
+            type="number"
+            name="final_score"
+            min="0"
+            max="300"
+            value={game.final_score ?? ''}
+            placeholder="&#8212;"
+            aria-label="Final Score"
+          />
+          <button type="submit" class="secondary">Save</button>
+        </form>
+      </details>
+    </>
+  ) : (
+    <div class="framenav-row">
+      {prevFrame
+        ? <a class="framenav" href={frameHref(prevFrame)} aria-label={`Go to frame ${prevFrame}`} rel="prev">&larr; Prev Frame</a>
+        : <span class="framenav disabled" aria-hidden="true">&larr; Prev Frame</span>}
+      {nextFrame
+        ? <a class="framenav" href={frameHref(nextFrame)} aria-label={`Go to frame ${nextFrame}`} rel="next">Next Frame &rarr;</a>
+        : <span class="framenav disabled" aria-hidden="true">Next Frame &rarr;</span>}
     </div>
   )}
 
   <div class="sechead"><span class="chev"><i></i><i></i><i></i></span><h2>Now Bowling &middot; Frame {frameNumber}{progress.nextBall != null && ` · Ball ${progress.nextBall}`}{showFrameLane && ` · Lane ${frameLane}`}</h2></div>
-  <div class="framenav-row">
-    {prevFrame
-      ? <a class="framenav" href={frameHref(prevFrame)} aria-label={`Go to frame ${prevFrame}`} rel="prev">&larr; Prev Frame</a>
-      : <span class="framenav disabled" aria-hidden="true">&larr; Prev Frame</span>}
-    {nextFrame
-      ? <a class="framenav" href={frameHref(nextFrame)} aria-label={`Go to frame ${nextFrame}`} rel="next">Next Frame &rarr;</a>
-      : <span class="framenav disabled" aria-hidden="true">Next Frame &rarr;</span>}
-  </div>
 
   {progress.nextBall != null ? (
     mode === 'pick' ? (
-      <>
-        <p class="logball">+ Log Ball {progress.nextBall}</p>
-        <ShotForm
-          client:load
-          balls={balls ?? []}
-          approaches={approaches ?? []}
-          frameNumber={frameNumber}
-          startingPins={startingPins}
-          allowStrike={marks.strike}
-          allowSpare={marks.spare}
-          defaultBallId={defaultBallId}
-          defaultApproachId={defaultApproachId}
-          mode={mode}
-          hiddenFields={hiddenShotFields}
-          submitLabel={`Log Ball ${progress.nextBall}`}
-        />
-      </>
+      <ShotForm
+        client:load
+        balls={balls ?? []}
+        approaches={approaches ?? []}
+        frameNumber={frameNumber}
+        startingPins={startingPins}
+        allowStrike={marks.strike}
+        allowSpare={marks.spare}
+        defaultBallId={defaultBallId}
+        defaultApproachId={defaultApproachId}
+        mode={mode}
+        hiddenFields={hiddenShotFields}
+        submitLabel={`Log Ball ${progress.nextBall}`}
+      />
     ) : (
       <p class="logball">Type ball {progress.nextBall} into frame {frameNumber} above, then press Enter.</p>
     )
