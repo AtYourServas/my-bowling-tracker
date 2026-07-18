@@ -56,12 +56,13 @@ if (Astro.request.method === 'POST') {
     const targetValueRaw = formData.get('target_value')?.toString().trim();
     const target_value = targetValueRaw ? Number(targetValueRaw) : null;
     const currentLeave = drill.leave ?? [];
+    const postedName = formData.get('name')?.toString().trim();
 
     const { data: inserted, error: insertError } = await supabase
       .from('approaches')
       .insert({
         user_id: user!.id,
-        name: suggestedApproachName(currentLeave),
+        name: postedName || suggestedApproachName(currentLeave),
         reference_ball_id: ball_id,
         reference_lineup: lineup_position,
         reference_slide: slide_position,

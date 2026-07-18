@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import PinDiagram from './PinDiagram';
 import LanePicker, { type LanePickerHandle } from './LanePicker';
-import { leaveName } from '../lib/leaves';
+import { leaveName, suggestedApproachName } from '../lib/leaves';
 import { markLabel, targetLabel } from '../lib/marks';
 
 /** Parse a stored mark (text or numeric) into a board number for the picker. */
@@ -142,14 +142,18 @@ export default function ShotForm({
   // gone (nothing seeds them back in for a not-yet-logged shot). This also
   // means it doesn't need to fight the game page's own fetch-based retry
   // interceptor, since that only listens for a real 'submit' event.
-  type SaveApproachState = { status: 'idle' | 'saving' | 'error' } | { status: 'saved'; id: string };
+  type SaveApproachState =
+    | { status: 'idle' | 'naming' | 'saving' | 'error' }
+    | { status: 'saved'; id: string };
   const [saveApproach, setSaveApproach] = useState<SaveApproachState>({ status: 'idle' });
+  const [approachName, setApproachName] = useState('');
 
   async function handleSaveApproach() {
     if (!formRef.current) return;
     setSaveApproach({ status: 'saving' });
     const data = new FormData(formRef.current);
     data.set('intent', 'save_as_approach');
+    data.set('name', approachName.trim());
     try {
       const res = await fetch(window.location.href, { method: 'POST', body: data, credentials: 'same-origin' });
       const id = res.ok ? new URL(res.url).searchParams.get('saved') : null;
@@ -349,14 +353,48 @@ export default function ShotForm({
           <button type="submit">{submitLabel}</button>
         </div>
       )}
-      <button
-        type="button"
-        className="secondary"
-        disabled={saveApproach.status === 'saving'}
-        onClick={handleSaveApproach}
-      >
-        {saveApproach.status === 'saving' ? 'Saving…' : 'Save as Approach'}
-      </button>
+      {saveApproach.status === 'idle' || saveApproach.status === 'error' ? (
+        <button
+          type="button"
+          className="secondary"
+          onClick={() => {
+            setApproachName(suggestedApproachName(standingPins));
+            setSaveApproach({ status: 'naming' });
+          }}
+        >
+          Save as Approach
+        </button>
+      ) : saveApproach.status === 'naming' || saveApproach.status === 'saving' ? (
+        <div className="reference-box save-approach-naming">
+          <label>
+            Approach Name
+            <input
+              type="text"
+              value={approachName}
+              onChange={(e) => setApproachName(e.target.value)}
+              disabled={saveApproach.status === 'saving'}
+            />
+          </label>
+          <div className="row-actions">
+            <button
+              type="button"
+              className="secondary"
+              disabled={saveApproach.status === 'saving' || !approachName.trim()}
+              onClick={handleSaveApproach}
+            >
+              {saveApproach.status === 'saving' ? 'Saving…' : 'Save'}
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              disabled={saveApproach.status === 'saving'}
+              onClick={() => setSaveApproach({ status: 'idle' })}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : null}
       {saveApproach.status === 'saved' && (
         <p className="empty">
           Saved as approach — <a href={`/approaches/${saveApproach.id}`}>View &amp; edit &rarr;</a>
