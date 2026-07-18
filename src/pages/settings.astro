@@ -53,6 +53,7 @@ if (Astro.request.method === 'POST') {
     const default_spare_ball_id = formData.get('default_spare_ball_id')?.toString() || null;
     const default_approach_id = formData.get('default_approach_id')?.toString() || null;
     const default_entry_mode = formData.get('default_entry_mode')?.toString() === 'type' ? 'type' : 'pick';
+    const show_pinfall = formData.get('show_pinfall') === 'on';
     // each shown checkbox posts show_<key>='on'; anything not checked is hidden
     const hidden_shot_fields = SHOT_FIELD_KEYS.filter((key) => formData.get(`show_${key}`) !== 'on');
     const hidden_approach_fields = APPROACH_FIELD_KEYS.filter((key) => formData.get(`approach_show_${key}`) !== 'on');
@@ -62,7 +63,7 @@ if (Astro.request.method === 'POST') {
     // saving anything. Upsert creates the row on first save instead.
     const { error: updateError } = await supabase
       .from('profiles')
-      .upsert({ id: user!.id, display_name, default_ball_id, default_spare_ball_id, default_approach_id, default_entry_mode, hidden_shot_fields, hidden_approach_fields });
+      .upsert({ id: user!.id, display_name, default_ball_id, default_spare_ball_id, default_approach_id, default_entry_mode, show_pinfall, hidden_shot_fields, hidden_approach_fields });
 
     if (updateError) {
       error = updateError.message;
@@ -74,11 +75,12 @@ if (Astro.request.method === 'POST') {
 
 const { data: profile } = await supabase
   .from('profiles')
-  .select('display_name, default_ball_id, default_spare_ball_id, default_approach_id, default_entry_mode, hidden_shot_fields, hidden_approach_fields')
+  .select('display_name, default_ball_id, default_spare_ball_id, default_approach_id, default_entry_mode, show_pinfall, hidden_shot_fields, hidden_approach_fields')
   .eq('id', user!.id)
   .maybeSingle();
 
 const entryMode = profile?.default_entry_mode === 'type' ? 'type' : 'pick';
+const showPinfall = profile?.show_pinfall ?? true;
 const hiddenShotFields: string[] = profile?.hidden_shot_fields ?? [];
 const hiddenApproachFields: string[] = profile?.hidden_approach_fields ?? [];
 
@@ -113,6 +115,10 @@ const strikeApproaches = (approaches ?? []).filter((a) => (a.leave ?? []).length
         <option value="pick" selected={entryMode === 'pick'}>Pick pins — tap the pin diagram</option>
         <option value="type" selected={entryMode === 'type'}>Type — type the result into the frame</option>
       </select>
+    </label>
+    <label class="check">
+      <input type="checkbox" name="show_pinfall" checked={showPinfall} />
+      Show Pinfall on Mini-Scoresheets
     </label>
 
     <div class="sechead"><span class="chev"><i></i><i></i><i></i></span><h2>Shot Logger Fields</h2></div>
