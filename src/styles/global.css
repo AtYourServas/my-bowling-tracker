@@ -434,6 +434,30 @@ nav.top {
   body { padding-bottom: calc(var(--s6) + var(--tabbar-clearance)); }
 }
 
+/* Persistent "Log ball/shot" shortcut (ShotForm) pinned above the tab bar on
+   mobile while the real submit button is scrolled out of view. */
+.shot-sticky-submit { display: none; }
+@media (max-width: 640px) {
+  .shot-sticky-submit {
+    display: block;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: calc(var(--tabbar-clearance) + var(--s1));
+    z-index: 35;
+    padding: var(--s3) var(--s4);
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    box-shadow: var(--shadow-md);
+  }
+  .shot-sticky-submit button {
+    display: block;
+    width: 100%;
+    max-width: 480px;
+    margin-inline: auto;
+  }
+}
+
 .error  { color: var(--coral); font-size: var(--text-sm); }
 .notice { color: var(--good); font-size: var(--text-sm); }
 p.switch { font-size: var(--text-sm); color: var(--text-secondary); margin-top: var(--s4); }
@@ -923,7 +947,7 @@ a.ball-row:hover { text-decoration: none; box-shadow: var(--shadow-md); border-c
 .lane-drift b { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 
 /* ============================================================
-   Pin picker (circles; SVG-pin upgrade is a later step)
+   Pin picker (circles)
    ============================================================ */
 .pin-rows { display: flex; flex-direction: column; align-items: center; gap: var(--s2); }
 .pin-row { display: flex; gap: var(--s2); }
@@ -940,10 +964,8 @@ a.ball-row:hover { text-decoration: none; box-shadow: var(--shadow-md); border-c
 .pin-svg { width: 100%; height: auto; display: block; }
 /* inline SVG (no <use> shadow tree) so class selectors style the shapes directly */
 .pin .pin-body { fill: var(--pin-down-fill); stroke: var(--pin-down-stroke); stroke-width: 3; }
-.pin .pin-stripe { fill: var(--pin-down-stripe); }
 .pin .pin-num { fill: var(--text-secondary); font-family: var(--font-ui); font-size: 26px; font-weight: var(--fw-semi); }
 .pin.standing .pin-body { fill: var(--pin-up-fill); stroke: var(--pin-up-stroke); }
-.pin.standing .pin-stripe { fill: var(--pin-up-stripe); }
 .pin.standing .pin-num { fill: #fff; }
 
 /* ============================================================

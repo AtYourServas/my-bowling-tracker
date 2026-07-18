@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import PinDiagram from './PinDiagram';
 import LanePicker, { type LanePickerHandle } from './LanePicker';
 import { leaveName } from '../lib/leaves';
@@ -117,6 +117,24 @@ export default function ShotForm({
   const [filterApproaches, setFilterApproaches] = useState(false);
   const laneRef = useRef<LanePickerHandle>(null);
   const formRef = useRef<HTMLFormElement>(null);
+  const submitRef = useRef<HTMLButtonElement>(null);
+
+  // A persistent copy of the submit button pinned to the bottom of the screen
+  // on mobile, so a long form (reference marks/hook/miss/note) doesn't force a
+  // scroll to log the ball. Shown only while the real button is scrolled below
+  // the viewport -- once it comes into view (or the page scrolls past it, e.g.
+  // toward a drill's End Drill controls) the shortcut gets out of the way.
+  const [showSticky, setShowSticky] = useState(false);
+  useEffect(() => {
+    const btn = submitRef.current;
+    if (!btn || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver(
+      ([entry]) => setShowSticky(!entry.isIntersecting && entry.boundingClientRect.top > 0),
+      { threshold: 0 },
+    );
+    observer.observe(btn);
+    return () => observer.disconnect();
+  }, []);
 
   // "Save as Approach" posts in the background (fetch, not a real form submit)
   // so the page never reloads -- a native submit-and-redirect would land you
@@ -325,7 +343,12 @@ export default function ShotForm({
         </label>
       )}
 
-      <button type="submit">{submitLabel}</button>
+      <button type="submit" ref={submitRef}>{submitLabel}</button>
+      {showSticky && (
+        <div className="shot-sticky-submit">
+          <button type="submit">{submitLabel}</button>
+        </div>
+      )}
       <button
         type="button"
         className="secondary"
