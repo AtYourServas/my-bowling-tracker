@@ -1,8 +1,9 @@
 ---
 import Layout from '../../../../layouts/Layout.astro';
 import ShotForm from '../../../../components/ShotForm';
+import { suggestedApproachName } from '../../../../lib/leaves';
 
-const { supabase } = Astro.locals;
+const { supabase, user } = Astro.locals;
 const { id: drillId, shotId } = Astro.params;
 
 let error: string | null = null;
@@ -32,6 +33,36 @@ if (Astro.request.method === 'POST') {
       error = deleteError.message;
     } else {
       return Astro.redirect(`/drills/${drillId}`);
+    }
+  } else if (intent === 'save_as_approach') {
+    // reads the form's CURRENT ball/marks (not the stored shot), so any tweak
+    // made before clicking Save as Approach is what gets saved
+    const ball_id = formData.get('ball_id')?.toString() || null;
+    const lineup_position = formData.get('lineup_position')?.toString().trim() || null;
+    const slide_position = formData.get('slide_position')?.toString().trim() || null;
+    const target_type = formData.get('target_type')?.toString() || null;
+    const targetValueRaw = formData.get('target_value')?.toString().trim();
+    const target_value = targetValueRaw ? Number(targetValueRaw) : null;
+
+    const { data: inserted, error: insertError } = await supabase
+      .from('approaches')
+      .insert({
+        user_id: user!.id,
+        name: suggestedApproachName(leave),
+        reference_ball_id: ball_id,
+        reference_lineup: lineup_position,
+        reference_slide: slide_position,
+        reference_target_type: target_type,
+        reference_target_value: target_value,
+        leave,
+      })
+      .select('id')
+      .single();
+
+    if (insertError) {
+      error = insertError.message;
+    } else {
+      return Astro.redirect(`/drills/${drillId}/shots/${shotId}?saved=${inserted.id}`);
     }
   } else {
     const pinsRaw = formData.get('pins_standing')?.toString() ?? '';
