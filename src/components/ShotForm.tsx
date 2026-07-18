@@ -310,7 +310,18 @@ export default function ShotForm({
       {show('note') && (
         <label>
           Note
-          <textarea name="note" rows={2} defaultValue={initial?.note ?? ''}></textarea>
+          <textarea
+            name="note"
+            rows={2}
+            defaultValue={initial?.note ?? ''}
+            onFocus={(e) => {
+              // the submit button sits right below; once the mobile keyboard
+              // finishes animating in, re-center this field so the button
+              // isn't left hidden underneath it
+              const el = e.currentTarget;
+              setTimeout(() => el.scrollIntoView({ block: 'center', behavior: 'smooth' }), 300);
+            }}
+          ></textarea>
         </label>
       )}
 

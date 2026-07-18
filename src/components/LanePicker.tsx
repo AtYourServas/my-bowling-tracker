@@ -120,6 +120,7 @@ function LaneStrip({
         <span className="lane-strip-value">{detail}</span>
         <input
           type="number"
+          inputMode="decimal"
           className="lane-board-input"
           min={1}
           max={BOARDS}
