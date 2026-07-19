@@ -706,24 +706,33 @@ const setupSummary = [leagueName, laneLabel(laneConfig)].filter(Boolean).join(' 
   // (data-confirm, from Layout.astro) instead of a plain submit so that case
   // gets a heads-up; an empty field or the Log Final Score button submit
   // straight through.
-  document.querySelectorAll<HTMLFormElement>('form.add-game').forEach((form) => {
-    const scoreInput = form.querySelector<HTMLInputElement>('input[name="final_score"]');
-    const actionInput = form.querySelector<HTMLInputElement>('input[name="action"]');
-    if (!scoreInput || !actionInput) return;
-    form.querySelectorAll<HTMLButtonElement>('button[data-action]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        actionInput.value = btn.dataset.action ?? '';
-        if (btn.dataset.action === 'log' && scoreInput.value.trim()) {
-          form.setAttribute(
-            'data-confirm',
-            `Log frame by frame instead? The score you typed ("${scoreInput.value}") won't be saved -- you'll build the score up as you log each frame.`,
-          );
-          form.setAttribute('data-confirm-label', 'Log Each Frame');
-          form.setAttribute('data-confirm-style', 'secondary');
-        } else {
-          form.removeAttribute('data-confirm');
-        }
-        form.requestSubmit();
+  //
+  // Wrapped in astro:page-load (fires on the initial load AND every
+  // ClientRouter navigation) rather than running as a plain top-level script:
+  // this exact script's text is identical for every /sessions/<id>, so
+  // Astro's router treats it as "already present" and skips re-inserting it
+  // when navigating between two different sessions -- a plain top-level body
+  // here would only ever wire up the FIRST session page's buttons.
+  document.addEventListener('astro:page-load', () => {
+    document.querySelectorAll<HTMLFormElement>('form.add-game').forEach((form) => {
+      const scoreInput = form.querySelector<HTMLInputElement>('input[name="final_score"]');
+      const actionInput = form.querySelector<HTMLInputElement>('input[name="action"]');
+      if (!scoreInput || !actionInput) return;
+      form.querySelectorAll<HTMLButtonElement>('button[data-action]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          actionInput.value = btn.dataset.action ?? '';
+          if (btn.dataset.action === 'log' && scoreInput.value.trim()) {
+            form.setAttribute(
+              'data-confirm',
+              `Log frame by frame instead? The score you typed ("${scoreInput.value}") won't be saved -- you'll build the score up as you log each frame.`,
+            );
+            form.setAttribute('data-confirm-label', 'Log Each Frame');
+            form.setAttribute('data-confirm-style', 'secondary');
+          } else {
+            form.removeAttribute('data-confirm');
+          }
+          form.requestSubmit();
+        });
       });
     });
   });

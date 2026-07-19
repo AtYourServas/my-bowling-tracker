@@ -172,31 +172,39 @@ const { data: profile } = await supabase
 </style>
 
 <script>
-  // Selecting a league fills the team-name field from that league, while
-  // leaving any name the user has typed themselves untouched (override).
-  const leagueSelect = document.querySelector<HTMLSelectElement>('select[name="league_id"]');
-  const teamInput = document.querySelector<HTMLInputElement>('input[name="league_team_name"]');
-  if (leagueSelect && teamInput) {
-    let autoValue = teamInput.value;
-    leagueSelect.addEventListener('change', () => {
-      const team = leagueSelect.selectedOptions[0]?.dataset.team ?? '';
-      if (teamInput.value === '' || teamInput.value === autoValue) {
-        teamInput.value = team;
-        autoValue = team;
-      }
-    });
-  }
+  // Wrapped in astro:page-load (fires on the initial load AND every
+  // ClientRouter navigation, including a repeat visit to this same page):
+  // Astro dedupes identical script content against what's already run THIS
+  // session, so a plain top-level body here would only ever wire up the
+  // FIRST visit to /sessions/new -- navigating away and back later would
+  // land on an unwired form.
+  document.addEventListener('astro:page-load', () => {
+    // Selecting a league fills the team-name field from that league, while
+    // leaving any name the user has typed themselves untouched (override).
+    const leagueSelect = document.querySelector<HTMLSelectElement>('select[name="league_id"]');
+    const teamInput = document.querySelector<HTMLInputElement>('input[name="league_team_name"]');
+    if (leagueSelect && teamInput) {
+      let autoValue = teamInput.value;
+      leagueSelect.addEventListener('change', () => {
+        const team = leagueSelect.selectedOptions[0]?.dataset.team ?? '';
+        if (teamInput.value === '' || teamInput.value === autoValue) {
+          teamInput.value = team;
+          autoValue = team;
+        }
+      });
+    }
 
-  // League/Team/Handicap Override only apply to a league session -- hide them
-  // for Practice so a first-time practice bowler isn't shown fields that
-  // don't apply (the server already ignores them outside session_type='league').
-  const sessionTypeSelect = document.querySelector<HTMLSelectElement>('select[name="session_type"]');
-  const leagueOnly = document.querySelector<HTMLDivElement>('.league-only');
-  if (sessionTypeSelect && leagueOnly) {
-    const sync = () => {
-      leagueOnly.hidden = sessionTypeSelect.value !== 'league';
-    };
-    sessionTypeSelect.addEventListener('change', sync);
-    sync();
-  }
+    // League/Team/Handicap Override only apply to a league session -- hide them
+    // for Practice so a first-time practice bowler isn't shown fields that
+    // don't apply (the server already ignores them outside session_type='league').
+    const sessionTypeSelect = document.querySelector<HTMLSelectElement>('select[name="session_type"]');
+    const leagueOnly = document.querySelector<HTMLDivElement>('.league-only');
+    if (sessionTypeSelect && leagueOnly) {
+      const sync = () => {
+        leagueOnly.hidden = sessionTypeSelect.value !== 'league';
+      };
+      sessionTypeSelect.addEventListener('change', sync);
+      sync();
+    }
+  });
 </script>
