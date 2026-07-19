@@ -71,6 +71,23 @@ export async function removeQueuedWrite(id: string): Promise<void> {
   await db.delete(WRITE_QUEUE_STORE, id);
 }
 
+/** Whether any write, for any game, is still waiting to sync -- used to gate the logout cleanup. */
+export async function hasQueuedWrites(): Promise<boolean> {
+  const db = await getDb();
+  const count = await db.count(WRITE_QUEUE_STORE);
+  return count > 0;
+}
+
+/**
+ * Wipes both stores (called on logout, only once `hasQueuedWrites()` is
+ * false -- never discards an unsynced write).
+ */
+export async function clearAllOfflineData(): Promise<void> {
+  const db = await getDb();
+  await db.clear(WRITE_QUEUE_STORE);
+  await db.clear(REFERENCE_CACHE_STORE);
+}
+
 /**
  * Reference data (balls/approaches/profile defaults) the game page's shot
  * logger depends on -- cached here on every successful mount so a future
