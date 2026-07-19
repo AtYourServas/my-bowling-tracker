@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { RateStats, LeaveConversion, PinLeaveStat, CleanGameStats } from '../lib/stats';
+import { PinRows } from './PinRack';
 
 type BarDatum = { label: string; value: number; count: number };
 type TimeDatum = { date: string; score: number };
@@ -47,11 +48,46 @@ function RateTile({ label, made, opportunities, noun }: { label: string; made: n
 }
 
 function LeaveConversionTable({ data }: { data: LeaveConversion[] }) {
+  const [pinFilter, setPinFilter] = useState<Set<number>>(new Set());
+
+  function togglePin(pin: number) {
+    setPinFilter((prev) => {
+      const next = new Set(prev);
+      if (next.has(pin)) next.delete(pin);
+      else next.add(pin);
+      return next;
+    });
+  }
+
+  const selectedPins = Array.from(pinFilter);
+  const filtered = selectedPins.length === 0 ? data : data.filter((d) => selectedPins.every((p) => d.pins.includes(p)));
+
   return (
     <div className="chart-card">
       <h2>Spare Conversion by Leave</h2>
+
+      <details className="filter-collapse">
+        <summary>
+          Filter by Pin
+          {selectedPins.length > 0 && <span className="filter-badge">Active</span>}
+        </summary>
+        <div className="pin-filter-body">
+          {selectedPins.length > 0 && (
+            <div className="pin-shortcuts">
+              <button type="button" className="clear" onClick={() => setPinFilter(new Set())}>
+                Clear
+              </button>
+            </div>
+          )}
+          <p className="pin-hint">Highlight pins to show only leaves that include them:</p>
+          <PinRows standing={pinFilter} onToggle={togglePin} />
+        </div>
+      </details>
+
       {data.length === 0 ? (
         <p className="chart-empty">Not enough data yet.</p>
+      ) : filtered.length === 0 ? (
+        <p className="chart-empty">No leaves match the selected pins.</p>
       ) : (
         <table className="chart-table">
           <thead>
@@ -62,7 +98,7 @@ function LeaveConversionTable({ data }: { data: LeaveConversion[] }) {
             </tr>
           </thead>
           <tbody>
-            {data.map((d) => (
+            {filtered.map((d) => (
               <tr key={d.name}>
                 <td>{d.name}</td>
                 <td>
