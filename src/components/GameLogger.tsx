@@ -383,6 +383,21 @@ export default function GameLogger({
     await syncShot(pendingSync.frameNumber, pendingSync.formData, activeFrame);
   }
 
+  // Auto-retry the instant connectivity returns, rather than leaving a
+  // pending shot waiting on someone to notice the retry banner and tap it.
+  // Matters most on mobile at the alley, where beforeunload confirmation
+  // dialogs (the other safety net, above) are notoriously unreliable --
+  // without this, a brief signal drop that recovers on its own before the
+  // bowler does anything would otherwise silently lose that ball if they
+  // reload rather than wait.
+  useEffect(() => {
+    if (!pendingSync) return;
+    const onOnline = () => void retrySync();
+    window.addEventListener('online', onOnline);
+    return () => window.removeEventListener('online', onOnline);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingSync]);
+
   function handlePickSubmit(formData: FormData) {
     const pinsRaw = formData.get('pins_standing')?.toString() ?? '';
     const pins_standing = pinsRaw
@@ -656,6 +671,13 @@ export default function GameLogger({
       {progress.nextBall != null ? (
         mode === 'pick' ? (
           <ShotForm
+            // Each logical ball needs a FRESH ShotForm/PinDiagram instance --
+            // without a changing key, React reuses the same mounted instance
+            // across shots now that logging one no longer reloads the page,
+            // so PinDiagram's internal strike/spare/foul state (and every
+            // defaultValue-seeded select) would otherwise carry over into
+            // the next ball instead of resetting.
+            key={`${activeFrame}-${progress.nextBall}-${activeFrameShots.length}`}
             balls={balls}
             approaches={approaches}
             frameNumber={activeFrame}
