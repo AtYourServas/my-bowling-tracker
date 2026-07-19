@@ -8,7 +8,7 @@
 // connectivity, not a data-free shell. Bump CACHE_VERSION when this file's
 // caching logic changes so old entries (including stale game-page HTML) get
 // evicted on the next activate.
-const CACHE_VERSION = 'v1';
+const CACHE_VERSION = 'v2';
 const STATIC_CACHE = `bowling-static-${CACHE_VERSION}`;
 const GAME_CACHE = `bowling-game-${CACHE_VERSION}`;
 const CURRENT_CACHES = [STATIC_CACHE, GAME_CACHE];
@@ -60,14 +60,29 @@ async function cacheFirst(request) {
   return response;
 }
 
+// Keyed by pathname alone (query string dropped), not the exact request URL.
+// Phase 1's shot logger advances through frames client-side via
+// history.replaceState -- no new navigation, so the SW never sees a fetch for
+// ?frame=2, ?frame=3, etc. Caching per exact URL would only ever have an
+// entry for whichever frame the page happened to be on at the last real
+// document load, so a later reload from a different frame (the common case
+// once you're a few balls into the game) would miss the cache and hit
+// /offline.html even though this game page was genuinely already visited.
+// One entry per game instead -- always the most recent real navigation's
+// snapshot, regardless of which frame's URL triggered the reload.
+function gameCacheKey(url) {
+  return url.origin + url.pathname;
+}
+
 async function networkFirstGamePage(request) {
   const cache = await caches.open(GAME_CACHE);
+  const key = gameCacheKey(new URL(request.url));
   try {
     const response = await fetch(request);
-    if (response.ok) cache.put(response.url, response.clone());
+    if (response.ok) cache.put(key, response.clone());
     return response;
   } catch (err) {
-    const cached = await cache.match(request.url);
+    const cached = await cache.match(key);
     if (cached) return cached;
     const staticCache = await caches.open(STATIC_CACHE);
     const offline = await staticCache.match('/offline.html');
