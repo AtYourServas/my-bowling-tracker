@@ -1,0 +1,66 @@
+---
+// Background refresh target for GameLogger.tsx's "Past Notes" panel. A bare
+// HTML fragment (no <Layout>) reusing NoteCard.astro directly -- notes can't
+// be rendered from a plain React island since NoteCard is an Astro-only
+// component, so this is fetched as text and its innerHTML swapped in after
+// each synced shot, instead of trying to reimplement NoteCard in React.
+import NoteCard from '../../../../../components/NoteCard.astro';
+import { fetchGameLeaveNotesContext } from '../../../../../lib/gameContext';
+import { leaveDisplayName } from '../../../../../lib/leaves';
+import { leaveAnchor } from '../../../../../lib/notes';
+
+const { supabase } = Astro.locals;
+const { gameId } = Astro.params;
+
+const frameNumber = Number(Astro.url.searchParams.get('frame')) || 1;
+const isWarmup = Astro.url.searchParams.get('warmup') === '1';
+
+const { leaveNotes, facedNow } = await fetchGameLeaveNotesContext(supabase, gameId!, isWarmup, frameNumber);
+const leaveNotesShown = leaveNotes.slice(0, 5);
+---
+
+{leaveNotes.length > 0 && (
+  <details class="leave-notes" open>
+    <summary>Past Notes &middot; {leaveDisplayName(facedNow)} <span class="ln-count">({leaveNotes.length})</span></summary>
+    <ul class="note-stream">
+      {leaveNotesShown.map((note) => (
+        <li><NoteCard note={note} /></li>
+      ))}
+    </ul>
+    {leaveNotes.length > leaveNotesShown.length && (
+      <a class="leave-more" href={`/notes?view=leave#${leaveAnchor(facedNow)}`}>See all {leaveNotes.length} &rarr;</a>
+    )}
+  </details>
+)}
+
+<style>
+  .leave-notes {
+    margin: 0.5rem 0 1rem;
+  }
+  .leave-notes > summary {
+    cursor: pointer;
+    color: var(--accent);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .leave-notes .ln-count {
+    color: var(--text-muted);
+    font-weight: 400;
+  }
+  .leave-notes .note-stream {
+    margin-top: 0.6rem;
+  }
+  .note-stream {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.75rem;
+  }
+  .leave-more {
+    display: inline-block;
+    margin-top: 0.5rem;
+    font-size: var(--text-sm);
+    font-weight: 600;
+  }
+</style>

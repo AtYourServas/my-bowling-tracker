@@ -1,27 +1,22 @@
 ---
 import Layout from '../../../../layouts/Layout.astro';
-import ShotForm from '../../../../components/ShotForm';
-import NoteCard from '../../../../components/NoteCard.astro';
+import GameLogger from '../../../../components/GameLogger';
 import {
-  fetchScoresheetForGame,
   fetchRunningScoreForGame,
   frameProgress,
-  computeFrameRolls,
-  allowedMarks,
+  computeScoresheet,
+  computeWarmupSheet,
   pinsStandingBefore,
   pinsFacedBefore,
   parseShotShorthand,
   fetchEarliestIncompleteFrame,
-  fetchWarmupFrames,
-  computeWarmupSheet,
   fetchEarliestIncompleteWarmupFrame,
   WARMUP_FRAME,
 } from '../../../../lib/scoring';
-import type { ShotLite } from '../../../../lib/scoring';
-import { fetchSessionHandicap } from '../../../../lib/handicap';
-import { fetchLeaveNotes, notesForLeave, leaveAnchor } from '../../../../lib/notes';
-import { leaveDisplayName, suggestedApproachName } from '../../../../lib/leaves';
-import { laneForFrame, laneConfigFromSession } from '../../../../lib/lanes';
+import type { ShotLite, FrameLite } from '../../../../lib/scoring';
+import { fetchGameScoreContext } from '../../../../lib/gameContext';
+import { suggestedApproachName } from '../../../../lib/leaves';
+import { laneConfigFromSession } from '../../../../lib/lanes';
 
 const { supabase, user } = Astro.locals;
 const { id: sessionId, gameId } = Astro.params;
@@ -73,6 +68,12 @@ const frameNumber = isWarmup ? Math.max(1, Number(frameParam) || 1) : Math.min(1
 // literal frame 10, 20, ... -- see WARMUP_FRAME.
 const ruleFrameNumber = isWarmup ? WARMUP_FRAME : frameNumber;
 
+// -----------------------------------------------------------------------
+// POST handler -- byte-for-byte unchanged from before GameLogger.tsx (Phase
+// 1 of the offline build) took over shot-logging. GameLogger calls this same
+// log_shot/log_shorthand path via a background fetch instead of a native
+// form submit; every other intent here is untouched.
+// -----------------------------------------------------------------------
 if (Astro.request.method === 'POST') {
   const formData = await Astro.request.formData();
   const intent = formData.get('intent')?.toString();
@@ -328,28 +329,37 @@ if (Astro.request.method === 'POST') {
   }
 }
 
-const cells = isWarmup
-  ? computeWarmupSheet(await fetchWarmupFrames(supabase, gameId!), frameNumber)
-  : await fetchScoresheetForGame(supabase, gameId!);
-const runningTotal = [...cells].reverse().find((c) => c.cumulative != null)?.cumulative ?? null;
-const finalDerived = !isWarmup ? cells[9]?.cumulative ?? null : null; // full total once all 10 resolve
-const scratchScore = game.final_score ?? finalDerived ?? runningTotal;
+// -----------------------------------------------------------------------
+// GET render -- GameLogger.tsx (a client island) owns the scoresheet, entry
+// form, ball-log, and the handicap/partial-score/leave-notes panels from
+// here on; this frontmatter's job is just to fetch its initial props once
+// (one full-column frames+shots query covers both the scoresheet math AND
+// the ball-log/edit-link detail, replacing what used to be two separate
+// queries) so the island paints immediately with no client-side loading
+// state on first view.
+// -----------------------------------------------------------------------
 
-// Practice-session games (standalone practice, is_practice=false) can be ended
-// before frame 10 with a partial score -- competitive league games can't.
-// Warmup (is_practice=true) has its own always-available "End Practice" below,
-// no score involved. The partial score uses computeRunningScore (face-value on
-// any unresolved trailing bonus), not the strict cumulative above, so a couple
-// of strikes in a row at the start of a game don't leave the button unable to
-// show a score.
-const isPracticeSessionGame = !isWarmup && game.sessions?.session_type === 'practice';
-const partialScore =
-  isPracticeSessionGame && game.final_score == null && finalDerived == null
-    ? await fetchRunningScoreForGame(supabase, gameId!)
-    : null;
-const canEndEarly = partialScore != null;
+const { data: frameRows } = await supabase
+  .from('frames')
+  .select('frame_number, shots(*, balls(name))')
+  .eq('game_id', gameId)
+  .order('frame_number', { ascending: true })
+  .order('created_at', { foreignTable: 'shots', ascending: true });
+
+const initialFrames = (frameRows ?? []).map((f: any) => ({
+  frameNumber: f.frame_number as number,
+  shots: (f.shots ?? []) as any[],
+}));
+
+const liteFrames: FrameLite[] = initialFrames.map((f) => ({
+  frame_number: f.frameNumber,
+  shots: f.shots.map((s: any) => ({ pins_standing: s.pins_standing, strike: s.strike, spare: s.spare, foul: s.foul })),
+}));
+
+const cells = isWarmup ? computeWarmupSheet(liteFrames, frameNumber) : computeScoresheet(liteFrames);
 const lastBowled = [...cells].reverse().find((c) => c.bowled) ?? null;
-const sessionHandicap = isWarmup ? null : await fetchSessionHandicap(supabase, { id: sessionId!, ...game.sessions });
+
+const scoreContext = await fetchGameScoreContext(supabase, sessionId!, game as any, liteFrames);
 
 const sessionMeta = [
   game.sessions?.alley_name,
@@ -363,21 +373,6 @@ const sessionMeta = [
 ]
   .filter(Boolean)
   .join(' · ');
-
-const { data: frameRow } = await supabase
-  .from('frames')
-  .select('id')
-  .eq('game_id', gameId)
-  .eq('frame_number', frameNumber)
-  .maybeSingle();
-
-const { data: shots } = frameRow
-  ? await supabase
-      .from('shots')
-      .select('*, balls(name)')
-      .eq('frame_id', frameRow.id)
-      .order('created_at', { ascending: true })
-  : { data: [] };
 
 const { data: balls } = await supabase.from('balls').select('id, name').order('name');
 const { data: approaches } = await supabase
@@ -395,68 +390,7 @@ const hiddenShotFields = prefRow?.hidden_shot_fields ?? [];
 
 const gameLabel = game.is_practice ? 'Practice' : game.game_number ? `Game ${game.game_number}` : 'Game';
 
-// under a two-lane pair, strict alternation puts each frame on a derived lane
 const laneConfig = laneConfigFromSession(game.sessions ?? { lane_number: null, second_lane_number: null });
-const frameLane = laneForFrame(frameNumber, laneConfig);
-const showFrameLane = laneConfig.secondLaneNumber != null && frameLane != null;
-
-// current-frame state (reuses the scoresheet's roll + completeness logic)
-const frameShots = (shots ?? []) as any[];
-const progress = frameProgress(ruleFrameNumber, frameShots as ShotLite[]);
-const marks = allowedMarks(ruleFrameNumber, frameShots as ShotLite[]);
-const knockedPerBall = computeFrameRolls(frameShots as ShotLite[]);
-const frameMarks = cells[frameNumber - 1].balls;
-const ordinals = ['First', 'Second', 'Third'];
-
-// pins left standing after the last logged ball seed the next ball's picker
-const startingPins = frameShots.length ? frameShots[frameShots.length - 1].pins_standing ?? [] : [];
-
-// the leave this ball faces (pins standing before it — a full rack on ball 1 /
-// after a respot), used to surface what you noted the last times you shot it
-const facedNow = pinsFacedBefore(frameShots as ShotLite[]);
-// surface those past notes (exact faced-leave match, across all your sessions);
-// shown capped, the rest linked on /notes
-const leaveNotes = progress.nextBall != null ? notesForLeave(await fetchLeaveNotes(supabase), facedNow) : [];
-const leaveNotesShown = leaveNotes.slice(0, 5);
-
-// pre-select the session's default ball on the first ball of a frame and the
-// spare ball on later balls; each shot's ball can still be changed manually
-const defaultBallId =
-  progress.nextBall === 1
-    ? game.sessions?.default_ball_id ?? null
-    : game.sessions?.default_spare_ball_id ?? game.sessions?.default_ball_id ?? null;
-
-// the profile's default strike approach prefills any ball facing a full rack
-// (frame first balls + 10th-frame respots); its marks auto-apply in ShotForm
-const defaultApproachId = startingPins.length === 0 ? prefRow?.default_approach_id ?? null : null;
-
-// frames 1-9 that completed on a lone strike: a 2nd ball needs the strike edited away
-const strikeLockShot = (isWarmup || frameNumber < 10) && progress.complete && frameShots.length === 1 ? frameShots[0] : null;
-
-const nextFrame = isWarmup ? frameNumber + 1 : frameNumber < 10 ? frameNumber + 1 : null;
-const frameHref = (n: number, m: 'pick' | 'type' = mode) => `/sessions/${sessionId}/games/${gameId}?frame=${n}&mode=${m}`;
-
-// the ball box (0-based) awaiting entry in the active frame, when typing
-const activeBox = progress.nextBall != null ? progress.nextBall - 1 : -1;
-
-// A struck frame (1-9, or any warmup frame) shows the X alone in the top-right
-// corner box, the traditional scoresheet look — drop the placeholder empty
-// 2nd-ball square. Warmup never has a real 10th-frame 3-ball layout.
-function displayBalls(cell: (typeof cells)[number]) {
-  return (isWarmup || cell.frameNumber < 10) && cell.balls[0]?.kind === 'strike'
-    ? cell.balls.slice(0, 1)
-    : cell.balls;
-}
-
-function ballResult(i: number): string {
-  if (frameShots[i]?.foul) return 'Foul — counts 0';
-  const kind = frameMarks[i]?.kind;
-  if (kind === 'strike') return 'Strike';
-  if (kind === 'spare') return 'Spare';
-  const knocked = knockedPerBall[i] ?? 0;
-  return knocked === 0 ? 'Gutter — 0 down' : `${knocked} down`;
-}
-
 ---
 
 <Layout title={gameLabel}>
@@ -469,184 +403,24 @@ function ballResult(i: number): string {
 
   {error && <p class="error">{error}</p>}
 
-  <div class="sechead"><span class="chev"><i></i><i></i><i></i></span><h2>Scoresheet</h2></div>
-
-  <div class="entry-toggle" role="group" aria-label="Score entry mode">
-    <a class:list={['seg', { active: mode === 'pick' }]} href={frameHref(frameNumber, 'pick')} aria-current={mode === 'pick' ? 'true' : undefined}>Pick Pins</a>
-    <a class:list={['seg', { active: mode === 'type' }]} href={frameHref(frameNumber, 'type')} aria-current={mode === 'type' ? 'true' : undefined}>Type Score</a>
-  </div>
-
-  {mode === 'type' && progress.nextBall != null && (
-    <div class="type-legend">
-      <p class="type-instruction">Type into the highlighted frame, then press Enter.</p>
-      <ul class="legend" aria-label="Shorthand key">
-        <li><span class="k">X</span> strike</li>
-        <li><span class="k">/</span> spare</li>
-        <li><span class="k">G 0 -</span> gutter / miss</li>
-        <li><span class="k">F</span> foul</li>
-      </ul>
-    </div>
-  )}
-
-  <form method="POST">
-    <input type="hidden" name="intent" value="log_shorthand" />
-    <input type="hidden" name="frame_number" value={frameNumber} />
-    <input type="hidden" name="mode" value={mode} />
-    <div class="sheetwrap">
-      <div class="sheet" role="group" aria-label="Frames">
-        {cells.map((cell) => {
-          const isActive = cell.frameNumber === frameNumber;
-          const typeHere = mode === 'type' && isActive && progress.nextBall != null;
-          const cls = ['cell', { active: isActive, future: !cell.bowled && !isActive, f10: !isWarmup && cell.frameNumber === 10 }];
-          return typeHere ? (
-            <div class:list={[...cls, 'typing']} aria-current="true" aria-label={`Frame ${cell.frameNumber}, entering ball ${progress.nextBall}`}>
-              <span class="fnum">{cell.frameNumber}</span>
-              <span class="balls">
-                {cell.balls.map((b, i) => (
-                  i === activeBox ? (
-                    <input
-                      class="bbox bbox-input"
-                      type="text"
-                      name="shorthand"
-                      value=""
-                      maxlength="2"
-                      autocomplete="off"
-                      autocapitalize="characters"
-                      autofocus
-                      aria-label={`Frame ${frameNumber}, ball ${progress.nextBall}`}
-                    />
-                  ) : (
-                    <span class:list={['bbox', { mark: b.kind === 'strike' || b.kind === 'spare', strike: b.kind === 'strike', spare: b.kind === 'spare', foul: b.kind === 'foul', empty: b.kind === 'empty' }]}>{b.text}</span>
-                  )
-                ))}
-              </span>
-              <span class:list={['total', { blank: cell.cumulative == null }]}>{cell.cumulative == null ? '—' : cell.cumulative}</span>
-            </div>
-          ) : (
-            <a
-              class:list={cls}
-              href={frameHref(cell.frameNumber)}
-              aria-current={isActive ? 'true' : undefined}
-              aria-label={`Frame ${cell.frameNumber}${cell.cumulative != null ? `, ${cell.cumulative}` : ''}`}
-            >
-              <span class="fnum">{cell.frameNumber}</span>
-              <span class="balls">
-                {displayBalls(cell).map((b) => (
-                  <span class:list={['bbox', { mark: b.kind === 'strike' || b.kind === 'spare', strike: b.kind === 'strike', spare: b.kind === 'spare', foul: b.kind === 'foul', empty: b.kind === 'empty' }]}>{b.text}</span>
-                ))}
-              </span>
-              <span class:list={['total', { blank: cell.cumulative == null }]}>{cell.cumulative == null ? '—' : cell.cumulative}</span>
-            </a>
-          );
-        })}
-      </div>
-    </div>
-    {mode === 'type' && progress.nextBall != null && (
-      <div class="type-controls">
-        <button type="submit" class="secondary">Log Ball {progress.nextBall}</button>
-      </div>
-    )}
-  </form>
-
-  {!isWarmup && scratchScore != null && sessionHandicap != null && (
-    <p class="hcap">+ handicap {sessionHandicap} = <b>{scratchScore + sessionHandicap}</b></p>
-  )}
-
-  {!isWarmup && (
-    <details class="setscore">
-      <summary>{game.final_score != null ? `Final Score · ${game.final_score}` : 'Set Final Score'}</summary>
-      <form class="finalscore" method="POST">
-        <input type="hidden" name="intent" value="set_score" />
-        <input type="hidden" name="mode" value={mode} />
-        <input
-          id="final_score"
-          type="number"
-          name="final_score"
-          min="0"
-          max="300"
-          value={game.final_score ?? ''}
-          placeholder="&#8212;"
-          aria-label="Final Score"
-        />
-        <button type="submit" class="secondary">Save</button>
-      </form>
-    </details>
-  )}
-
-  <div class="sechead"><span class="chev"><i></i><i></i><i></i></span><h2>Now Bowling &middot; Frame {frameNumber}{progress.nextBall != null && ` · Ball ${progress.nextBall}`}{showFrameLane && ` · Lane ${frameLane}`}</h2></div>
-
-  {progress.nextBall != null ? (
-    mode === 'pick' ? (
-      <ShotForm
-        client:load
-        balls={balls ?? []}
-        approaches={approaches ?? []}
-        frameNumber={frameNumber}
-        startingPins={startingPins}
-        allowStrike={marks.strike}
-        allowSpare={marks.spare}
-        defaultBallId={defaultBallId}
-        defaultApproachId={defaultApproachId}
-        mode={mode}
-        hiddenFields={hiddenShotFields}
-        submitLabel={`Log Ball ${progress.nextBall}`}
-      />
-    ) : (
-      <p class="logball">Type ball {progress.nextBall} into frame {frameNumber} above, then press Enter.</p>
-    )
-  ) : strikeLockShot ? (
-    <p class="framedone">
-      Strike &mdash; frame {frameNumber} complete. To add a second ball,{' '}
-      <a href={`/sessions/${sessionId}/games/${gameId}/shots/${strikeLockShot.id}?mode=${mode}`}>edit the strike</a> first.
-    </p>
-  ) : (
-    <p class="framedone">
-      Frame {frameNumber} complete.{' '}
-      {nextFrame && <a href={frameHref(nextFrame)}>Go to frame {nextFrame} &rarr;</a>}
-    </p>
-  )}
-
-  <details class="game-note" id="note">
-    <summary>+ Add a Note</summary>
-    <form method="POST" class="add-note">
-      <input type="hidden" name="intent" value="add_note" />
-      <input type="hidden" name="mode" value={mode} />
-      <textarea name="body" rows="2" placeholder="Quick thought while bowling — lane read, adjustment, reminder…" aria-label="New note" required></textarea>
-      <button type="submit" class="secondary">Add Note</button>
-    </form>
-  </details>
-
-  {frameShots.length > 0 && (
-    <ul class="ball-log">
-      {frameShots.map((shot: any, i: number) => (
-        <li>
-          <a class="ball-row" href={`/sessions/${sessionId}/games/${gameId}/shots/${shot.id}?mode=${mode}`}>
-            <span class="ball-ord">{ordinals[i] ?? `Ball ${i + 1}`} ball</span>
-            <span class="ball-result">{ballResult(i)}</span>
-            <span class="ball-detail">
-              {[shot.balls?.name, shot.target_type && shot.target_value != null ? `${shot.target_type} ${shot.target_value}` : null, shot.hook_timing]
-                .filter(Boolean)
-                .join(' · ')}
-            </span>
-          </a>
-        </li>
-      ))}
-    </ul>
-  )}
-
-  {leaveNotes.length > 0 && (
-    <details class="leave-notes" open>
-      <summary>Past Notes &middot; {leaveDisplayName(facedNow)} <span class="ln-count">({leaveNotes.length})</span></summary>
-      <ul class="note-stream">
-        {leaveNotesShown.map((note) => (
-          <li><NoteCard note={note} /></li>
-        ))}
-      </ul>
-      {leaveNotes.length > leaveNotesShown.length && (
-        <a class="leave-more" href={`/notes?view=leave#${leaveAnchor(facedNow)}`}>See all {leaveNotes.length} &rarr;</a>
-      )}
-    </details>
-  )}
+  <GameLogger
+    client:load
+    sessionId={sessionId!}
+    gameId={gameId!}
+    isWarmup={isWarmup}
+    finalScore={game.final_score}
+    frames={initialFrames}
+    initialFrameNumber={frameNumber}
+    initialMode={mode}
+    balls={balls ?? []}
+    approaches={approaches ?? []}
+    defaultBallId={game.sessions?.default_ball_id ?? null}
+    defaultSpareBallId={game.sessions?.default_spare_ball_id ?? null}
+    defaultApproachId={prefRow?.default_approach_id ?? null}
+    hiddenShotFields={hiddenShotFields}
+    laneConfig={laneConfig}
+    initialSidebar={scoreContext}
+  />
 
   <hr />
 
@@ -663,13 +437,6 @@ function ballResult(i: number): string {
     </form>
   )}
 
-  {canEndEarly && partialScore && (
-    <form method="POST" class="row-actions" data-confirm={`End this game after frame ${partialScore.throughFrame} with a score of ${partialScore.score}? You can keep bowling later and re-save the score to correct it.`}>
-      <input type="hidden" name="intent" value="end_practice_early" />
-      <button type="submit" class="secondary end-action">End Game Here &middot; Score {partialScore.score}</button>
-    </form>
-  )}
-
   {isWarmup ? (
     <form method="POST" class="row-actions" data-confirm="Discard this practice? Nothing logged will be saved.">
       <input type="hidden" name="intent" value="delete_game" />
@@ -681,249 +448,4 @@ function ballResult(i: number): string {
       <button type="submit" class="danger">Delete Game</button>
     </form>
   )}
-
-  <div class="retry-banner" id="retry-banner" role="alert" hidden>
-    <span class="retry-msg">Couldn't reach the server — your ball is held here. Retry when the connection's back.</span>
-    <button type="button" id="retry-send" class="secondary">Retry</button>
-  </div>
 </Layout>
-
-<script>
-  // Center the active frame in the horizontally-scrolling scoresheet on load,
-  // so resuming late in a game (e.g. frame 8) doesn't leave it off-screen.
-  const wrap = document.querySelector('.sheetwrap');
-  const active = wrap?.querySelector('.cell.active');
-  if (wrap instanceof HTMLElement && active instanceof HTMLElement) {
-    const delta =
-      active.getBoundingClientRect().left -
-      wrap.getBoundingClientRect().left -
-      (wrap.clientWidth - active.offsetWidth) / 2;
-    wrap.scrollLeft += delta;
-  }
-
-  // Unsaved-shot guard: once you've started entering a ball — picked/toggled
-  // pins, placed a reference mark, typed shorthand, or filled a detail field —
-  // warn before navigating away (a frame nav, the mode toggle, an app-bar link,
-  // or a browser back/refresh) so an in-progress shot isn't silently lost.
-  // Logging the ball submits the entry form, which clears the guard.
-  let shotDirty = false;
-  const markDirty = () => {
-    shotDirty = true;
-  };
-  // The pin-picker form (pick mode) and the shorthand box (type mode) are the
-  // two shot-entry surfaces; other forms (note / final score / delete) are left
-  // unguarded since they don't hold an in-progress throw.
-  const entryForms = [
-    document.querySelector('input[name="pins_standing"]')?.closest('form'),
-    document.querySelector('input[name="shorthand"]')?.closest('form'),
-  ];
-  // Retry guard: the entry forms submit via fetch() so a dropped connection at
-  // the alley keeps this page — and the throw's data — alive behind a Retry
-  // button, instead of dumping to the browser's dead error page. The pending
-  // throw is held in memory only: on failure the page never unloads, so there
-  // is nothing to persist. The throw stays "dirty" (beforeunload still warns)
-  // until the server confirms it with a redirect.
-  const banner = document.getElementById('retry-banner');
-  const retryBtn = document.getElementById('retry-send');
-  let pending: { form: HTMLFormElement; data: FormData } | null = null;
-  let sending = false;
-
-  // While a throw is in flight, the tapped submit button disables and reads
-  // "Saving…" so a slow alley connection doesn't look like a dead tap. (The
-  // FormData is captured before the disable, so nothing drops from the post.)
-  // Restored on failure — the Retry banner takes over from there. ShotForm's
-  // sticky mobile shortcut is a second submit button in the same form (see
-  // ShotForm.tsx), so this relabels whichever one was actually tapped
-  // (e.submitter) and disables both to block a double-tap on the other.
-  let savingButton: HTMLButtonElement | null = null;
-  let savingLabel = '';
-
-  function showSaving(form: HTMLFormElement, submitter: EventTarget | null) {
-    const buttons = Array.from(form.querySelectorAll('button[type="submit"]'));
-    const btn = submitter instanceof HTMLButtonElement ? submitter : buttons[0];
-    if (!(btn instanceof HTMLButtonElement)) return;
-    savingButton = btn;
-    savingLabel = btn.textContent ?? '';
-    buttons.forEach((b) => { if (b instanceof HTMLButtonElement) b.disabled = true; });
-    btn.textContent = 'Saving…';
-  }
-
-  function hideSaving() {
-    if (!savingButton) return;
-    const form = savingButton.closest('form');
-    form?.querySelectorAll('button[type="submit"]').forEach((b) => {
-      if (b instanceof HTMLButtonElement) b.disabled = false;
-    });
-    savingButton.textContent = savingLabel;
-    savingButton = null;
-  }
-
-  function showRetry() {
-    sending = false;
-    hideSaving();
-    if (retryBtn instanceof HTMLButtonElement) {
-      retryBtn.disabled = false;
-      retryBtn.textContent = 'Retry';
-    }
-    if (banner) banner.hidden = false;
-  }
-
-  async function send() {
-    if (!pending || sending) return;
-    sending = true;
-    if (retryBtn instanceof HTMLButtonElement) {
-      retryBtn.disabled = true;
-      retryBtn.textContent = 'Retrying…';
-    }
-
-    // a flaky connection can also hang forever — give up after 15s and offer Retry
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 15000);
-    let response: Response;
-    try {
-      response = await fetch(window.location.href, {
-        method: 'POST',
-        body: pending.data,
-        credentials: 'same-origin',
-        signal: ctrl.signal,
-      });
-    } catch {
-      showRetry();
-      return;
-    } finally {
-      clearTimeout(timer);
-    }
-
-    if (response.redirected) {
-      // the shot saved — the redirect target is the next frame (auto-advance included)
-      shotDirty = false;
-      pending = null;
-      window.location.assign(response.url);
-      return;
-    }
-
-    if (response.ok) {
-      // 200 without a redirect = the server re-rendered this page with a
-      // validation message (shot cap, bad shorthand) and inserted nothing. The
-      // connection is clearly alive, so hand back to a native submit to show
-      // that message the normal way (form.submit() skips this interceptor).
-      const failedForm = pending.form;
-      pending = null;
-      sending = false;
-      shotDirty = false; // don't let beforeunload second-guess the native submit
-      failedForm.submit();
-      return;
-    }
-
-    showRetry();
-  }
-
-  for (const form of entryForms) {
-    if (!(form instanceof HTMLFormElement)) continue;
-    form.addEventListener('input', markDirty);
-    form.addEventListener('change', markDirty);
-    form.addEventListener('click', (e) => {
-      // pin toggles / shortcuts and LanePicker taps register as button or svg
-      // clicks (the submit button is excluded — it submits the throw instead)
-      if (e.target instanceof Element && e.target.closest('button:not([type="submit"]), svg')) {
-        markDirty();
-      }
-    });
-    form.addEventListener('submit', (e) => {
-      e.preventDefault();
-      if (sending) return; // ignore double-taps while a send is in flight
-      if (banner) banner.hidden = true;
-      pending = { form, data: new FormData(form) };
-      showSaving(form, e.submitter);
-      void send();
-    });
-  }
-
-  if (retryBtn) retryBtn.addEventListener('click', () => void send());
-
-  window.addEventListener('beforeunload', (e) => {
-    if (shotDirty) {
-      e.preventDefault();
-      e.returnValue = '';
-    }
-  });
-
-  // Back/forward can restore this page from bfcache with the interceptor
-  // frozen mid-flight (sending stuck true, button stuck on "Saving…") —
-  // reset so the entry form works again.
-  window.addEventListener('pageshow', (e) => {
-    if (!e.persisted) return;
-    sending = false;
-    pending = null;
-    hideSaving();
-  });
-</script>
-
-<style>
-  .game-note {
-    margin: 0.5rem 0 1rem;
-  }
-  .game-note summary {
-    cursor: pointer;
-    color: var(--accent);
-    font-weight: 600;
-  }
-  .add-note {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    margin-top: 0.5rem;
-  }
-  .add-note button {
-    align-self: flex-start;
-  }
-  .leave-notes {
-    margin: 0.5rem 0 1rem;
-  }
-  .leave-notes > summary {
-    cursor: pointer;
-    color: var(--accent);
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-  }
-  .leave-notes .ln-count {
-    color: var(--text-muted);
-    font-weight: 400;
-  }
-  .leave-notes .note-stream {
-    margin-top: 0.6rem;
-  }
-  .note-stream {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: grid;
-    gap: 0.75rem;
-  }
-  .leave-more {
-    display: inline-block;
-    margin-top: 0.5rem;
-    font-size: var(--text-sm);
-    font-weight: 600;
-  }
-  .retry-banner {
-    position: fixed;
-    left: 50%;
-    transform: translateX(-50%);
-    bottom: calc(var(--s4) + var(--tabbar-clearance));
-    z-index: 50;
-    display: flex;
-    align-items: center;
-    gap: var(--s3);
-    width: max-content;
-    max-width: min(440px, calc(100vw - 2rem));
-    padding: var(--s3) var(--s4);
-    background: var(--surface);
-    border: 1px solid var(--coral);
-    border-radius: var(--radius-md);
-    box-shadow: var(--shadow-md);
-  }
-  .retry-banner[hidden] { display: none; }
-  .retry-msg { font-size: var(--text-sm); color: var(--text-primary); }
-  .retry-banner button { flex: none; }
-</style>
