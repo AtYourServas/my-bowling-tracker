@@ -92,6 +92,16 @@ type Props = {
    *  client-side and sync in the background). Omitted everywhere else, where
    *  behavior is unchanged from a plain form POST. */
   onSubmit?: (data: FormData) => void;
+  /** When provided (GameLogger only), "Save as Approach" enqueues onto the
+   *  offline write queue instead of fetching directly -- applied optimistically
+   *  by the caller. Absent on the drills/shot-editor pages, where it keeps its
+   *  original plain-fetch behavior. */
+  onSaveApproachOffline?: (write: {
+    id: string;
+    url: string;
+    fields: Record<string, string>;
+    optimisticApproach: Approach;
+  }) => void;
 };
 
 export default function ShotForm({
@@ -108,6 +118,7 @@ export default function ShotForm({
   mode = 'pick',
   hiddenFields = [],
   onSubmit,
+  onSaveApproachOffline,
 }: Props) {
   const show = (key: string) => !hiddenFields.includes(key);
   const shownMarks = (['stance', 'target', 'slide', 'breakpoint'] as const).filter(show);
@@ -156,10 +167,41 @@ export default function ShotForm({
 
   async function handleSaveApproach() {
     if (!formRef.current) return;
-    setSaveApproach({ status: 'saving' });
     const data = new FormData(formRef.current);
     data.set('intent', 'save_as_approach');
-    data.set('name', approachName.trim());
+    const name = approachName.trim();
+    data.set('name', name);
+
+    if (onSaveApproachOffline) {
+      // Routed through the offline write queue (GameLogger only) -- applied
+      // optimistically by the caller, so this never needs to wait on the
+      // network to confirm "Saved" (usable by the match-filter on the very
+      // next ball, per the locked offline plan).
+      const id = crypto.randomUUID();
+      data.set('id', id);
+      const optimisticApproach: Approach = {
+        id,
+        name,
+        reference_lineup: data.get('lineup_position')?.toString().trim() || null,
+        reference_slide: data.get('slide_position')?.toString().trim() || null,
+        reference_target_type: data.get('target_type')?.toString() || null,
+        reference_target_value: (() => {
+          const raw = data.get('target_value')?.toString().trim();
+          return raw ? Number(raw) : null;
+        })(),
+        leave: standingPins,
+      };
+      onSaveApproachOffline({
+        id,
+        url: window.location.href,
+        fields: Object.fromEntries(data.entries()) as Record<string, string>,
+        optimisticApproach,
+      });
+      setSaveApproach({ status: 'saved', id });
+      return;
+    }
+
+    setSaveApproach({ status: 'saving' });
     try {
       const res = await fetch(window.location.href, { method: 'POST', body: data, credentials: 'same-origin' });
       const id = res.ok ? new URL(res.url).searchParams.get('saved') : null;

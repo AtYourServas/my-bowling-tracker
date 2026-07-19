@@ -8,12 +8,15 @@ import {
   allowedMarks,
   pinsStandingBefore,
   parseShotShorthand,
+  earliestIncompleteFrame,
+  earliestIncompleteWarmupFrame,
   WARMUP_FRAME,
   type ShotLite,
   type FrameLite,
   type FrameCell,
 } from '../lib/scoring';
 import { laneForFrame, hasLanePair, type LaneConfig } from '../lib/lanes';
+import { enqueueWrite, listQueuedWrites, removeQueuedWrite, cacheReferenceData, type QueuedWrite } from '../lib/offlineQueue';
 
 /** Joins class names, skipping falsy values -- Astro's `class:list` isn't
  *  available in a plain React/TSX component, this is the local equivalent. */
@@ -89,8 +92,6 @@ type Props = {
 };
 
 const ordinals = ['First', 'Second', 'Third'];
-let tempIdCounter = 0;
-const nextTempId = () => `temp-${Date.now()}-${tempIdCounter++}`;
 
 /** A struck frame (1-9, or any warmup frame) shows the X alone in the
  *  top-right corner box -- drop the placeholder empty 2nd-ball square. */
@@ -116,7 +117,7 @@ export default function GameLogger({
   initialFrameNumber,
   initialMode,
   balls,
-  approaches,
+  approaches: initialApproaches,
   defaultBallId,
   defaultSpareBallId,
   defaultApproachId,
@@ -125,6 +126,7 @@ export default function GameLogger({
   initialSidebar,
 }: Props) {
   const [frames, setFrames] = useState<FrameRow[]>(initialFrames);
+  const [approaches, setApproaches] = useState<Approach[]>(initialApproaches);
   const [activeFrame, setActiveFrame] = useState(initialFrameNumber);
   const [mode, setMode] = useState<'pick' | 'type'>(initialMode);
   const [sidebar, setSidebar] = useState<Sidebar>(initialSidebar);
@@ -133,9 +135,14 @@ export default function GameLogger({
   const [shorthandError, setShorthandError] = useState<string | null>(null);
   const [entryError, setEntryError] = useState<string | null>(null);
 
-  type PendingSync = { frameNumber: number; formData: FormData };
-  const [pendingSync, setPendingSync] = useState<PendingSync | null>(null);
+  // The offline write queue (IndexedDB-backed, src/lib/offlineQueue.ts) --
+  // `queuedCount` mirrors how many writes are waiting so the retry banner and
+  // beforeunload guard can key off it. `flushingRef` prevents two overlapping
+  // flush loops (e.g. an 'online' event firing while a manual Retry click is
+  // already mid-flight).
+  const [queuedCount, setQueuedCount] = useState(0);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'saving' | 'retry'>('idle');
+  const flushingRef = useRef(false);
 
   const sheetWrapRef = useRef<HTMLDivElement>(null);
   const leaveNotesContainerRef = useRef<HTMLDivElement>(null);
@@ -152,17 +159,19 @@ export default function GameLogger({
     }
   }, [activeFrame]);
 
-  // A still-unsynced shot (in flight, or failed and awaiting retry) warns
-  // before the tab closes -- once a sync confirms, there's nothing to lose.
+  // A still-unsynced write (in flight, or failed and awaiting retry) warns
+  // before the tab closes -- once the queue drains, there's nothing to lose.
+  // (Not the only safety net: queued writes also survive a reload via
+  // IndexedDB + the mount-time rehydration effect below.)
   useEffect(() => {
-    if (!pendingSync) return;
+    if (queuedCount === 0) return;
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
       e.preventDefault();
       e.returnValue = '';
     };
     window.addEventListener('beforeunload', onBeforeUnload);
     return () => window.removeEventListener('beforeunload', onBeforeUnload);
-  }, [pendingSync]);
+  }, [queuedCount]);
 
   // Keep the address bar's ?frame=&mode= in sync with client-side navigation
   // (no real reload) -- replaceState, not pushState, so auto-advancing
@@ -285,13 +294,187 @@ export default function GameLogger({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // --- reference-data caching (write-only in Phase 2 -- Phase 3's service
+  // worker is what will read this back for an offline page-load) -----------
+  useEffect(() => {
+    void cacheReferenceData('balls', balls);
+    void cacheReferenceData('profileDefaults', { defaultBallId, defaultSpareBallId, defaultApproachId, hiddenShotFields });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // --- offline write queue ----------------------------------------------------
+  // Every logged shot/saved approach is persisted to IndexedDB (src/lib/
+  // offlineQueue.ts) before it's ever sent, so a reload -- even mid-offline --
+  // never loses it (unlike Phase 1, where a not-yet-synced shot lived only in
+  // React state). Writes for one game are replayed strictly in order, one at
+  // a time: this is also what fixes Phase 1's other real gap, where rapid
+  // consecutive shots could have multiple syncs in flight with no ordering
+  // guarantee at all.
+
+  const url = `/sessions/${sessionId}/games/${gameId}?frame=${activeFrame}&mode=${mode}`;
+
+  type SendResult = { status: 'ok' } | { status: 'rejected'; message: string } | { status: 'failed' };
+
+  async function sendQueuedWrite(write: QueuedWrite): Promise<SendResult> {
+    const body = new FormData();
+    for (const [k, v] of Object.entries(write.fields)) body.set(k, v);
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 15000);
+    let response: Response;
+    try {
+      response = await fetch(write.url, { method: 'POST', body, credentials: 'same-origin', signal: ctrl.signal });
+    } catch {
+      return { status: 'failed' };
+    } finally {
+      clearTimeout(timer);
+    }
+    if (response.redirected) return { status: 'ok' };
+    if (response.ok) {
+      // Server-side validation errors (e.g. a stale shot-cap mismatch) also
+      // come back as response.ok without a redirect -- vanishingly rare here
+      // since the entry surface only renders while the client's own
+      // frameProgress agrees a ball is still expected.
+      return {
+        status: 'rejected',
+        message:
+          write.kind === 'save_as_approach'
+            ? "That approach couldn't be saved. Try again."
+            : "That ball couldn't be saved -- the frame may already be complete. Refresh and try again.",
+      };
+    }
+    return { status: 'failed' };
+  }
+
+  // Processes this game's queue oldest-first, one write at a time, stopping
+  // (and leaving the rest queued) at the first network/server failure. Always
+  // re-lists from IndexedDB rather than trusting a possibly-stale in-memory
+  // copy, so it's safe to call from a listener registered once on mount.
+  async function runFlush() {
+    if (flushingRef.current) return;
+    flushingRef.current = true;
+    setSyncStatus('saving');
+
+    for (;;) {
+      const queued = await listQueuedWrites(gameId);
+      setQueuedCount(queued.length);
+      if (queued.length === 0) break;
+      const next = queued[0];
+      const result = await sendQueuedWrite(next);
+
+      if (result.status === 'failed') {
+        setSyncStatus('retry');
+        flushingRef.current = false;
+        return;
+      }
+
+      await removeQueuedWrite(next.id);
+
+      if (result.status === 'rejected') {
+        if (next.kind !== 'save_as_approach') {
+          setFrames((prev) =>
+            prev.map((f) => (f.frameNumber === next.frameNumber ? { ...f, shots: f.shots.filter((s) => s.id !== next.id) } : f)),
+          );
+        }
+        setEntryError(result.message);
+        continue;
+      }
+
+      // ok
+      if (next.kind === 'save_as_approach') {
+        // already applied optimistically when it was enqueued -- nothing else to reconcile
+      } else {
+        setFrames((prev) =>
+          prev.map((f) =>
+            f.frameNumber === next.frameNumber
+              ? { ...f, shots: f.shots.map((s) => (s.id === next.id ? { ...s, pending: false } : s)) }
+              : f,
+          ),
+        );
+        // Awaited, not fire-and-forget: this replaces frame `next.frameNumber`'s
+        // whole shots array with the server's current snapshot (see
+        // refreshSidebarAndFrame above). Two overlapping calls for the same
+        // frame -- e.g. one per queued shot when catching up a multi-shot
+        // backlog -- would race, and the slower/older one can resolve last
+        // and clobber the newer snapshot. Awaiting keeps the queue's
+        // one-at-a-time ordering guarantee intact through the refresh too.
+        await refreshSidebarAndFrame(next.frameNumber, activeFrame);
+      }
+    }
+
+    setSyncStatus('idle');
+    flushingRef.current = false;
+  }
+
+  // Auto-retry the instant connectivity returns, rather than leaving queued
+  // writes waiting on someone to notice the retry banner and tap it. Matters
+  // most on mobile at the alley, where beforeunload confirmation dialogs (the
+  // other safety net, above) are notoriously unreliable.
+  useEffect(() => {
+    const onOnline = () => void runFlush();
+    window.addEventListener('online', onOnline);
+    return () => window.removeEventListener('online', onOnline);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Mount-time rehydration (fixes the Phase 1 "shots lost on refresh while
+  // offline" gap): any write still queued from before this reload gets its
+  // optimistic row re-injected into state -- unless it turns out to already
+  // be present in the server-rendered initial props, meaning it actually
+  // landed and only the client never got the ack, in which case the stale
+  // queue entry is just dropped.
+  useEffect(() => {
+    (async () => {
+      const queued = await listQueuedWrites(gameId);
+      if (queued.length === 0) return;
+
+      let mergedFrames = initialFrames;
+      let mergedApproaches = initialApproaches;
+      const staleIds: string[] = [];
+
+      for (const w of queued) {
+        if (w.kind === 'save_as_approach') {
+          const approach = w.optimisticApproach as Approach;
+          if (mergedApproaches.some((a) => a.id === approach.id)) {
+            staleIds.push(w.id);
+            continue;
+          }
+          mergedApproaches = [...mergedApproaches, approach];
+        } else {
+          const shot = w.optimisticShot as ClientShotRow;
+          if (mergedFrames.some((f) => f.shots.some((s) => s.id === shot.id))) {
+            staleIds.push(w.id);
+            continue;
+          }
+          const frameExists = mergedFrames.some((f) => f.frameNumber === w.frameNumber);
+          mergedFrames = frameExists
+            ? mergedFrames.map((f) => (f.frameNumber === w.frameNumber ? { ...f, shots: [...f.shots, shot] } : f))
+            : [...mergedFrames, { frameNumber: w.frameNumber, shots: [shot] }].sort((a, b) => a.frameNumber - b.frameNumber);
+        }
+      }
+
+      for (const id of staleIds) await removeQueuedWrite(id);
+
+      setFrames(mergedFrames);
+      setApproaches(mergedApproaches);
+
+      const rehydratedLite: FrameLite[] = mergedFrames.map((f) => ({
+        frame_number: f.frameNumber,
+        shots: f.shots.map((s) => ({ pins_standing: s.pins_standing, strike: s.strike, spare: s.spare, foul: s.foul })),
+      }));
+      setActiveFrame(isWarmup ? earliestIncompleteWarmupFrame(rehydratedLite) : earliestIncompleteFrame(rehydratedLite));
+
+      void runFlush();
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // --- logging a shot --------------------------------------------------------
 
   function applyOptimisticShot(
     frameNumber: number,
     shot: { pins_standing: number[]; strike: boolean; spare: boolean; foul: boolean },
     extra: Partial<ClientShotRow> = {},
-  ): number {
+  ): ClientShotRow {
     const targetRow = frames.find((f) => f.frameNumber === frameNumber);
     const existingLite: ShotLite[] = (targetRow?.shots ?? []).map((s) => ({
       pins_standing: s.pins_standing,
@@ -303,7 +486,7 @@ export default function GameLogger({
     const target = after.complete && (isWarmup || frameNumber < 10) ? frameNumber + 1 : frameNumber;
 
     const newShot: ClientShotRow = {
-      id: nextTempId(),
+      id: crypto.randomUUID(),
       ball_id: null,
       approach_id: null,
       lineup_position: null,
@@ -334,75 +517,8 @@ export default function GameLogger({
     // scrolled down at wherever the entry form was (often well below the
     // scoresheet on a long form with reference marks) after every shot.
     window.scrollTo({ top: 0, behavior: 'smooth' });
-    return target;
+    return newShot;
   }
-
-  function rollbackOptimisticShot(frameNumber: number, revertActiveTo: number) {
-    setFrames((prev) =>
-      prev.map((f) => (f.frameNumber === frameNumber ? { ...f, shots: f.shots.filter((s) => !s.pending) } : f)),
-    );
-    setActiveFrame(revertActiveTo);
-  }
-
-  async function syncShot(loggedFrame: number, formData: FormData, activeAfter: number) {
-    setSyncStatus('saving');
-    formData.set('mode', mode);
-    const url = `/sessions/${sessionId}/games/${gameId}?frame=${loggedFrame}&mode=${mode}`;
-    let response: Response;
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 15000);
-    try {
-      response = await fetch(url, { method: 'POST', body: formData, credentials: 'same-origin', signal: ctrl.signal });
-    } catch {
-      setPendingSync({ frameNumber: loggedFrame, formData });
-      setSyncStatus('retry');
-      return;
-    } finally {
-      clearTimeout(timer);
-    }
-
-    if (response.redirected || response.ok) {
-      // Server-side validation errors (e.g. a stale shot-cap mismatch) also
-      // come back as response.ok without a redirect -- vanishingly rare here
-      // since the entry surface only renders while the client's own
-      // frameProgress agrees a ball is still expected, but roll back rather
-      // than leave a shot the server never actually saved.
-      if (!response.redirected) {
-        rollbackOptimisticShot(loggedFrame, loggedFrame);
-        setEntryError("That ball couldn't be saved -- the frame may already be complete. Refresh and try again.");
-        setPendingSync(null);
-        setSyncStatus('idle');
-        return;
-      }
-      setPendingSync(null);
-      setSyncStatus('idle');
-      void refreshSidebarAndFrame(loggedFrame, activeAfter);
-      return;
-    }
-
-    setPendingSync({ frameNumber: loggedFrame, formData });
-    setSyncStatus('retry');
-  }
-
-  async function retrySync() {
-    if (!pendingSync) return;
-    await syncShot(pendingSync.frameNumber, pendingSync.formData, activeFrame);
-  }
-
-  // Auto-retry the instant connectivity returns, rather than leaving a
-  // pending shot waiting on someone to notice the retry banner and tap it.
-  // Matters most on mobile at the alley, where beforeunload confirmation
-  // dialogs (the other safety net, above) are notoriously unreliable --
-  // without this, a brief signal drop that recovers on its own before the
-  // bowler does anything would otherwise silently lose that ball if they
-  // reload rather than wait.
-  useEffect(() => {
-    if (!pendingSync) return;
-    const onOnline = () => void retrySync();
-    window.addEventListener('online', onOnline);
-    return () => window.removeEventListener('online', onOnline);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingSync]);
 
   function handlePickSubmit(formData: FormData) {
     const pinsRaw = formData.get('pins_standing')?.toString() ?? '';
@@ -419,10 +535,12 @@ export default function GameLogger({
     const ballName = balls.find((b) => b.id === ball_id)?.name ?? null;
 
     const loggedFrame = activeFrame;
-    const targetFrame = applyOptimisticShot(
+    const id = crypto.randomUUID();
+    const optimisticShot = applyOptimisticShot(
       loggedFrame,
       { pins_standing, strike, spare, foul },
       {
+        id,
         ball_id,
         balls: ballName ? { name: ballName } : null,
         approach_id: formData.get('approach_id')?.toString() || null,
@@ -443,8 +561,7 @@ export default function GameLogger({
       },
     );
 
-    const syncData = new FormData();
-    syncData.set('intent', 'log_shot');
+    const fields: Record<string, string> = { intent: 'log_shot', id, mode };
     for (const key of [
       'pins_standing',
       'ball_id',
@@ -462,9 +579,18 @@ export default function GameLogger({
       'note',
     ]) {
       const v = formData.get(key);
-      if (v != null) syncData.set(key, v as string);
+      if (v != null) fields[key] = v as string;
     }
-    void syncShot(loggedFrame, syncData, targetFrame);
+    void enqueueWrite({
+      id,
+      kind: 'log_shot',
+      gameId,
+      frameNumber: loggedFrame,
+      url,
+      fields,
+      optimisticShot,
+      createdAt: Date.now(),
+    }).then(() => void runFlush());
   }
 
   function handleShorthandSubmit() {
@@ -487,7 +613,8 @@ export default function GameLogger({
     const ballName = balls.find((b) => b.id === ball_id)?.name ?? null;
 
     const loggedFrame = activeFrame;
-    const targetFrame = applyOptimisticShot(
+    const id = crypto.randomUUID();
+    const optimisticShot = applyOptimisticShot(
       loggedFrame,
       {
         pins_standing: parsed.result.standing,
@@ -495,13 +622,42 @@ export default function GameLogger({
         spare: parsed.result.spare,
         foul: parsed.result.foul,
       },
-      { ball_id, balls: ballName ? { name: ballName } : null },
+      { id, ball_id, balls: ballName ? { name: ballName } : null },
     );
 
-    const syncData = new FormData();
-    syncData.set('intent', 'log_shorthand');
-    syncData.set('shorthand', raw);
-    void syncShot(loggedFrame, syncData, targetFrame);
+    const fields: Record<string, string> = { intent: 'log_shorthand', id, mode, shorthand: raw };
+    void enqueueWrite({
+      id,
+      kind: 'log_shorthand',
+      gameId,
+      frameNumber: loggedFrame,
+      url,
+      fields,
+      optimisticShot,
+      createdAt: Date.now(),
+    }).then(() => void runFlush());
+  }
+
+  // Wired to ShotForm's "Save as Approach" (only from this game-page
+  // embedding -- drills/shot-editor pages don't pass this prop, so their
+  // ShotForm keeps its original plain-fetch behavior). Applied optimistically
+  // (added to `approaches` + cached) immediately, per the locked plan: usable
+  // by the match-filter on the very next ball, before it's even synced.
+  function handleSaveApproachOffline(write: { id: string; url: string; fields: Record<string, string>; optimisticApproach: Approach }) {
+    setApproaches((prev) => {
+      const next = [...prev, write.optimisticApproach];
+      void cacheReferenceData('approaches', next);
+      return next;
+    });
+    void enqueueWrite({
+      id: write.id,
+      kind: 'save_as_approach',
+      gameId,
+      url: write.url,
+      fields: write.fields,
+      optimisticApproach: write.optimisticApproach,
+      createdAt: Date.now(),
+    }).then(() => void runFlush());
   }
 
   function navigateToFrame(n: number) {
@@ -696,6 +852,7 @@ export default function GameLogger({
             hiddenFields={hiddenShotFields}
             submitLabel={`Log Ball ${progress.nextBall}`}
             onSubmit={handlePickSubmit}
+            onSaveApproachOffline={handleSaveApproachOffline}
           />
         ) : (
           <p className="logball">
@@ -763,8 +920,11 @@ export default function GameLogger({
 
       {syncStatus === 'retry' && (
         <div className="retry-banner" role="alert">
-          <span className="retry-msg">Couldn't reach the server — your ball is held here. Retry when the connection's back.</span>
-          <button type="button" className="secondary" onClick={() => void retrySync()}>
+          <span className="retry-msg">
+            Couldn't reach the server — {queuedCount} {queuedCount === 1 ? 'item' : 'items'} waiting to sync. Retry when
+            the connection's back.
+          </span>
+          <button type="button" className="secondary" onClick={() => void runFlush()}>
             Retry
           </button>
         </div>

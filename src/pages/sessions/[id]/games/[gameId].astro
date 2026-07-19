@@ -176,21 +176,28 @@ if (Astro.request.method === 'POST') {
     const targetValueRaw = formData.get('target_value')?.toString().trim();
     const target_value = targetValueRaw ? Number(targetValueRaw) : null;
     const postedName = formData.get('name')?.toString().trim();
+    // A client-generated id (offline write queue, GameLogger.tsx) doubles as the
+    // idempotency key -- a retried write upserts the same row instead of
+    // double-inserting.
+    const clientId = formData.get('id')?.toString() || null;
 
-    const { data: inserted, error: insertError } = await supabase
-      .from('approaches')
-      .insert({
-        user_id: user!.id,
-        name: postedName || suggestedApproachName(facedLeave),
-        reference_ball_id: ball_id,
-        reference_lineup: lineup_position,
-        reference_slide: slide_position,
-        reference_target_type: target_type,
-        reference_target_value: target_value,
-        leave: facedLeave,
-      })
-      .select('id')
-      .single();
+    const approachData = {
+      user_id: user!.id,
+      name: postedName || suggestedApproachName(facedLeave),
+      reference_ball_id: ball_id,
+      reference_lineup: lineup_position,
+      reference_slide: slide_position,
+      reference_target_type: target_type,
+      reference_target_value: target_value,
+      leave: facedLeave,
+    };
+    const { data: inserted, error: insertError } = clientId
+      ? await supabase
+          .from('approaches')
+          .upsert({ id: clientId, ...approachData }, { onConflict: 'id' })
+          .select('id')
+          .single()
+      : await supabase.from('approaches').insert(approachData).select('id').single();
 
     if (insertError) {
       error = insertError.message;
@@ -220,13 +227,21 @@ if (Astro.request.method === 'POST') {
     }
 
     if (frame) {
+      // A client-generated id (offline write queue, GameLogger.tsx) doubles as
+      // the idempotency key for a retried write.
+      const clientId = formData.get('id')?.toString() || null;
+
       // enforce the physical shot cap (2/frame, 3 in the 10th only on strike/spare)
       const { data: existing } = await supabase
         .from('shots')
-        .select('pins_standing, strike, spare, foul')
+        .select('id, pins_standing, strike, spare, foul')
         .eq('frame_id', frame.id)
         .order('created_at', { ascending: true });
-      const existingShots = (existing ?? []) as ShotLite[];
+      const allExistingShots = (existing ?? []) as (ShotLite & { id: string })[];
+      // Exclude this write's own id: a *retry* of an already-inserted shot would
+      // otherwise see itself in `existing` and wrongly conclude the frame is
+      // already full, rejecting a legitimate resend.
+      const existingShots = clientId ? allExistingShots.filter((s) => s.id !== clientId) : allExistingShots;
 
       if (!frameProgress(ruleFrameNumber, existingShots).canAdd) {
         error = `Frame ${frameNumber} already has all of its shots.`;
@@ -253,15 +268,11 @@ if (Astro.request.method === 'POST') {
           const s = (sess?.sessions ?? {}) as { default_ball_id?: string | null; default_spare_ball_id?: string | null };
           const ball_id = ballIndex === 0 ? s.default_ball_id ?? null : s.default_spare_ball_id ?? s.default_ball_id ?? null;
           const { standing, strike, spare, foul } = parsed.result;
+          const shotRow = { frame_id: frame.id, ball_id, pins_standing: standing, strike, spare, foul };
 
-          const { error: insertError } = await supabase.from('shots').insert({
-            frame_id: frame.id,
-            ball_id,
-            pins_standing: standing,
-            strike,
-            spare,
-            foul,
-          });
+          const { error: insertError } = clientId
+            ? await supabase.from('shots').upsert({ id: clientId, ...shotRow }, { onConflict: 'id' })
+            : await supabase.from('shots').insert(shotRow);
 
           if (insertError) {
             error = insertError.message;
@@ -296,8 +307,7 @@ if (Astro.request.method === 'POST') {
         const breakpointRaw = formData.get('breakpoint_board')?.toString().trim();
         const breakpoint_board = breakpointRaw ? Number(breakpointRaw) : null;
         const note = formData.get('note')?.toString().trim() || null;
-
-        const { error: insertError } = await supabase.from('shots').insert({
+        const shotRow = {
           frame_id: frame.id,
           ball_id,
           approach_id,
@@ -313,7 +323,11 @@ if (Astro.request.method === 'POST') {
           miss_direction,
           breakpoint_board,
           note,
-        });
+        };
+
+        const { error: insertError } = clientId
+          ? await supabase.from('shots').upsert({ id: clientId, ...shotRow }, { onConflict: 'id' })
+          : await supabase.from('shots').insert(shotRow);
 
         if (insertError) {
           error = insertError.message;
