@@ -141,8 +141,32 @@ export default function GameLogger({
   // flush loops (e.g. an 'online' event firing while a manual Retry click is
   // already mid-flight).
   const [queuedCount, setQueuedCount] = useState(0);
-  const [syncStatus, setSyncStatus] = useState<'idle' | 'saving' | 'retry'>('idle');
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'saving' | 'retry' | 'failed'>('idle');
   const flushingRef = useRef(false);
+
+  // The head-of-queue write that hit a real server error (not a connectivity
+  // problem -- see the 'http-error' vs 'network' split in sendQueuedWrite
+  // below), plus whether its Discard action is in its confirm step.
+  const [failedWrite, setFailedWrite] = useState<{
+    id: string;
+    kind: QueuedWrite['kind'];
+    frameNumber?: number;
+    message: string;
+  } | null>(null);
+  const [confirmingDiscard, setConfirmingDiscard] = useState(false);
+
+  // A 'saving' flush usually resolves near-instantly (the common online
+  // single-shot case) -- only show the syncing indicator if it's still going
+  // after a short debounce, so it doesn't flicker on every ball logged.
+  const [showSyncing, setShowSyncing] = useState(false);
+  useEffect(() => {
+    if (syncStatus !== 'saving') {
+      setShowSyncing(false);
+      return;
+    }
+    const timer = setTimeout(() => setShowSyncing(true), 500);
+    return () => clearTimeout(timer);
+  }, [syncStatus]);
 
   const sheetWrapRef = useRef<HTMLDivElement>(null);
   const leaveNotesContainerRef = useRef<HTMLDivElement>(null);
@@ -313,7 +337,25 @@ export default function GameLogger({
 
   const url = `/sessions/${sessionId}/games/${gameId}?frame=${activeFrame}&mode=${mode}`;
 
-  type SendResult = { status: 'ok' } | { status: 'rejected'; message: string } | { status: 'failed' };
+  type SendResult =
+    | { status: 'ok' }
+    | { status: 'rejected'; message: string }
+    | { status: 'network' }
+    | { status: 'http-error'; message: string };
+
+  // Rolls back a write's optimistic entry (used both when the server
+  // declines it outright and when the user explicitly discards a
+  // permanently-failed one) -- one shared branch for both write kinds
+  // instead of duplicating the shot/approach split at each call site.
+  function rollbackOptimisticWrite(kind: QueuedWrite['kind'], id: string, frameNumber?: number) {
+    if (kind === 'save_as_approach') {
+      setApproaches((prev) => prev.filter((a) => a.id !== id));
+    } else {
+      setFrames((prev) =>
+        prev.map((f) => (f.frameNumber === frameNumber ? { ...f, shots: f.shots.filter((s) => s.id !== id) } : f)),
+      );
+    }
+  }
 
   async function sendQueuedWrite(write: QueuedWrite): Promise<SendResult> {
     const body = new FormData();
@@ -324,7 +366,7 @@ export default function GameLogger({
     try {
       response = await fetch(write.url, { method: 'POST', body, credentials: 'same-origin', signal: ctrl.signal });
     } catch {
-      return { status: 'failed' };
+      return { status: 'network' };
     } finally {
       clearTimeout(timer);
     }
@@ -342,7 +384,16 @@ export default function GameLogger({
             : "That ball couldn't be saved -- the frame may already be complete. Refresh and try again.",
       };
     }
-    return { status: 'failed' };
+    // A real HTTP error status (4xx/5xx) -- the request reached the server
+    // and got a definite answer, so unlike a network failure this won't fix
+    // itself just because connectivity returns.
+    return {
+      status: 'http-error',
+      message:
+        write.kind === 'save_as_approach'
+          ? "That approach couldn't be saved (server error)."
+          : "That ball couldn't be saved (server error).",
+    };
   }
 
   // Processes this game's queue oldest-first, one write at a time, stopping
@@ -361,8 +412,24 @@ export default function GameLogger({
       const next = queued[0];
       const result = await sendQueuedWrite(next);
 
-      if (result.status === 'failed') {
+      if (result.status === 'network') {
         setSyncStatus('retry');
+        flushingRef.current = false;
+        return;
+      }
+
+      if (result.status === 'http-error') {
+        // Not a connectivity problem -- reconnecting won't fix this on its
+        // own, so it gets its own banner (Retry / Discard) instead of the
+        // generic "waiting for the connection" one, and isn't picked up by
+        // the 'online' auto-retry listener below.
+        setSyncStatus('failed');
+        setFailedWrite({
+          id: next.id,
+          kind: next.kind,
+          frameNumber: next.kind === 'save_as_approach' ? undefined : next.frameNumber,
+          message: result.message,
+        });
         flushingRef.current = false;
         return;
       }
@@ -370,11 +437,7 @@ export default function GameLogger({
       await removeQueuedWrite(next.id);
 
       if (result.status === 'rejected') {
-        if (next.kind !== 'save_as_approach') {
-          setFrames((prev) =>
-            prev.map((f) => (f.frameNumber === next.frameNumber ? { ...f, shots: f.shots.filter((s) => s.id !== next.id) } : f)),
-          );
-        }
+        rollbackOptimisticWrite(next.kind, next.id, next.kind === 'save_as_approach' ? undefined : next.frameNumber);
         setEntryError(result.message);
         continue;
       }
@@ -405,12 +468,39 @@ export default function GameLogger({
     flushingRef.current = false;
   }
 
+  // Actions for the Sync Failed banner (http-error only -- see runFlush).
+  function retryFailedWrite() {
+    setFailedWrite(null);
+    setConfirmingDiscard(false);
+    void runFlush();
+  }
+
+  async function discardFailedWrite() {
+    if (!failedWrite) return;
+    await removeQueuedWrite(failedWrite.id);
+    rollbackOptimisticWrite(failedWrite.kind, failedWrite.id, failedWrite.frameNumber);
+    setFailedWrite(null);
+    setConfirmingDiscard(false);
+    setSyncStatus('idle');
+    void runFlush(); // resume anything queued behind it
+  }
+
   // Auto-retry the instant connectivity returns, rather than leaving queued
   // writes waiting on someone to notice the retry banner and tap it. Matters
   // most on mobile at the alley, where beforeunload confirmation dialogs (the
-  // other safety net, above) are notoriously unreliable.
+  // other safety net, above) are notoriously unreliable. Skipped for a
+  // 'failed' (http-error) write -- reconnecting doesn't change a server's
+  // answer, so re-attempting it needs the user's explicit Retry, not a
+  // silent auto-retry on the next connectivity blip.
+  const syncStatusRef = useRef(syncStatus);
   useEffect(() => {
-    const onOnline = () => void runFlush();
+    syncStatusRef.current = syncStatus;
+  }, [syncStatus]);
+  useEffect(() => {
+    const onOnline = () => {
+      if (syncStatusRef.current === 'failed') return;
+      void runFlush();
+    };
     window.addEventListener('online', onOnline);
     return () => window.removeEventListener('online', onOnline);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -927,6 +1017,40 @@ export default function GameLogger({
           <button type="button" className="secondary" onClick={() => void runFlush()}>
             Retry
           </button>
+        </div>
+      )}
+
+      {syncStatus === 'failed' && failedWrite && (
+        <div className="retry-banner failed" role="alert">
+          {confirmingDiscard ? (
+            <>
+              <span className="retry-msg">
+                Discard this {failedWrite.kind === 'save_as_approach' ? 'approach' : 'shot'}? It won't be saved.
+              </span>
+              <button type="button" className="secondary" onClick={() => setConfirmingDiscard(false)}>
+                Cancel
+              </button>
+              <button type="button" className="danger" onClick={() => void discardFailedWrite()}>
+                Confirm Discard
+              </button>
+            </>
+          ) : (
+            <>
+              <span className="retry-msg">{failedWrite.message}</span>
+              <button type="button" className="secondary" onClick={retryFailedWrite}>
+                Retry
+              </button>
+              <button type="button" className="danger" onClick={() => setConfirmingDiscard(true)}>
+                Discard {failedWrite.kind === 'save_as_approach' ? 'Approach' : 'Shot'}
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {showSyncing && syncStatus === 'saving' && (
+        <div className="retry-banner syncing" role="status">
+          <span className="retry-msg">Syncing{queuedCount > 1 ? ` ${queuedCount} pending shots` : ''}…</span>
         </div>
       )}
 
