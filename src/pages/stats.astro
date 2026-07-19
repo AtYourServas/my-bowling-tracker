@@ -28,6 +28,23 @@ const leagueId = Astro.url.searchParams.get('league') || null;
 const filter = { includePracticeSessions, leagueId };
 const hasFilters = !includePracticeSessions || !!leagueId;
 
+type StatsTab = 'bests' | 'trends' | 'conversions';
+const requestedTab = Astro.url.searchParams.get('tab');
+const activeTab: StatsTab = requestedTab === 'trends' || requestedTab === 'conversions' ? requestedTab : 'bests';
+
+function tabHref(tab: StatsTab) {
+  const params = new URLSearchParams();
+  if (tab !== 'bests') params.set('tab', tab);
+  if (!includePracticeSessions) params.set('practice', 'exclude');
+  if (leagueId) params.set('league', leagueId);
+  const qs = params.toString();
+  return qs ? `/stats?${qs}` : '/stats';
+}
+
+function clearFiltersHref(tab: StatsTab) {
+  return tab === 'bests' ? '/stats' : `/stats?tab=${tab}`;
+}
+
 const { data: leagues } = await supabase.from('leagues').select('id, name').order('name');
 
 // Fetch every game (with a bulk-derived score) and every frame+shot in
@@ -76,80 +93,109 @@ const bestSeries = fetchBestSeriesStats(allGamesEver, handicapOf);
   <nav class="top"><a href="/dashboard">&larr; Dashboard</a></nav>
   <h1>Stats</h1>
 
-  <h2>All-Time Bests <span class="filter-badge">Always All-Time</span></h2>
-  <p class="empty">Every game and session ever logged, practice included — not affected by the filter below.</p>
-
-  <div class="best-stats-grid">
-    <div class:list={['best-stat', { highlight: !!bestGame.scratch }]}>
-      <span class="best-stat-label">Best Game (Scratch)</span>
-      <span class="best-stat-value">{bestGame.scratch ? bestGame.scratch.value : '—'}</span>
-      {bestGame.scratch && <span class="best-stat-date">{bestGame.scratch.date}</span>}
-    </div>
-    <div class="best-stat">
-      <span class="best-stat-label">Best Game (Handicap)</span>
-      <span class="best-stat-value">{bestGame.handicapped ? bestGame.handicapped.value : '—'}</span>
-      {bestGame.handicapped && <span class="best-stat-date">{bestGame.handicapped.date}</span>}
-    </div>
-    <div class="best-stat">
-      <span class="best-stat-label">Best Series (Scratch)</span>
-      <span class="best-stat-value">{bestSeries.scratch ? bestSeries.scratch.value : '—'}</span>
-      {bestSeries.scratch && <span class="best-stat-date">{bestSeries.scratch.date} · {bestSeries.scratch.gameCount} games</span>}
-    </div>
-    <div class="best-stat">
-      <span class="best-stat-label">Best Series (Handicap)</span>
-      <span class="best-stat-value">{bestSeries.handicapped ? bestSeries.handicapped.value : '—'}</span>
-      {bestSeries.handicapped && <span class="best-stat-date">{bestSeries.handicapped.date} · {bestSeries.handicapped.gameCount} games</span>}
-    </div>
+  <div class="entry-toggle stats-tabs" role="group" aria-label="Stats view">
+    <a class:list={['seg', { active: activeTab === 'bests' }]} href={tabHref('bests')} aria-current={activeTab === 'bests' ? 'true' : undefined}>Bests</a>
+    <a class:list={['seg', { active: activeTab === 'trends' }]} href={tabHref('trends')} aria-current={activeTab === 'trends' ? 'true' : undefined}>Trends</a>
+    <a class:list={['seg', { active: activeTab === 'conversions' }]} href={tabHref('conversions')} aria-current={activeTab === 'conversions' ? 'true' : undefined}>Conversions</a>
   </div>
 
-  <hr />
+  {activeTab === 'bests' && (
+    <>
+      <h2>All-Time Bests <span class="filter-badge">Always All-Time</span></h2>
+      <p class="empty">Every game and session ever logged, practice included — not affected by the Trends/Conversions filters.</p>
 
-  <details class="filter-collapse" open={hasFilters}>
-  <summary>
-    Filters
-    {hasFilters && <span class="filter-badge">Active</span>}
-  </summary>
-  <form method="GET" class="filter-form">
-    <label style="grid-column: span 2;">
-      Practice Sessions
-      <select name="practice">
-        <option value="include" selected={includePracticeSessions}>Include</option>
-        <option value="exclude" selected={!includePracticeSessions}>League Only</option>
-      </select>
-    </label>
-    <label style="grid-column: span 2;">
-      League
-      <select name="league">
-        <option value="" selected={!leagueId}>All Leagues</option>
-        {(leagues ?? []).map((l) => (
-          <option value={l.id} selected={l.id === leagueId}>{l.name}</option>
-        ))}
-      </select>
-    </label>
-    <button type="submit">Apply</button>
-    {hasFilters && <a href="/stats">Clear Filters</a>}
-  </form>
-  </details>
+      <div class="best-stats-grid">
+        <div class:list={['best-stat', { highlight: !!bestGame.scratch }]}>
+          <span class="best-stat-label">Best Game (Scratch)</span>
+          <span class="best-stat-value">{bestGame.scratch ? bestGame.scratch.value : '—'}</span>
+          {bestGame.scratch && <span class="best-stat-date">{bestGame.scratch.date}</span>}
+        </div>
+        <div class="best-stat">
+          <span class="best-stat-label">Best Game (Handicap)</span>
+          <span class="best-stat-value">{bestGame.handicapped ? bestGame.handicapped.value : '—'}</span>
+          {bestGame.handicapped && <span class="best-stat-date">{bestGame.handicapped.date}</span>}
+        </div>
+        <div class="best-stat">
+          <span class="best-stat-label">Best Series (Scratch)</span>
+          <span class="best-stat-value">{bestSeries.scratch ? bestSeries.scratch.value : '—'}</span>
+          {bestSeries.scratch && <span class="best-stat-date">{bestSeries.scratch.date} · {bestSeries.scratch.gameCount} games</span>}
+        </div>
+        <div class="best-stat">
+          <span class="best-stat-label">Best Series (Handicap)</span>
+          <span class="best-stat-value">{bestSeries.handicapped ? bestSeries.handicapped.value : '—'}</span>
+          {bestSeries.handicapped && <span class="best-stat-date">{bestSeries.handicapped.date} · {bestSeries.handicapped.gameCount} games</span>}
+        </div>
+      </div>
+    </>
+  )}
 
-  {scoredGames.length === 0 ? (
-    <p class="empty">No scored games match those filters.</p>
-  ) : (
-    <StatsCharts
-      client:load
-      heroLabel={heroLabel}
-      overallAverage={overallAverage}
-      handicappedAverage={handicappedAverage}
-      byLaneCondition={byLaneCondition}
-      byBall={byBall}
-      byLeague={byLeague}
-      averageOverTime={averageOverTime}
-      averageDrift={driftStat ? driftStat.averageBoards : null}
-      driftShotCount={driftStat ? driftStat.shotCount : 0}
-      rateStats={rateStats}
-      leaveConversions={leaveConversions}
-      pinLeaveStats={pinLeaveStats}
-      cleanGameStats={cleanGameStats}
-      handicapTrend={handicapTrend}
-    />
+  {activeTab !== 'bests' && (
+    <>
+      <details class="filter-collapse" open={hasFilters}>
+      <summary>
+        Filters
+        {hasFilters && <span class="filter-badge">Active</span>}
+      </summary>
+      <form method="GET" class="filter-form">
+        <input type="hidden" name="tab" value={activeTab} />
+        <label style="grid-column: span 2;">
+          Practice Sessions
+          <select name="practice">
+            <option value="include" selected={includePracticeSessions}>Include</option>
+            <option value="exclude" selected={!includePracticeSessions}>League Only</option>
+          </select>
+        </label>
+        <label style="grid-column: span 2;">
+          League
+          <select name="league">
+            <option value="" selected={!leagueId}>All Leagues</option>
+            {(leagues ?? []).map((l) => (
+              <option value={l.id} selected={l.id === leagueId}>{l.name}</option>
+            ))}
+          </select>
+        </label>
+        <button type="submit">Apply</button>
+        {hasFilters && <a href={clearFiltersHref(activeTab)}>Clear Filters</a>}
+      </form>
+      </details>
+
+      {scoredGames.length === 0 ? (
+        <p class="empty">No scored games match those filters.</p>
+      ) : (
+        <StatsCharts
+          client:load
+          activeTab={activeTab}
+          heroLabel={heroLabel}
+          overallAverage={overallAverage}
+          handicappedAverage={handicappedAverage}
+          byLaneCondition={byLaneCondition}
+          byBall={byBall}
+          byLeague={byLeague}
+          averageOverTime={averageOverTime}
+          averageDrift={driftStat ? driftStat.averageBoards : null}
+          driftShotCount={driftStat ? driftStat.shotCount : 0}
+          rateStats={rateStats}
+          leaveConversions={leaveConversions}
+          pinLeaveStats={pinLeaveStats}
+          cleanGameStats={cleanGameStats}
+          handicapTrend={handicapTrend}
+        />
+      )}
+    </>
   )}
 </Layout>
+
+<style>
+  .stats-tabs {
+    margin: 0.75rem 0 1rem;
+  }
+  @media (max-width: 640px) {
+    .stats-tabs {
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      padding-right: 2.75rem;
+      box-shadow: 0 0 0 4px var(--bg);
+    }
+  }
+</style>
