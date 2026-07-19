@@ -328,6 +328,12 @@ export default function GameLogger({
     });
     setActiveFrame(target);
     setEntryError(null);
+    // A real page reload used to put the bowler back at the top for free on
+    // every logged ball; now that logging one is a client-side update with
+    // no navigation, do the same explicitly -- otherwise they're left
+    // scrolled down at wherever the entry form was (often well below the
+    // scoresheet on a long form with reference marks) after every shot.
+    window.scrollTo({ top: 0, behavior: 'smooth' });
     return target;
   }
 
