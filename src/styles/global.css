@@ -881,6 +881,45 @@ a.ball-row:hover { text-decoration: none; box-shadow: var(--shadow-md); border-c
 
 .framedone { font-size: var(--text-sm); color: var(--text-secondary); margin: var(--s3) 0 0; }
 
+/* GameLogger.tsx renders the scoresheet cells and the pick/type toggle as
+   <button>s (client-side frame navigation, no page reload) instead of the
+   <a>s the rest of the app still uses for this shape elsewhere (review page,
+   MiniScoresheet) -- same classes, just resetting the extra UA button chrome
+   a plain link doesn't have. */
+button.cell { background: none; border: none; padding: 0; font: inherit; text-align: left; cursor: pointer; }
+.entry-toggle button.seg { background: none; border: none; font: inherit; cursor: pointer; }
+/* A plain inline text-button styled like the rest of the app's <a> links
+   (e.g. "Go to frame N ->", now a client-side navigation, not a real link). */
+.linklike { background: none; border: none; padding: 0; font: inherit; color: var(--accent); text-decoration: none; cursor: pointer; }
+.linklike:hover { text-decoration: underline; }
+
+/* Moved here from a page-scoped <style> when GameLogger.tsx took over
+   rendering this markup (a React island has no Astro-scoped stylesheet of
+   its own -- these need to be reachable globally). */
+.game-note { margin: 0.5rem 0 1rem; }
+.game-note summary { cursor: pointer; color: var(--accent); font-weight: 600; }
+.add-note { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.5rem; }
+.add-note button { align-self: flex-start; }
+.retry-banner {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(var(--s4) + var(--tabbar-clearance));
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  width: max-content;
+  max-width: min(440px, calc(100vw - 2rem));
+  padding: var(--s3) var(--s4);
+  background: var(--surface);
+  border: 1px solid var(--coral);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+}
+.retry-msg { font-size: var(--text-sm); color: var(--text-primary); }
+.retry-banner button { flex: none; }
+
 /* ============================================================
    Shot logging: reference, targets, quick pin shortcuts
    ============================================================ */

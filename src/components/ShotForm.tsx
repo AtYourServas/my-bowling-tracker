@@ -87,6 +87,11 @@ type Props = {
    *  A hidden mark drops its LanePicker strip; a hidden field isn't rendered.
    *  Left empty when editing so no stored value is hidden (and thus wiped). */
   hiddenFields?: string[];
+  /** When provided, submitting the form calls this with the form's FormData
+   *  instead of posting natively (used by GameLogger to log a shot instantly
+   *  client-side and sync in the background). Omitted everywhere else, where
+   *  behavior is unchanged from a plain form POST. */
+  onSubmit?: (data: FormData) => void;
 };
 
 export default function ShotForm({
@@ -102,6 +107,7 @@ export default function ShotForm({
   defaultApproachId,
   mode = 'pick',
   hiddenFields = [],
+  onSubmit,
 }: Props) {
   const show = (key: string) => !hiddenFields.includes(key);
   const shownMarks = (['stance', 'target', 'slide', 'breakpoint'] as const).filter(show);
@@ -215,7 +221,18 @@ export default function ShotForm({
         : (defaultBoards?.target ?? null);
 
   return (
-    <form method="POST" ref={formRef}>
+    <form
+      method="POST"
+      ref={formRef}
+      onSubmit={
+        onSubmit
+          ? (e) => {
+              e.preventDefault();
+              onSubmit(new FormData(e.currentTarget));
+            }
+          : undefined
+      }
+    >
       <input type="hidden" name="frame_number" value={frameNumber} />
       <input type="hidden" name="intent" value="log_shot" />
       <input type="hidden" name="mode" value={mode} />
