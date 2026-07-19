@@ -1,5 +1,6 @@
 ---
 import '../styles/global.css';
+import { ClientRouter } from 'astro:transitions';
 
 interface Props {
   title: string;
@@ -52,6 +53,30 @@ const isActive = (href: string) => path === href || path.startsWith(href + '/');
     <meta name="theme-color" content="#f6f5f2" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#121211" media="(prefers-color-scheme: dark)" />
     <title>{title} · MyBowlingTracker</title>
+    <ClientRouter />
+    <script is:inline>
+      // ClientRouter (added above) intercepts every same-origin link click and
+      // form submit by default, swapping content via fetch() instead of a real
+      // navigation. The game-play flow (game page + its shot editor + review
+      // sub-route) depends on every navigation into or out of it being a REAL
+      // browser navigation -- sw.js's networkFirstGamePage only caches on
+      // `request.mode === 'navigate'` GET requests, which a ClientRouter-driven
+      // fetch() swap never produces, so a soft nav into a game page would
+      // silently stop refreshing its offline cache. Force a real reload
+      // whenever either side of the navigation is in that flow (leaving too,
+      // not just entering -- GameLogger's stateful offline write queue should
+      // always get a clean teardown, not a DOM morph). Keep this pattern
+      // conceptually in sync with sw.js's GAME_PAGE_PATTERN; this one is
+      // intentionally broader since it also covers the shot editor and review
+      // sub-routes, which the service worker itself doesn't cache but which
+      // are still part of the same stateful flow.
+      var GAME_FLOW_PATTERN = /^\/sessions\/[^/]+\/games\/[^/]+(\/(shots\/[^/]+|review))?\/?$/;
+      document.addEventListener('astro:before-preparation', function (e) {
+        if (GAME_FLOW_PATTERN.test(e.to.pathname) || GAME_FLOW_PATTERN.test(e.from.pathname)) {
+          e.preventDefault();
+        }
+      });
+    </script>
     <script is:inline>
       // Offline Phase 3: register the game-page service worker. Deferred to
       // 'load' so it never competes with first paint; harmless pre-login.
@@ -80,7 +105,7 @@ const isActive = (href: string) => path === href || path.startsWith(href + '/');
     </script>
   </head>
   <body>
-    <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle light or dark theme">
+    <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle light or dark theme" transition:persist transition:name="theme-toggle">
       ☾
     </button>
     {user && (
@@ -100,7 +125,7 @@ const isActive = (href: string) => path === href || path.startsWith(href + '/');
       </header>
     )}
     <slot />
-    <dialog id="confirm-dialog" class="confirm-dialog">
+    <dialog id="confirm-dialog" class="confirm-dialog" transition:persist transition:name="confirm-dialog">
       <p id="confirm-dialog-message"></p>
       <div class="confirm-dialog-actions">
         <button type="button" class="secondary" data-confirm-cancel>Cancel</button>
@@ -118,16 +143,22 @@ const isActive = (href: string) => path === href || path.startsWith(href + '/');
       </nav>
     )}
     <script is:inline>
-      // Close the top menu on an outside click or Escape (a link click loads a
-      // fresh page, so navigation closes it on its own).
+      // Close the top menu on an outside click or Escape (navigating to a new
+      // page replaces #appmenu with a fresh, closed one on its own either way).
+      // #appmenu is NOT transition:persist'd (its nav links' aria-current must
+      // re-render per page), so it gets swapped for a new DOM node on every
+      // ClientRouter navigation -- look it up fresh on each event instead of
+      // capturing it once, or these listeners would end up checking a stale,
+      // detached node after the first soft navigation.
       (function () {
-        var menu = document.getElementById('appmenu');
-        if (!menu) return;
         document.addEventListener('click', function (e) {
-          if (menu.open && e.target instanceof Node && !menu.contains(e.target)) menu.open = false;
+          var menu = document.getElementById('appmenu');
+          if (menu && menu.open && e.target instanceof Node && !menu.contains(e.target)) menu.open = false;
         });
         document.addEventListener('keydown', function (e) {
-          if (e.key === 'Escape') menu.open = false;
+          if (e.key !== 'Escape') return;
+          var menu = document.getElementById('appmenu');
+          if (menu) menu.open = false;
         });
       })();
     </script>

@@ -218,13 +218,19 @@ const strikeApproaches = (approaches ?? []).filter((a) => (a.leave ?? []).length
   </form>
 
   <script>
-    // Each Select All / Clear All button targets its own grid by id, so the two
-    // field grids (shot logger + approach) toggle independently.
-    document.querySelectorAll<HTMLButtonElement>('.toggle-actions button[data-grid]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const grid = document.getElementById(btn.dataset.grid!);
-        const checked = btn.dataset.check === 'on';
-        grid?.querySelectorAll<HTMLInputElement>('input[type="checkbox"]').forEach((box) => (box.checked = checked));
+    // Wrapped in astro:page-load (fires on the initial load AND every
+    // ClientRouter navigation, including a repeat visit to this page) --
+    // Astro dedupes identical script content against what's already run this
+    // session, so a plain top-level body would only wire up the FIRST visit.
+    document.addEventListener('astro:page-load', () => {
+      // Each Select All / Clear All button targets its own grid by id, so the
+      // two field grids (shot logger + approach) toggle independently.
+      document.querySelectorAll<HTMLButtonElement>('.toggle-actions button[data-grid]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const grid = document.getElementById(btn.dataset.grid!);
+          const checked = btn.dataset.check === 'on';
+          grid?.querySelectorAll<HTMLInputElement>('input[type="checkbox"]').forEach((box) => (box.checked = checked));
+        });
       });
     });
   </script>
