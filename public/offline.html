@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Offline · MyBowlingTracker</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<style>
+  :root {
+    --bg: #f6f5f2;
+    --surface: #fcfcfb;
+    --border: #e1e0d9;
+    --text-primary: #1a1a18;
+    --text-secondary: #5a594f;
+    --accent: #2a6fdb;
+    --accent-ink: #fff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #121211;
+      --surface: #1a1a1a;
+      --border: #2c2c2a;
+      --text-primary: #f2f1ec;
+      --text-secondary: #a8a79c;
+      --accent: #4a8ff0;
+      --accent-ink: #0b0b0b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    background: var(--bg);
+    color: var(--text-primary);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .card {
+    max-width: 24rem;
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 2rem 1.5rem;
+    text-align: center;
+  }
+  .card h1 { font-size: 1.25rem; margin: 0.75rem 0 0.5rem; }
+  .card p { color: var(--text-secondary); line-height: 1.5; margin: 0 0 1.5rem; }
+  .icon { font-size: 2.5rem; }
+  button {
+    font: inherit;
+    padding: 0.65rem 1.25rem;
+    border-radius: 8px;
+    border: none;
+    background: var(--accent);
+    color: var(--accent-ink);
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon" aria-hidden="true">🎳</div>
+    <h1>You're offline</h1>
+    <p>This page hasn't loaded on this device yet. Reconnect and open it once — after that, it'll be available even without signal.</p>
+    <button type="button" onclick="location.reload()">Try Again</button>
+  </div>
+</body>
+</html>

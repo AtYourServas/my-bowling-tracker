@@ -53,6 +53,15 @@ const isActive = (href: string) => path === href || path.startsWith(href + '/');
     <meta name="theme-color" content="#121211" media="(prefers-color-scheme: dark)" />
     <title>{title} · MyBowlingTracker</title>
     <script is:inline>
+      // Offline Phase 3: register the game-page service worker. Deferred to
+      // 'load' so it never competes with first paint; harmless pre-login.
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function () {
+          navigator.serviceWorker.register('/sw.js').catch(function () {});
+        });
+      }
+    </script>
+    <script is:inline>
       // Apply saved theme before first paint to avoid a flash of the wrong theme.
       // A saved theme overrides the OS, so the theme-color metas (which key off
       // the OS scheme) must be forced to match — both get the explicit color.
@@ -214,6 +223,39 @@ const isActive = (href: string) => path === href || path.startsWith(href + '/');
           });
         });
       })();
+    </script>
+    <script>
+      // Offline Phase 3: a service worker now caches this device's most
+      // recent copy of any visited game page (bowling-game-v1 in sw.js --
+      // keep that literal in sync with CACHE_NAME below if it ever changes)
+      // plus the IndexedDB write queue/reference cache (Phase 2). Both hold
+      // one user's personal data, so clear them on logout -- but only when
+      // nothing is still waiting to sync, so a shared-device logout can never
+      // silently discard an unsynced offline shot.
+      import { hasQueuedWrites, clearAllOfflineData } from '../lib/offlineQueue';
+
+      const CACHE_NAME = 'bowling-game-v1';
+
+      document.addEventListener(
+        'submit',
+        async function (e) {
+          const form = e.target;
+          if (!(form instanceof HTMLFormElement) || !form.classList.contains('logout')) return;
+          if (form.hasAttribute('data-offline-cleanup-bypass')) return;
+          e.preventDefault();
+          try {
+            if (!(await hasQueuedWrites())) {
+              if ('caches' in window) await caches.delete(CACHE_NAME);
+              await clearAllOfflineData();
+            }
+          } catch (err) {
+            // Best-effort only -- never block logout on a cache/IndexedDB failure.
+          }
+          form.setAttribute('data-offline-cleanup-bypass', '');
+          form.requestSubmit();
+        },
+        true
+      );
     </script>
     <script is:inline>
       (function () {
