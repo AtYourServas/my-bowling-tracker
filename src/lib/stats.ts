@@ -425,7 +425,7 @@ export type RateStats = {
   deliveries: number;
 };
 
-export type LeaveConversion = { name: string; attempts: number; converted: number };
+export type LeaveConversion = { name: string; pins: number[]; attempts: number; converted: number };
 
 /** A delivery that cleared everything it faced (a foul knocks nothing down). */
 function clearedRack(shot: StatShot): boolean {
@@ -578,7 +578,7 @@ export function computeLeaveConversions(frames: StatFrame[], filter: StatsFilter
   });
 
   return Array.from(groups.values())
-    .map(({ pins, attempts, converted }) => ({ name: leaveDisplayName(pins), attempts, converted }))
+    .map(({ pins, attempts, converted }) => ({ name: leaveDisplayName(pins), pins, attempts, converted }))
     .sort((a, b) => b.attempts - a.attempts || a.name.localeCompare(b.name));
 }
 

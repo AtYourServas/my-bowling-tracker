@@ -617,10 +617,21 @@ a.card:hover { text-decoration: none; box-shadow: var(--shadow-md); border-color
   border-bottom-left-radius: 0;
   border-bottom-right-radius: 0;
 }
-.filter-collapse > .filter-form {
+.filter-collapse > .filter-form,
+.filter-collapse > .pin-filter-body {
   margin-top: 0;
   border-top-left-radius: 0;
   border-top-right-radius: 0;
+}
+/* Non-form collapsible content (e.g. the stats page's pin-picker filter) --
+   same boxed look as .filter-form but without its 2-column grid. */
+.pin-filter-body {
+  margin: var(--s3) 0;
+  padding: var(--s4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
 }
 .filter-badge {
   font-size: var(--text-xs);

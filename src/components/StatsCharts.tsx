@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import type { RateStats, LeaveConversion, PinLeaveStat, CleanGameStats } from '../lib/stats';
+import { PinRows } from './PinRack';
 
 type BarDatum = { label: string; value: number; count: number };
 type TimeDatum = { date: string; score: number };
 
 type Props = {
+  activeTab: 'trends' | 'conversions';
   heroLabel: string;
   overallAverage: number | null;
   handicappedAverage: number | null;
@@ -46,11 +48,46 @@ function RateTile({ label, made, opportunities, noun }: { label: string; made: n
 }
 
 function LeaveConversionTable({ data }: { data: LeaveConversion[] }) {
+  const [pinFilter, setPinFilter] = useState<Set<number>>(new Set());
+
+  function togglePin(pin: number) {
+    setPinFilter((prev) => {
+      const next = new Set(prev);
+      if (next.has(pin)) next.delete(pin);
+      else next.add(pin);
+      return next;
+    });
+  }
+
+  const selectedPins = Array.from(pinFilter);
+  const filtered = selectedPins.length === 0 ? data : data.filter((d) => selectedPins.every((p) => d.pins.includes(p)));
+
   return (
     <div className="chart-card">
       <h2>Spare Conversion by Leave</h2>
+
+      <details className="filter-collapse">
+        <summary>
+          Filter by Pin
+          {selectedPins.length > 0 && <span className="filter-badge">Active</span>}
+        </summary>
+        <div className="pin-filter-body">
+          {selectedPins.length > 0 && (
+            <div className="pin-shortcuts">
+              <button type="button" className="clear" onClick={() => setPinFilter(new Set())}>
+                Clear
+              </button>
+            </div>
+          )}
+          <p className="pin-hint">Highlight pins to show only leaves that include them:</p>
+          <PinRows standing={pinFilter} onToggle={togglePin} />
+        </div>
+      </details>
+
       {data.length === 0 ? (
         <p className="chart-empty">Not enough data yet.</p>
+      ) : filtered.length === 0 ? (
+        <p className="chart-empty">No leaves match the selected pins.</p>
       ) : (
         <table className="chart-table">
           <thead>
@@ -61,7 +98,7 @@ function LeaveConversionTable({ data }: { data: LeaveConversion[] }) {
             </tr>
           </thead>
           <tbody>
-            {data.map((d) => (
+            {filtered.map((d) => (
               <tr key={d.name}>
                 <td>{d.name}</td>
                 <td>
@@ -414,6 +451,7 @@ function LineChart({ title, data }: { title: string; data: TimeDatum[] }) {
 }
 
 export default function StatsCharts({
+  activeTab,
   heroLabel,
   overallAverage,
   handicappedAverage,
@@ -431,46 +469,54 @@ export default function StatsCharts({
 }: Props) {
   return (
     <div className="stats-charts">
-      <div className="hero-stat">
-        <span className="hero-label">{heroLabel}</span>
-        <span className="hero-value">{overallAverage != null ? overallAverage.toFixed(1) : '—'}</span>
-      </div>
+      {activeTab === 'trends' && (
+        <>
+          <div className="hero-stat">
+            <span className="hero-label">{heroLabel}</span>
+            <span className="hero-value">{overallAverage != null ? overallAverage.toFixed(1) : '—'}</span>
+          </div>
 
-      {handicappedAverage != null && (
-        <div className="hero-stat hero-stat-secondary">
-          <span className="hero-label">Handicapped Average (league games)</span>
-          <span className="hero-value-secondary">{handicappedAverage.toFixed(1)}</span>
-        </div>
-      )}
-
-      {averageDrift != null && (
-        <div className="hero-stat hero-stat-secondary">
-          <span className="hero-label">Average Drift ({driftShotCount} shot{driftShotCount === 1 ? '' : 's'})</span>
-          <span className="hero-value-secondary">{formatDrift(averageDrift)}</span>
-        </div>
-      )}
-
-      {rateStats && (
-        <div className="rate-grid">
-          <RateTile label="Strike Rate" made={rateStats.strikes} opportunities={rateStats.strikeOpportunities} noun="first balls" />
-          <RateTile label="Spare Conversion" made={rateStats.spares} opportunities={rateStats.spareOpportunities} noun="leaves" />
-          <RateTile label="Split Conversion" made={rateStats.splitConversions} opportunities={rateStats.splitAttempts} noun="splits" />
-          <RateTile label="Open Frames" made={rateStats.openFrames} opportunities={rateStats.completedFrames} noun="frames" />
-          <RateTile label="Gutter Rate" made={rateStats.gutterBalls} opportunities={rateStats.deliveries} noun="balls" />
-          {cleanGameStats && (
-            <RateTile label="Clean Game Rate" made={cleanGameStats.cleanGames} opportunities={cleanGameStats.totalGames} noun="games" />
+          {handicappedAverage != null && (
+            <div className="hero-stat hero-stat-secondary">
+              <span className="hero-label">Handicapped Average (league games)</span>
+              <span className="hero-value-secondary">{handicappedAverage.toFixed(1)}</span>
+            </div>
           )}
-        </div>
+
+          {averageDrift != null && (
+            <div className="hero-stat hero-stat-secondary">
+              <span className="hero-label">Average Drift ({driftShotCount} shot{driftShotCount === 1 ? '' : 's'})</span>
+              <span className="hero-value-secondary">{formatDrift(averageDrift)}</span>
+            </div>
+          )}
+
+          <LineChart title="Average Over Time" data={averageOverTime} />
+          <LineChart title="Handicap Trend" data={handicapTrend} />
+          <BarChart title="Average by League" data={byLeague} unit="avg score" />
+          <BarChart title="Average by Lane Condition" data={byLaneCondition} unit="avg score" />
+          <BarChart title="Avg First-Ball Pinfall, by Ball" data={byBall} unit="pins" />
+        </>
       )}
 
-      {rateStats && <LeaveConversionTable data={leaveConversions} />}
-      {rateStats && <PinLeaveDiagram data={pinLeaveStats} />}
+      {activeTab === 'conversions' && (
+        <>
+          {rateStats && (
+            <div className="rate-grid">
+              <RateTile label="Strike Rate" made={rateStats.strikes} opportunities={rateStats.strikeOpportunities} noun="first balls" />
+              <RateTile label="Spare Conversion" made={rateStats.spares} opportunities={rateStats.spareOpportunities} noun="leaves" />
+              <RateTile label="Split Conversion" made={rateStats.splitConversions} opportunities={rateStats.splitAttempts} noun="splits" />
+              <RateTile label="Open Frames" made={rateStats.openFrames} opportunities={rateStats.completedFrames} noun="frames" />
+              <RateTile label="Gutter Rate" made={rateStats.gutterBalls} opportunities={rateStats.deliveries} noun="balls" />
+              {cleanGameStats && (
+                <RateTile label="Clean Game Rate" made={cleanGameStats.cleanGames} opportunities={cleanGameStats.totalGames} noun="games" />
+              )}
+            </div>
+          )}
 
-      <LineChart title="Average Over Time" data={averageOverTime} />
-      <LineChart title="Handicap Trend" data={handicapTrend} />
-      <BarChart title="Average by League" data={byLeague} unit="avg score" />
-      <BarChart title="Average by Lane Condition" data={byLaneCondition} unit="avg score" />
-      <BarChart title="Avg First-Ball Pinfall, by Ball" data={byBall} unit="pins" />
+          {rateStats && <LeaveConversionTable data={leaveConversions} />}
+          {rateStats && <PinLeaveDiagram data={pinLeaveStats} />}
+        </>
+      )}
     </div>
   );
 }
