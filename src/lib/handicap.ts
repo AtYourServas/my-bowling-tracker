@@ -32,7 +32,7 @@ async function fetchPriorLeagueAverage(
   const { data: games } = await supabase
     .from('games')
     .select('id, final_score')
-    .eq('is_practice', false)
+    .eq('is_warmup', false)
     .in('session_id', sessionIds);
 
   if (!games || games.length === 0) return null;

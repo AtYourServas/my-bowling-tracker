@@ -25,7 +25,7 @@ export type StatsFilter = {
 
 /**
  * Every game ever logged with a resolvable score (final_score, falling back to a
- * derived score), including is_practice games and practice-session games. Scores
+ * derived score), including is_warmup games and practice-session games. Scores
  * are derived in a single bulk pass rather than one query per game. Callers slice
  * this down in memory: filterScoredGames for averages, the full list for all-time
  * "best game"/"best series" bragging-rights stats.
@@ -33,7 +33,7 @@ export type StatsFilter = {
 export async function fetchAllGamesWithScores(supabase: SupabaseClient): Promise<ScoredGame[]> {
   const { data: games } = await supabase
     .from('games')
-    .select('id, final_score, session_id, is_practice, ended_early, sessions(session_date, lane_condition_notes, session_type, league_id, manual_handicap)');
+    .select('id, final_score, session_id, is_warmup, ended_early, sessions(session_date, lane_condition_notes, session_type, league_id, manual_handicap)');
 
   if (!games) return [];
 
@@ -56,7 +56,7 @@ export async function fetchAllGamesWithScores(supabase: SupabaseClient): Promise
       sessionId: game.session_id,
       sessionDate: game.sessions.session_date,
       sessionType: game.sessions.session_type,
-      isPractice: game.is_practice,
+      isPractice: game.is_warmup,
       leagueId: game.sessions.league_id,
       manualHandicap: game.sessions.manual_handicap,
       laneCondition: game.sessions.lane_condition_notes,
@@ -68,7 +68,7 @@ export async function fetchAllGamesWithScores(supabase: SupabaseClient): Promise
 
 /**
  * The non-practice-segment games used for averages: excludes the Practice segment
- * of a league night (is_practice) and, unless the filter opts in, standalone
+ * of a league night (is_warmup) and, unless the filter opts in, standalone
  * practice sessions too. Pure in-memory slice of fetchAllGamesWithScores.
  */
 export function filterScoredGames(allGames: ScoredGame[], filter: StatsFilter): ScoredGame[] {
@@ -190,7 +190,7 @@ export async function fetchStatFrames(supabase: SupabaseClient): Promise<StatFra
   const { data: frames } = await supabase
     .from('frames')
     .select(
-      'frame_number, games(id, is_practice, sessions(session_type, league_id)), shots(pins_standing, strike, spare, foul, ball_id, created_at, lineup_position, slide_position, balls(name))',
+      'frame_number, games(id, is_warmup, sessions(session_type, league_id)), shots(pins_standing, strike, spare, foul, ball_id, created_at, lineup_position, slide_position, balls(name))',
     )
     .order('created_at', { foreignTable: 'shots', ascending: true });
 
@@ -203,7 +203,7 @@ export async function fetchStatFrames(supabase: SupabaseClient): Promise<StatFra
     results.push({
       frameNumber: frame.frame_number,
       gameId: game.id ?? null,
-      isPractice: game.is_practice,
+      isPractice: game.is_warmup,
       sessionType: game.sessions?.session_type ?? null,
       leagueId: game.sessions?.league_id ?? null,
       shots: frame.shots ?? [],
@@ -221,7 +221,7 @@ export async function fetchSessionStatFrames(supabase: SupabaseClient, sessionId
   const { data: frames } = await supabase
     .from('frames')
     .select(
-      'frame_number, games!inner(id, session_id, is_practice, sessions(session_type, league_id)), shots(pins_standing, strike, spare, foul, ball_id, created_at, lineup_position, slide_position, balls(name))',
+      'frame_number, games!inner(id, session_id, is_warmup, sessions(session_type, league_id)), shots(pins_standing, strike, spare, foul, ball_id, created_at, lineup_position, slide_position, balls(name))',
     )
     .eq('games.session_id', sessionId)
     .order('created_at', { foreignTable: 'shots', ascending: true });
@@ -231,7 +231,7 @@ export async function fetchSessionStatFrames(supabase: SupabaseClient, sessionId
   return (frames as any[]).map((frame) => ({
     frameNumber: frame.frame_number,
     gameId: frame.games.id ?? null,
-    isPractice: frame.games.is_practice,
+    isPractice: frame.games.is_warmup,
     sessionType: frame.games.sessions?.session_type ?? null,
     leagueId: frame.games.sessions?.league_id ?? null,
     shots: frame.shots ?? [],
@@ -730,9 +730,9 @@ export async function fetchSessionLaneStats(
 ): Promise<SessionLaneStat[]> {
   const { data: frames } = await supabase
     .from('frames')
-    .select('frame_number, games!inner(session_id, is_practice), shots(pins_standing, strike, foul, created_at)')
+    .select('frame_number, games!inner(session_id, is_warmup), shots(pins_standing, strike, foul, created_at)')
     .eq('games.session_id', sessionId)
-    .eq('games.is_practice', false)
+    .eq('games.is_warmup', false)
     .order('created_at', { foreignTable: 'shots', ascending: true });
 
   if (!frames) return [];

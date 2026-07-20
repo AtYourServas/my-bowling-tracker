@@ -20,7 +20,7 @@ export const GET: APIRoute = async ({ params, url, locals }) => {
 
   const { data: game } = await supabase
     .from('games')
-    .select('final_score, is_practice, sessions(session_date, session_type, league_id, manual_handicap)')
+    .select('final_score, is_warmup, sessions(session_date, session_type, league_id, manual_handicap)')
     .eq('id', gameId)
     .maybeSingle();
 

@@ -23,14 +23,14 @@ export type NoteEntry = {
   faced?: string;
 };
 
-function gameLabel(game: { is_practice: boolean | null; game_number: number | null }): string {
-  if (game.is_practice) return 'Practice';
+function gameLabel(game: { is_warmup: boolean | null; game_number: number | null }): string {
+  if (game.is_warmup) return 'Practice';
   return game.game_number ? `Game ${game.game_number}` : 'Game';
 }
 
 // Shot columns needed to render a shot-linked note entry (outcome + marks + link).
 const SHOT_NOTE_SELECT =
-  'id, frame_id, note, created_at, pins_standing, strike, spare, foul, hook_timing, miss_direction, target_type, target_value, slide_position, breakpoint_board, ball_id, balls(name), frames!inner(frame_number, games!inner(id, game_number, is_practice, session_id))';
+  'id, frame_id, note, created_at, pins_standing, strike, spare, foul, hook_timing, miss_direction, target_type, target_value, slide_position, breakpoint_board, ball_id, balls(name), frames!inner(frame_number, games!inner(id, game_number, is_warmup, session_id))';
 
 type ShotMeta = { link: { href: string; label: string }; result: string; details: NoteDetail[] };
 

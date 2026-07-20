@@ -25,7 +25,7 @@ let error: string | null = null;
 
 // Fetched up front (rather than after POST handling, as before) so isWarmup is known
 // before frame-number parsing and the resume redirect below need to branch on it. Reads
-// are unaffected by any mutation a POST intent below performs -- is_practice never
+// are unaffected by any mutation a POST intent below performs -- is_warmup never
 // changes, and the sessions join is read-only context.
 const { data: game } = await supabase
   .from('games')
@@ -38,9 +38,9 @@ if (!game) {
 }
 
 // The League session's Practice slot: an unbounded warmup, not a normal capped 10-frame
-// game -- see PR 67. (Standalone practice *sessions* use is_practice=false freeform
+// game -- see PR 67. (Standalone practice *sessions* use is_warmup=false freeform
 // games and keep the normal capped logger below.)
-const isWarmup = game.is_practice;
+const isWarmup = game.is_warmup;
 
 // Score-entry mode: an explicit ?mode= (set by the on-page toggle) wins and
 // sticks frame-to-frame; otherwise fall back to the profile's saved default.
@@ -114,7 +114,7 @@ if (Astro.request.method === 'POST') {
         return Astro.redirect(`/sessions/${sessionId}`);
       }
     } else {
-      const eligible = game.is_practice || game.sessions?.session_type === 'practice';
+      const eligible = game.is_warmup || game.sessions?.session_type === 'practice';
 
       if (!eligible) {
         error = 'This game cannot be ended early.';
@@ -402,7 +402,7 @@ const { data: prefRow } = await supabase
   .maybeSingle();
 const hiddenShotFields = prefRow?.hidden_shot_fields ?? [];
 
-const gameLabel = game.is_practice ? 'Practice' : game.game_number ? `Game ${game.game_number}` : 'Game';
+const gameLabel = game.is_warmup ? 'Practice' : game.game_number ? `Game ${game.game_number}` : 'Game';
 
 const laneConfig = laneConfigFromSession(game.sessions ?? { lane_number: null, second_lane_number: null });
 ---
