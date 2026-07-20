@@ -445,6 +445,7 @@ const laneConfig = laneConfigFromSession(game.sessions ?? { lane_number: null, s
       data-confirm="End practice? Everything logged so far stays saved -- you can still come back and add more."
       data-confirm-label="End Practice"
       data-confirm-style="secondary"
+      data-astro-reload
     >
       <input type="hidden" name="intent" value="end_practice_early" />
       <button type="submit" class="secondary end-action">End Practice</button>
@@ -452,12 +453,12 @@ const laneConfig = laneConfigFromSession(game.sessions ?? { lane_number: null, s
   )}
 
   {isWarmup ? (
-    <form method="POST" class="row-actions" data-confirm="Discard this practice? Nothing logged will be saved.">
+    <form method="POST" class="row-actions" data-confirm="Discard this practice? Nothing logged will be saved." data-astro-reload>
       <input type="hidden" name="intent" value="delete_game" />
       <button type="submit" class="danger">Close Without Logging</button>
     </form>
   ) : (
-    <form method="POST" class="row-actions" data-confirm="Delete this game? Its throws and scores will be permanently removed.">
+    <form method="POST" class="row-actions" data-confirm="Delete this game? Its throws and scores will be permanently removed." data-astro-reload>
       <input type="hidden" name="intent" value="delete_game" />
       <button type="submit" class="danger">Delete Game</button>
     </form>

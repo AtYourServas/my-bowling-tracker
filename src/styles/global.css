@@ -834,6 +834,21 @@ details.collapsible[open] > summary { margin-bottom: var(--s3); }
 .type-controls { display: flex; align-items: center; gap: var(--s3); margin: var(--s2) 0 var(--s3); }
 .type-controls button { padding: 6px 14px; font-size: var(--text-sm); white-space: nowrap; }
 
+/* on-screen shorthand keypad (Type Score mode) -- phone-style digits with X/·/− as a 4th column */
+.shorthand-keypad {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: var(--s2) 0;
+}
+.shorthand-keypad .key {
+  padding: var(--s2) 0; font-family: var(--font-mono); font-size: 1rem; font-weight: var(--fw-semi);
+  background: var(--surface); color: var(--text-primary); border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+}
+.shorthand-keypad .key:hover { background: var(--surface-sunk); filter: none; }
+.shorthand-keypad .key:active { background: var(--surface-sunk); }
+.shorthand-keypad .key.mark { color: var(--accent); border-color: var(--accent); }
+.shorthand-keypad .key.zero { grid-column: 1 / 4; }
+.shorthand-keypad .key.backspace { color: var(--text-muted); }
+.shorthand-keypad .key.backspace:disabled { opacity: 0.4; }
+
 .scorecard {
   display: flex;
   justify-content: space-between;

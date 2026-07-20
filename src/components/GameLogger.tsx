@@ -683,6 +683,24 @@ export default function GameLogger({
     }).then(() => void runFlush());
   }
 
+  // On-screen shorthand keypad (Type Score mode) -- keeps X/·/− within thumb
+  // reach on mobile instead of hunting for symbols on the OS keyboard, which
+  // `inputMode="none"` on the box above discourages from popping up at all.
+  // Digits append (respecting the 2-char max, e.g. "10"); a mark token always
+  // replaces whatever was typed, since none of X/·/− can combine with digits.
+  function tapShorthandDigit(digit: string) {
+    setShorthandValue((prev) => (prev + digit).slice(0, 2));
+    setShorthandError(null);
+  }
+  function tapShorthandToken(token: string) {
+    setShorthandValue(token);
+    setShorthandError(null);
+  }
+  function tapShorthandBackspace() {
+    setShorthandValue((prev) => prev.slice(0, -1));
+    setShorthandError(null);
+  }
+
   function handleShorthandSubmit() {
     const raw = shorthandValue.trim() || 'G';
     const parsed = parseShotShorthand(raw, {
@@ -825,6 +843,7 @@ export default function GameLogger({
                         maxLength={2}
                         autoComplete="off"
                         autoCapitalize="characters"
+                        inputMode="none"
                         autoFocus
                         aria-label={`Frame ${activeFrame}, ball ${progress.nextBall}`}
                         onChange={(e) => setShorthandValue(e.target.value)}
@@ -886,8 +905,34 @@ export default function GameLogger({
         </div>
       </div>
       {mode === 'type' && progress.nextBall != null && (
+        <div className="shorthand-keypad" role="group" aria-label="Shorthand keypad">
+          {['1', '2', '3', 'X', '4', '5', '6', '/', '7', '8', '9', '-'].map((k) => (
+            <button
+              key={k}
+              type="button"
+              className={cx('key', { mark: k === 'X' || k === '/' || k === '-' })}
+              onClick={() => (['X', '/', '-'].includes(k) ? tapShorthandToken(k) : tapShorthandDigit(k))}
+            >
+              {k}
+            </button>
+          ))}
+          <button type="button" className="key zero" onClick={() => tapShorthandDigit('0')}>
+            0
+          </button>
+          <button
+            type="button"
+            className="key backspace"
+            aria-label="Backspace"
+            disabled={shorthandValue === ''}
+            onClick={tapShorthandBackspace}
+          >
+            &larr;
+          </button>
+        </div>
+      )}
+      {mode === 'type' && progress.nextBall != null && (
         <div className="type-controls">
-          <button type="button" className="secondary" onClick={handleShorthandSubmit}>
+          <button type="button" className="secondary" onClick={() => handleShorthandSubmit()}>
             Log Ball {progress.nextBall}
           </button>
         </div>
@@ -902,7 +947,7 @@ export default function GameLogger({
       {!isWarmup && (
         <details className="setscore">
           <summary>{finalScore != null ? `Final Score · ${finalScore}` : 'Set Final Score'}</summary>
-          <form className="finalscore" method="POST">
+          <form className="finalscore" method="POST" data-astro-reload>
             <input type="hidden" name="intent" value="set_score" />
             <input type="hidden" name="mode" value={mode} />
             <input id="final_score" type="number" name="final_score" min="0" max="300" defaultValue={finalScore ?? ''} placeholder="&#8212;" aria-label="Final Score" />
@@ -972,7 +1017,7 @@ export default function GameLogger({
 
       <details className="game-note" id="note">
         <summary>+ Add a Note</summary>
-        <form method="POST" className="add-note">
+        <form method="POST" className="add-note" data-astro-reload>
           <input type="hidden" name="intent" value="add_note" />
           <input type="hidden" name="mode" value={mode} />
           <textarea name="body" rows={2} placeholder="Quick thought while bowling — lane read, adjustment, reminder…" aria-label="New note" required></textarea>
@@ -1059,6 +1104,7 @@ export default function GameLogger({
           method="POST"
           className="row-actions"
           data-confirm={`End this game after frame ${sidebar.partialScore.throughFrame} with a score of ${sidebar.partialScore.score}? You can keep bowling later and re-save the score to correct it.`}
+          data-astro-reload
         >
           <input type="hidden" name="intent" value="end_practice_early" />
           <button type="submit" className="secondary end-action">

@@ -265,6 +265,7 @@ export default function ShotForm({
   return (
     <form
       method="POST"
+      data-astro-reload
       ref={formRef}
       onSubmit={
         onSubmit

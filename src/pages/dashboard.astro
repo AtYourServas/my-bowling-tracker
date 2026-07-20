@@ -61,7 +61,7 @@ async function findOrCreateOpenGame(
     : (
         await supabase
           .from('games')
-          .insert({ session_id: sessionId, is_practice: sessionType === 'practice', game_number: sessionType === 'league' ? 1 : null })
+          .insert({ session_id: sessionId, is_practice: false, game_number: sessionType === 'league' ? 1 : null })
           .select('id')
           .single()
       ).data?.id;
