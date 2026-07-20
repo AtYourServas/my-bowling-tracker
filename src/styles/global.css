@@ -831,12 +831,12 @@ details.collapsible[open] > summary { margin-bottom: var(--s3); }
 .cell.typing .bbox { width: 26px; height: 26px; font-size: 0.9rem; }
 .cell.typing .bbox-input { width: 34px; height: 34px; font-size: 1.05rem; border-radius: var(--radius-sm); }
 
-.type-controls { display: flex; align-items: center; gap: var(--s3); margin: var(--s2) 0 var(--s3); }
-.type-controls button { padding: 6px 14px; font-size: var(--text-sm); white-space: nowrap; }
-
-/* on-screen shorthand keypad (Type Score mode) -- phone-style digits with X/·/− as a 4th column */
+/* on-screen shorthand keypad (Type Score mode) -- phone-style digits with X/·/− as a
+   4th column. Sits in its own shaded panel so it reads as a distinct input surface
+   rather than blending into the page background. */
 .shorthand-keypad {
   display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: var(--s2) 0;
+  padding: var(--s3); background: var(--surface-sunk); border: 1px solid var(--border); border-radius: var(--radius-md);
 }
 .shorthand-keypad .key {
   padding: var(--s2) 0; font-family: var(--font-mono); font-size: 1rem; font-weight: var(--fw-semi);
@@ -845,7 +845,12 @@ details.collapsible[open] > summary { margin-bottom: var(--s3); }
 .shorthand-keypad .key:hover { background: var(--surface-sunk); filter: none; }
 .shorthand-keypad .key:active { background: var(--surface-sunk); }
 .shorthand-keypad .key.mark { color: var(--accent); border-color: var(--accent); }
-.shorthand-keypad .key.zero { grid-column: 1 / 4; }
+/* Replaces the old "0" digit (redundant with "-", the same gutter/miss shorthand)
+   with the primary submit action, in the same wide slot so it's the obvious next tap. */
+.shorthand-keypad .key.log-ball {
+  grid-column: 1 / 4; font-family: inherit; background: var(--accent); color: var(--accent-ink); border-color: var(--accent);
+}
+.shorthand-keypad .key.log-ball:hover { filter: brightness(1.05); }
 .shorthand-keypad .key.backspace { color: var(--text-muted); }
 .shorthand-keypad .key.backspace:disabled { opacity: 0.4; }
 
@@ -950,6 +955,14 @@ button.cell { background: none; border: none; padding: 0; font: inherit; text-al
    benign in-flight indicator, neutral accent tone, no coral. */
 .retry-banner.failed { background: var(--coral-weak); }
 .retry-banner.syncing { border-color: var(--accent); background: var(--accent-weak); }
+/* ShotForm's own persistent "Log ball" shortcut (.shot-sticky-submit) pins to
+   this same bottom-of-screen strip -- without this, this banner's higher
+   z-index sits directly on top of it, visually covering (and blocking taps
+   on) the sticky button until the user scrolls all the way to the real
+   submit button further down the form. Stack above it instead. */
+@media (max-width: 640px) {
+  body:has(.shot-sticky-submit) .retry-banner { bottom: calc(var(--tabbar-clearance) + var(--s1) + 78px); }
+}
 
 /* ============================================================
    Shot logging: reference, targets, quick pin shortcuts
