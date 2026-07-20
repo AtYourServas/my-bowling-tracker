@@ -184,7 +184,7 @@ const { data: approaches } = await supabase
     }}
   />
 
-  <form method="POST" class="row-actions" data-confirm="Delete this shot?">
+  <form method="POST" class="row-actions" data-confirm="Delete this shot?" data-astro-reload>
     <input type="hidden" name="intent" value="delete" />
     <button type="submit" class="danger">Delete Shot</button>
   </form>
