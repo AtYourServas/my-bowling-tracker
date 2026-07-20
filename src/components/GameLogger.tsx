@@ -916,8 +916,8 @@ export default function GameLogger({
               {k}
             </button>
           ))}
-          <button type="button" className="key zero" onClick={() => tapShorthandDigit('0')}>
-            0
+          <button type="button" className="key log-ball" onClick={() => handleShorthandSubmit()}>
+            Log Ball {progress.nextBall}
           </button>
           <button
             type="button"
@@ -927,13 +927,6 @@ export default function GameLogger({
             onClick={tapShorthandBackspace}
           >
             &larr;
-          </button>
-        </div>
-      )}
-      {mode === 'type' && progress.nextBall != null && (
-        <div className="type-controls">
-          <button type="button" className="secondary" onClick={() => handleShorthandSubmit()}>
-            Log Ball {progress.nextBall}
           </button>
         </div>
       )}
