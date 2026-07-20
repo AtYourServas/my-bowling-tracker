@@ -17,7 +17,7 @@ let error: string | null = null;
 
 const { data: shot } = await supabase
   .from('shots')
-  .select('*, frames(frame_number, games(is_practice))')
+  .select('*, frames(frame_number, games(is_warmup))')
   .eq('id', shotId)
   .maybeSingle();
 
@@ -28,7 +28,7 @@ if (!shot) {
 const frameNumber = shot.frames.frame_number;
 // warmup (the League session's Practice slot) never applies the real 10th-frame
 // bonus-ball rules, even on literal frame 10 -- see WARMUP_FRAME.
-const ruleFrameNumber = (shot.frames as any).games?.is_practice ? WARMUP_FRAME : frameNumber;
+const ruleFrameNumber = (shot.frames as any).games?.is_warmup ? WARMUP_FRAME : frameNumber;
 
 // which marks are legal for this ball, based on the shots thrown before it in
 // the frame (so editing ball 2 of a normal frame won't offer Strike, etc.) --

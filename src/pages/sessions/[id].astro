@@ -131,14 +131,14 @@ if (Astro.request.method === 'POST') {
     const gameToInsert: Record<string, unknown> = { session_id: id, final_score };
 
     if (slot === 'practice') {
-      gameToInsert.is_practice = true;
+      gameToInsert.is_warmup = true;
       gameToInsert.game_number = null;
     } else if (slot === 'game1' || slot === 'game2' || slot === 'game3') {
-      gameToInsert.is_practice = false;
+      gameToInsert.is_warmup = false;
       gameToInsert.game_number = Number(slot.replace('game', ''));
     } else {
       // Freeform game for a standalone practice session.
-      gameToInsert.is_practice = false;
+      gameToInsert.is_warmup = false;
       gameToInsert.game_number = null;
     }
 
@@ -195,15 +195,15 @@ const { data: games } = await supabase
   .order('created_at', { ascending: true });
 
 // The slot label the games list uses for a game (league night vs freeform).
-function gameLabel(game: { is_practice: boolean; game_number: number | null }, index: number): string {
+function gameLabel(game: { is_warmup: boolean; game_number: number | null }, index: number): string {
   if (session.session_type !== 'league') return `Game ${index + 1}`;
-  return game.is_practice ? 'Practice' : game.game_number ? `Game ${game.game_number}` : 'Game';
+  return game.is_warmup ? 'Practice' : game.game_number ? `Game ${game.game_number}` : 'Game';
 }
 
 // Games view: derived scores + per-game marks/score strips (+ first-ball pinfall).
-// The Practice slot (is_practice) is excluded -- it's an uncapped warmup with its own
+// The Practice slot (is_warmup) is excluded -- it's an uncapped warmup with its own
 // dedicated summary below, and these are all fixed-at-10-frames computations.
-const scoredGames = (games ?? []).filter((g) => !g.is_practice);
+const scoredGames = (games ?? []).filter((g) => !g.is_warmup);
 const derivedScores = new Map<string, number | null>(
   view === 'games'
     ? await Promise.all(scoredGames.map(async (g) => [g.id, await fetchDerivedScoreForGame(supabase, g.id)] as const))
@@ -274,7 +274,7 @@ function formatRate(made: number, opportunities: number): string {
 
 const notes = view === 'notes' ? await fetchSessionNotes(supabase, id!) : [];
 
-const practiceGame = games?.find((g) => g.is_practice);
+const practiceGame = games?.find((g) => g.is_warmup);
 // Practice's shot count -- an uncapped warmup has no score, so this (not a
 // mini-scoresheet) is its whole summary on the games list.
 const practiceShotCount =

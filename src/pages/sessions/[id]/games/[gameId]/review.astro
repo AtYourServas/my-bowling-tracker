@@ -30,7 +30,7 @@ const { data: frames } = await supabase
 
 const framesByNumber = new Map((frames ?? []).map((f: any) => [f.frame_number, f]));
 
-const gameLabel = game.is_practice ? 'Practice' : game.game_number ? `Game ${game.game_number}` : 'Game';
+const gameLabel = game.is_warmup ? 'Practice' : game.game_number ? `Game ${game.game_number}` : 'Game';
 const effectiveScore = game.final_score ?? derivedScore;
 
 const laneConfig = laneConfigFromSession(game.sessions ?? { lane_number: null, second_lane_number: null });

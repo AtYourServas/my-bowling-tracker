@@ -25,7 +25,7 @@ import { fetchLeaveNotes, notesForLeave, type NoteEntry } from './notes';
  */
 export type GameForSidebar = {
   final_score: number | null;
-  is_practice: boolean;
+  is_warmup: boolean;
   sessions: {
     session_date: string;
     session_type: string;
@@ -47,7 +47,7 @@ export async function fetchGameScoreContext(
   game: GameForSidebar,
   frames: FrameLite[],
 ): Promise<GameScoreContext> {
-  const isWarmup = game.is_practice;
+  const isWarmup = game.is_warmup;
   const cells = isWarmup ? computeWarmupSheet(frames, 1) : computeScoresheet(frames);
   const runningTotal = [...cells].reverse().find((c) => c.cumulative != null)?.cumulative ?? null;
   const finalDerived = !isWarmup ? (cells[9]?.cumulative ?? null) : null;

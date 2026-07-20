@@ -14,7 +14,7 @@ const hasFilters = Boolean(filterType || filterAlley || filterFrom || filterTo);
 
 let sessionsQuery = supabase
   .from('sessions')
-  .select('*, leagues(name), games(id, final_score, ended_early, is_practice, created_at)')
+  .select('*, leagues(name), games(id, final_score, ended_early, is_warmup, created_at)')
   .order('session_date', { ascending: false })
   .order('created_at', { ascending: false })
   .order('created_at', { foreignTable: 'games', ascending: true });
@@ -46,7 +46,7 @@ const alleyOptions = Array.from(new Set((alleyRows ?? []).map((r) => r.alley_nam
 // (covers a warmup's "End Practice", which never gets a final_score); only
 // unfinished games need a mini-scoresheet to tell "in progress" from "not
 // started yet" (dashboard rule).
-type GameRow = { id: string; final_score: number | null; ended_early: boolean; is_practice: boolean; created_at: string };
+type GameRow = { id: string; final_score: number | null; ended_early: boolean; is_warmup: boolean; created_at: string };
 const unfinishedGameIds = (sessions ?? []).flatMap((s) =>
   (s.games as GameRow[]).filter((g) => g.final_score == null && !g.ended_early).map((g) => g.id),
 );
@@ -69,7 +69,7 @@ for (const [sessionId, gameId] of resumeBySession) {
   const game = (session?.games as GameRow[] | undefined)?.find((g) => g.id === gameId);
   resumeFrames.set(
     gameId,
-    game?.is_practice
+    game?.is_warmup
       ? await fetchEarliestIncompleteWarmupFrame(supabase, gameId)
       : await fetchEarliestIncompleteFrame(supabase, gameId),
   );

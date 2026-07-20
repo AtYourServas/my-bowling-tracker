@@ -61,7 +61,7 @@ async function findOrCreateOpenGame(
     : (
         await supabase
           .from('games')
-          .insert({ session_id: sessionId, is_practice: false, game_number: sessionType === 'league' ? 1 : null })
+          .insert({ session_id: sessionId, is_warmup: false, game_number: sessionType === 'league' ? 1 : null })
           .select('id')
           .single()
       ).data?.id;
@@ -182,7 +182,7 @@ const delta = overallAverage != null && averageThen != null ? overallAverage - a
 type GameRow = {
   id: string;
   final_score: number | null;
-  is_practice: boolean;
+  is_warmup: boolean;
   game_number: number | null;
   ended_early: boolean;
 };
@@ -197,7 +197,7 @@ type SessionRow = {
 
 const { data: latestRows } = await supabase
   .from('sessions')
-  .select('id, session_date, session_type, alley_name, leagues(name), games(id, final_score, is_practice, game_number, ended_early, created_at)')
+  .select('id, session_date, session_type, alley_name, leagues(name), games(id, final_score, is_warmup, game_number, ended_early, created_at)')
   .order('session_date', { ascending: false })
   .order('created_at', { ascending: false })
   .order('created_at', { foreignTable: 'games', ascending: true })
@@ -209,7 +209,7 @@ const latestSheets = latest
   : new Map<string, MiniSheet>();
 
 function gameLabel(game: GameRow, index: number) {
-  if (game.is_practice) return 'Practice';
+  if (game.is_warmup) return 'Practice';
   if (game.game_number != null) return `Game ${game.game_number}`;
   return `Game ${index + 1}`;
 }
@@ -228,11 +228,11 @@ function gameComplete(game: GameRow, sheets: Map<string, MiniSheet>) {
 }
 
 // Resume = the earliest unfinished game of the most recent session. A warmup
-// (is_practice) has no frame cap, so its resume frame is fetched uncapped.
+// (is_warmup) has no frame cap, so its resume frame is fetched uncapped.
 const resumeIndex = latest ? latest.games.findIndex((g) => !gameComplete(g, latestSheets)) : -1;
 const resumeGame = resumeIndex >= 0 ? latest!.games[resumeIndex] : null;
 const resumeFrame = resumeGame
-  ? resumeGame.is_practice
+  ? resumeGame.is_warmup
     ? await fetchEarliestIncompleteWarmupFrame(supabase, resumeGame.id)
     : await fetchEarliestIncompleteFrame(supabase, resumeGame.id)
   : null;
@@ -252,7 +252,7 @@ if (recapSessionId && latest && recapSessionId === latest.id) {
 } else if (recapSessionId) {
   const { data: recapRows } = await supabase
     .from('sessions')
-    .select('id, session_date, session_type, alley_name, leagues(name), games(id, final_score, is_practice, game_number, ended_early, created_at)')
+    .select('id, session_date, session_type, alley_name, leagues(name), games(id, final_score, is_warmup, game_number, ended_early, created_at)')
     .eq('id', recapSessionId)
     .order('created_at', { foreignTable: 'games', ascending: true })
     .limit(1);
@@ -265,7 +265,7 @@ const scoreBySessionGame = new Map(allGamesEver.map((g) => [g.gameId, g.score]))
 // Series = the session's non-practice-segment scores, like the series stats.
 const recapSeries = recap
   ? recap.games
-      .filter((g) => !g.is_practice)
+      .filter((g) => !g.is_warmup)
       .map((g) => g.final_score ?? scoreBySessionGame.get(g.id) ?? null)
       .filter((s): s is number => s != null)
   : [];
