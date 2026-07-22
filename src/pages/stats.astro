@@ -10,6 +10,7 @@ import {
   computeRateStats,
   computeLeaveConversions,
   computePinLeaveStats,
+  computePinLeaveTrends,
   computeCleanGameStats,
   computeHandicapTrend,
   groupByLaneCondition,
@@ -64,6 +65,14 @@ const rateStats = computeRateStats(statFrames, filter);
 const leaveConversions = computeLeaveConversions(statFrames, filter);
 const pinLeaveStats = computePinLeaveStats(statFrames, filter);
 const cleanGameStats = computeCleanGameStats(statFrames, filter);
+
+// All ten pins, in TimeDatum shape -- StatsCharts defaults to the busiest
+// few and lets the user pick a different one via its own pin filter.
+const pinLeaveTrends = computePinLeaveTrends(statFrames, filter).map((t) => ({
+  pin: t.pin,
+  totalAttempts: t.totalAttempts,
+  points: t.points.map((p) => ({ date: p.date, score: p.pct * 100 })),
+}));
 
 const handicapOf = await buildSessionHandicapResolver(supabase, allGamesEver);
 
@@ -179,6 +188,7 @@ const bestSeries = fetchBestSeriesStats(allGamesEver, handicapOf);
           pinLeaveStats={pinLeaveStats}
           cleanGameStats={cleanGameStats}
           handicapTrend={handicapTrend}
+          pinLeaveTrends={pinLeaveTrends}
         />
       )}
     </>
