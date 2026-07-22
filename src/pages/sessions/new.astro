@@ -16,7 +16,7 @@ if (Astro.request.method === 'POST') {
   const session_date = formData.get('session_date')?.toString() || new Date().toISOString().slice(0, 10);
   const lane_condition_notes = formData.get('lane_condition_notes')?.toString().trim() || null;
   const league_team_name = formData.get('league_team_name')?.toString().trim() || null;
-  const league_id = formData.get('league_id')?.toString() || null;
+  const league_name = formData.get('league_name')?.toString().trim() || '';
   const manualHandicapRaw = formData.get('manual_handicap')?.toString().trim();
   const manual_handicap = manualHandicapRaw ? Number(manualHandicapRaw) : null;
   const default_ball_id = formData.get('default_ball_id')?.toString() || null;
@@ -31,40 +31,61 @@ if (Astro.request.method === 'POST') {
   ) {
     error = 'Lane numbers and handicap must be valid numbers.';
   } else {
-    // a league session with no team typed inherits the league's team name
+    // Resolve the typed league name to an existing league (case/whitespace-
+    // insensitive) or create a new one -- the field is free text now, not a
+    // dropdown of existing ids, so "the league" isn't known until submit.
+    // A league session with no team typed inherits the matched/created
+    // league's team name.
+    let league_id: string | null = null;
     let effectiveTeamName = session_type === 'league' ? league_team_name : null;
-    if (session_type === 'league' && league_id && !effectiveTeamName) {
-      const { data: league } = await supabase
-        .from('leagues')
-        .select('team_name')
-        .eq('id', league_id)
-        .maybeSingle();
-      effectiveTeamName = league?.team_name ?? null;
+
+    if (session_type === 'league' && league_name) {
+      const { data: existingLeagues } = await supabase.from('leagues').select('id, name, team_name');
+      const match = (existingLeagues ?? []).find((l) => l.name.trim().toLowerCase() === league_name.toLowerCase());
+
+      if (match) {
+        league_id = match.id;
+        if (!effectiveTeamName) effectiveTeamName = match.team_name ?? null;
+      } else {
+        const { data: newLeague, error: leagueInsertError } = await supabase
+          .from('leagues')
+          .insert({ user_id: user!.id, name: league_name })
+          .select('id')
+          .single();
+
+        if (leagueInsertError) {
+          error = leagueInsertError.message;
+        } else {
+          league_id = newLeague.id;
+        }
+      }
     }
 
-    const { data, error: insertError } = await supabase
-      .from('sessions')
-      .insert({
-        user_id: user!.id,
-        alley_name,
-        lane_number,
-        second_lane_number,
-        session_type,
-        session_date,
-        lane_condition_notes,
-        league_team_name: effectiveTeamName,
-        league_id: session_type === 'league' ? league_id : null,
-        manual_handicap: session_type === 'league' ? manual_handicap : null,
-        default_ball_id,
-        default_spare_ball_id,
-      })
-      .select('id')
-      .single();
+    if (!error) {
+      const { data, error: insertError } = await supabase
+        .from('sessions')
+        .insert({
+          user_id: user!.id,
+          alley_name,
+          lane_number,
+          second_lane_number,
+          session_type,
+          session_date,
+          lane_condition_notes,
+          league_team_name: effectiveTeamName,
+          league_id: session_type === 'league' ? league_id : null,
+          manual_handicap: session_type === 'league' ? manual_handicap : null,
+          default_ball_id,
+          default_spare_ball_id,
+        })
+        .select('id')
+        .single();
 
-    if (insertError) {
-      error = insertError.message;
-    } else {
-      return Astro.redirect(`/sessions/${data.id}`);
+      if (insertError) {
+        error = insertError.message;
+      } else {
+        return Astro.redirect(`/sessions/${data.id}`);
+      }
     }
   }
 }
@@ -86,6 +107,32 @@ const { data: profile } = await supabase
 
   <form method="POST">
     <label>
+      Session Type
+      <select name="session_type" required>
+        <option value="league">League</option>
+        <option value="practice">Practice</option>
+      </select>
+    </label>
+    <div class="league-only">
+      <label>
+        League
+        <input type="text" name="league_name" list="league-options" autocomplete="off" placeholder="Type or pick a league" />
+        <datalist id="league-options">
+          {leagues?.map((league) => (
+            <option value={league.name} data-id={league.id} data-team={league.team_name ?? ''} />
+          ))}
+        </datalist>
+      </label>
+      <label>
+        Team Name
+        <input type="text" name="league_team_name" placeholder="Fills from the league — edit to override" />
+      </label>
+      <label>
+        Handicap Override (optional — overrides the league's calculated handicap)
+        <input type="number" name="manual_handicap" />
+      </label>
+    </div>
+    <label>
       Alley Name
       <input type="text" name="alley_name" />
     </label>
@@ -101,32 +148,6 @@ const { data: profile } = await supabase
       Date
       <input type="date" name="session_date" value={new Date().toISOString().slice(0, 10)} />
     </label>
-    <label>
-      Session Type
-      <select name="session_type" required>
-        <option value="league">League</option>
-        <option value="practice">Practice</option>
-      </select>
-    </label>
-    <div class="league-only">
-      <label>
-        League
-        <select name="league_id">
-          <option value="" data-team="">None</option>
-          {leagues?.map((league) => (
-            <option value={league.id} data-team={league.team_name ?? ''}>{league.name}</option>
-          ))}
-        </select>
-      </label>
-      <label>
-        Team Name
-        <input type="text" name="league_team_name" placeholder="Fills from the league — edit to override" />
-      </label>
-      <label>
-        Handicap Override (optional — overrides the league's calculated handicap)
-        <input type="number" name="manual_handicap" />
-      </label>
-    </div>
     {balls && balls.length > 0 && (
       <>
         <label>
@@ -179,18 +200,51 @@ const { data: profile } = await supabase
   // FIRST visit to /sessions/new -- navigating away and back later would
   // land on an unwired form.
   document.addEventListener('astro:page-load', () => {
-    // Selecting a league fills the team-name field from that league, while
-    // leaving any name the user has typed themselves untouched (override).
-    const leagueSelect = document.querySelector<HTMLSelectElement>('select[name="league_id"]');
+    // Matching a saved league name (typed or picked from the datalist) fills
+    // the team-name field and, from that league's most recent session, Alley
+    // Name -- while leaving anything the user has typed themselves untouched
+    // (each field only auto-fills if it's still empty or still equals the
+    // last value THIS script auto-filled). Lane is deliberately NOT
+    // inherited -- lanes get reassigned most league nights, so carrying one
+    // over would be wrong more often than right; alley stays the same.
+    const leagueInput = document.querySelector<HTMLInputElement>('input[name="league_name"]');
     const teamInput = document.querySelector<HTMLInputElement>('input[name="league_team_name"]');
-    if (leagueSelect && teamInput) {
-      let autoValue = teamInput.value;
-      leagueSelect.addEventListener('change', () => {
-        const team = leagueSelect.selectedOptions[0]?.dataset.team ?? '';
-        if (teamInput.value === '' || teamInput.value === autoValue) {
+    const alleyInput = document.querySelector<HTMLInputElement>('input[name="alley_name"]');
+
+    if (leagueInput && teamInput) {
+      let autoTeam = teamInput.value;
+      let autoAlley = alleyInput?.value ?? '';
+      let lastMatchedId: string | null = null;
+
+      leagueInput.addEventListener('input', () => {
+        const typed = leagueInput.value.trim().toLowerCase();
+        const option = typed
+          ? Array.from(document.querySelectorAll<HTMLOptionElement>('#league-options option')).find(
+              (o) => o.value.trim().toLowerCase() === typed,
+            )
+          : undefined;
+
+        const team = option?.dataset.team ?? '';
+        if (teamInput.value === '' || teamInput.value === autoTeam) {
           teamInput.value = team;
-          autoValue = team;
+          autoTeam = team;
         }
+
+        const id = option?.dataset.id ?? null;
+        if (!id || id === lastMatchedId) return;
+        lastMatchedId = id;
+
+        fetch(`/api/leagues/last-session?league_id=${encodeURIComponent(id)}`)
+          .then((res) => (res.ok ? res.json() : null))
+          .then((last: { alley_name: string | null } | null) => {
+            if (!last) return;
+            if (alleyInput && (alleyInput.value === '' || alleyInput.value === autoAlley)) {
+              const alley = last.alley_name ?? '';
+              alleyInput.value = alley;
+              autoAlley = alley;
+            }
+          })
+          .catch(() => {});
       });
     }
 
