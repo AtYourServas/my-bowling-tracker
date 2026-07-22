@@ -1,5 +1,14 @@
 ---
 import Layout from '../../layouts/Layout.astro';
+import {
+  fetchAllGamesWithScores,
+  fetchStatFrames,
+  filterScoredGames,
+  computeHandicapTrend,
+  computeRateStats,
+  average,
+} from '../../lib/stats';
+import { buildSessionHandicapResolver } from '../../lib/handicap';
 
 const { supabase } = Astro.locals;
 const { id } = Astro.params;
@@ -51,6 +60,33 @@ const { data: league } = await supabase.from('leagues').select('*').eq('id', id)
 if (!league) {
   return Astro.redirect('/leagues');
 }
+
+// Your stats in this league vs. your other leagues combined -- there's no
+// other-bowlers' data anywhere in this app (leagues are private per
+// account), so "compared to others" means compared to your own other
+// leagues. filterScoredGames/frameInFilter only support matching ONE
+// leagueId, not "any other league", so the other-leagues buckets are plain
+// filters instead.
+const [allGamesEver, allFrames] = await Promise.all([fetchAllGamesWithScores(supabase), fetchStatFrames(supabase)]);
+const handicapOf = await buildSessionHandicapResolver(supabase, allGamesEver);
+
+const thisLeagueGames = filterScoredGames(allGamesEver, { includePracticeSessions: false, leagueId: id });
+const otherLeagueGames = allGamesEver.filter(
+  (g) => !g.isPractice && g.sessionType === 'league' && g.leagueId && g.leagueId !== id,
+);
+
+const avgScoreThis = average(thisLeagueGames.map((g) => g.score));
+const avgScoreOther = average(otherLeagueGames.map((g) => g.score));
+
+const avgHandicapThis = average(computeHandicapTrend(thisLeagueGames, handicapOf).map((p) => p.handicap));
+const avgHandicapOther = average(computeHandicapTrend(otherLeagueGames, handicapOf).map((p) => p.handicap));
+
+const rateThis = computeRateStats(allFrames, { includePracticeSessions: false, leagueId: id });
+const otherFrames = allFrames.filter((f) => !f.isPractice && f.sessionType === 'league' && f.leagueId && f.leagueId !== id);
+const rateOther = computeRateStats(otherFrames, { includePracticeSessions: false, leagueId: null });
+
+const sparePctThis = rateThis && rateThis.spareOpportunities > 0 ? (rateThis.spares / rateThis.spareOpportunities) * 100 : null;
+const sparePctOther = rateOther && rateOther.spareOpportunities > 0 ? (rateOther.spares / rateOther.spareOpportunities) * 100 : null;
 ---
 
 <Layout title={league.name}>
@@ -58,6 +94,56 @@ if (!league) {
   <h1>Edit League</h1>
 
   {error && <p class="error">{error}</p>}
+
+  <div class="league-compare">
+    <h2>Your Stats in This League</h2>
+    {avgScoreThis == null && avgScoreOther == null ? (
+      <p class="empty">No league games logged yet.</p>
+    ) : (
+      <table class="compare-table">
+        <thead>
+          <tr>
+            <th></th>
+            <th>This League</th>
+            <th>Your Other Leagues</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Average Score</td>
+            <td>
+              {avgScoreThis != null ? avgScoreThis.toFixed(1) : '—'}
+              <span class="compare-sub"> ({thisLeagueGames.length} games)</span>
+            </td>
+            <td>
+              {avgScoreOther != null ? avgScoreOther.toFixed(1) : '—'}
+              <span class="compare-sub"> ({otherLeagueGames.length} games)</span>
+            </td>
+          </tr>
+          {(avgHandicapThis != null || avgHandicapOther != null) && (
+            <tr>
+              <td>Average Handicap</td>
+              <td>{avgHandicapThis != null ? avgHandicapThis.toFixed(1) : '—'}</td>
+              <td>{avgHandicapOther != null ? avgHandicapOther.toFixed(1) : '—'}</td>
+            </tr>
+          )}
+          <tr>
+            <td>Spare Conversion</td>
+            <td>
+              {sparePctThis != null ? `${sparePctThis.toFixed(0)}%` : '—'}
+              <span class="compare-sub"> ({rateThis?.spareOpportunities ?? 0} leaves)</span>
+            </td>
+            <td>
+              {sparePctOther != null ? `${sparePctOther.toFixed(0)}%` : '—'}
+              <span class="compare-sub"> ({rateOther?.spareOpportunities ?? 0} leaves)</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    )}
+  </div>
+
+  <hr />
 
   <form method="POST">
     <label>
@@ -100,3 +186,25 @@ if (!league) {
     <button type="submit" class="danger">Delete League</button>
   </form>
 </Layout>
+
+<style>
+  .compare-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .compare-table th,
+  .compare-table td {
+    text-align: left;
+    padding: var(--s2) var(--s3);
+    border-bottom: 1px solid var(--border);
+  }
+  .compare-table th {
+    color: var(--text-muted);
+    font-weight: var(--fw-med);
+    font-size: var(--text-sm);
+  }
+  .compare-sub {
+    color: var(--text-muted);
+    font-size: var(--text-xs);
+  }
+</style>
