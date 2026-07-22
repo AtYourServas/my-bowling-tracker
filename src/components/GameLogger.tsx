@@ -606,7 +606,14 @@ export default function GameLogger({
     // no navigation, do the same explicitly -- otherwise they're left
     // scrolled down at wherever the entry form was (often well below the
     // scoresheet on a long form with reference marks) after every shot.
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    // Deferred a frame so the DOM has already resized for the new shot/frame
+    // before the scroll starts -- Safari aborts or miscalculates a smooth
+    // scroll when the page's height shifts mid-animation, which is why this
+    // was landing short (or not moving at all) intermittently on iOS/macOS
+    // Safari while Chrome/Firefox were unaffected.
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
     return newShot;
   }
 

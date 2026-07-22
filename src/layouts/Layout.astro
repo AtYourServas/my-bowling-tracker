@@ -14,14 +14,21 @@ const path = Astro.url.pathname;
 // Drives the mini-scoresheet pinfall dots (see MiniScoresheet.astro) — a
 // per-profile setting rather than a page-local toggle, so it applies
 // everywhere a mini-scoresheet renders (dashboard, sessions list, session page).
+// `theme` rides along in the same query: rendering it straight into the
+// data-theme attribute below means signed-in users get the right theme in
+// the initial HTML, with no localStorage round-trip (and no flash) needed --
+// which also sidesteps Safari not reliably persisting localStorage writes
+// across relaunches of an installed home-screen PWA.
 let showPinfall = true;
+let savedTheme: string | null = null;
 if (user) {
   const { data: profile } = await Astro.locals.supabase
     .from('profiles')
-    .select('show_pinfall')
+    .select('show_pinfall, theme')
     .eq('id', user.id)
     .maybeSingle();
   showPinfall = profile?.show_pinfall ?? true;
+  savedTheme = profile?.theme ?? null;
 }
 
 // Every item lives in the collapsible top menu; items with an icon also
@@ -41,7 +48,7 @@ const tabItems = navItems.filter((item) => item.icon);
 const isActive = (href: string) => path === href || path.startsWith(href + '/');
 ---
 
-<html lang="en" class:list={{ 'show-pinfall': showPinfall }}>
+<html lang="en" data-theme={savedTheme} class:list={{ 'show-pinfall': showPinfall }}>
   <head>
     <meta charset="utf-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -87,14 +94,21 @@ const isActive = (href: string) => path === href || path.startsWith(href + '/');
       }
     </script>
     <script is:inline>
-      // Apply saved theme before first paint to avoid a flash of the wrong theme.
-      // A saved theme overrides the OS, so the theme-color metas (which key off
-      // the OS scheme) must be forced to match — both get the explicit color.
+      // The data-theme attribute on <html> is set server-side (see Layout.astro)
+      // from the signed-in user's saved profile, so there's no flash for them —
+      // this script only needs to fall back to localStorage for guests, or a
+      // signed-in user who hasn't picked a theme yet (profile.theme is null).
+      // Either way, the theme-color metas (which key off the OS scheme) must be
+      // forced to match whatever theme ends up explicit — both get that color.
       (function () {
         try {
-          var t = localStorage.getItem('theme');
+          var root = document.documentElement;
+          var t = root.getAttribute('data-theme');
+          if (t !== 'dark' && t !== 'light') {
+            t = localStorage.getItem('theme');
+            if (t === 'dark' || t === 'light') root.setAttribute('data-theme', t);
+          }
           if (t === 'dark' || t === 'light') {
-            document.documentElement.setAttribute('data-theme', t);
             var c = t === 'dark' ? '#121211' : '#f6f5f2';
             document.querySelectorAll('meta[name="theme-color"]').forEach(function (m) {
               m.setAttribute('content', c);
@@ -311,6 +325,21 @@ const isActive = (href: string) => path === href || path.startsWith(href + '/');
             m.setAttribute('content', c);
           });
           render();
+          // localStorage is just an instant local echo -- the profile row is
+          // the durable copy (see 0026_theme_preference.sql), since Safari
+          // doesn't reliably persist localStorage across relaunches of an
+          // installed home-screen PWA. Always attempt the save rather than
+          // gating on a signed-in flag read off this button's own markup --
+          // it has transition:persist, so that markup can be stale (e.g.
+          // right after a client-router-soft-navigated login) even though
+          // the user is in fact signed in. The endpoint 401s harmlessly for
+          // guests. Fire-and-forget: a failed save just means next load
+          // falls back to whatever was already saved.
+          fetch('/api/profile/theme', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ theme: next }),
+          }).catch(function () {});
         });
         render();
       })();
