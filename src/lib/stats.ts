@@ -616,44 +616,46 @@ export function computePinLeaveStats(frames: StatFrame[], filter: StatsFilter): 
     .sort((a, b) => a.pin - b.pin);
 }
 
-export type PinLeaveTrendPoint = { date: string; pct: number; attempts: number };
-export type PinLeaveTrend = { pin: number; totalAttempts: number; points: PinLeaveTrendPoint[] };
+export type LeaveTrendPoint = { date: string; pct: number; attempts: number };
+export type LeaveTrend = { pins: number[]; name: string; totalAttempts: number; points: LeaveTrendPoint[] };
 
 /**
- * Cumulative (running, not per-frame) spare-conversion rate for each pin over
- * time -- a raw per-frame rate would whipsaw between 0%/100% since most pins
- * are only faced a handful of times a session; this expands the same way
- * stats.astro's "Average Over Time" running average does. Uses each frame's
- * own sessionDate (not a join through ScoredGame, which drops ended_early/
- * unscored games that shot-level stats like this one must still include --
- * see fetchAllGamesWithScores) so this stays consistent with
- * computePinLeaveStats' aggregate numbers for the same filter. Undated frames
- * are skipped. Always returns all ten pins (empty points if never faced).
+ * Cumulative (running, not per-frame) spare-conversion rate over time for
+ * each EXACT leave faced -- grouped by the full sorted pin combo, the same
+ * way computeLeaveConversions groups its snapshot, so trending "10" only
+ * counts single-pin 10 attempts, not every leave that happens to include a
+ * 10 (e.g. "9-10"). A raw per-frame rate would whipsaw between 0%/100% since
+ * most leaves are only faced a handful of times a session; this expands the
+ * same way stats.astro's "Average Over Time" running average does. Uses each
+ * frame's own sessionDate (not a join through ScoredGame, which drops
+ * ended_early/unscored games that shot-level stats like this one must still
+ * include -- see fetchAllGamesWithScores). Undated frames are skipped. Only
+ * returns leaves actually faced at least once (no zero-filled combos --
+ * there are too many possible combos to enumerate up front).
  */
-export function computePinLeaveTrends(frames: StatFrame[], filter: StatsFilter): PinLeaveTrend[] {
+export function computeLeaveTrends(frames: StatFrame[], filter: StatsFilter): LeaveTrend[] {
   const dated = frames
     .filter((f): f is StatFrame & { sessionDate: string } => frameInFilter(f, filter) && !!f.sessionDate)
     .map((f) => ({ frame: f, date: f.sessionDate }))
     .sort((a, b) => a.date.localeCompare(b.date));
 
-  const running = new Map<number, { attempts: number; converted: number; points: PinLeaveTrendPoint[] }>();
-  for (let pin = 1; pin <= 10; pin += 1) running.set(pin, { attempts: 0, converted: 0, points: [] });
+  const running = new Map<string, { pins: number[]; attempts: number; converted: number; points: LeaveTrendPoint[] }>();
 
   for (const { frame, date } of dated) {
     walkDeliveries([frame], (faced, converted) => {
-      for (const pin of faced) {
-        const entry = running.get(pin);
-        if (!entry) continue;
-        entry.attempts += 1;
-        if (converted) entry.converted += 1;
-        entry.points.push({ date, pct: entry.converted / entry.attempts, attempts: entry.attempts });
-      }
+      const pins = sortedLeave(faced);
+      const key = pins.join('-');
+      const entry = running.get(key) ?? { pins, attempts: 0, converted: 0, points: [] };
+      entry.attempts += 1;
+      if (converted) entry.converted += 1;
+      entry.points.push({ date, pct: entry.converted / entry.attempts, attempts: entry.attempts });
+      running.set(key, entry);
     });
   }
 
-  return Array.from(running.entries())
-    .map(([pin, { attempts, points }]) => ({ pin, totalAttempts: attempts, points }))
-    .sort((a, b) => a.pin - b.pin);
+  return Array.from(running.values())
+    .map(({ pins, attempts, points }) => ({ pins, name: leaveDisplayName(pins), totalAttempts: attempts, points }))
+    .sort((a, b) => b.totalAttempts - a.totalAttempts || a.name.localeCompare(b.name));
 }
 
 export type CleanGameStats = { cleanGames: number; totalGames: number };

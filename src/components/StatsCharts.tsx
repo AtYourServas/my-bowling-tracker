@@ -21,7 +21,7 @@ type Props = {
   pinLeaveStats: PinLeaveStat[];
   cleanGameStats: CleanGameStats | null;
   handicapTrend: TimeDatum[];
-  pinLeaveTrends: { pin: number; totalAttempts: number; points: TimeDatum[] }[];
+  leaveTrends: { pins: number[]; name: string; totalAttempts: number; points: TimeDatum[] }[];
 };
 
 /** Signed drift (stance − slide) → "Straight" or "2.3 boards right/left". */
@@ -116,15 +116,24 @@ function LeaveConversionTable({ data }: { data: LeaveConversion[] }) {
 }
 
 const MIN_TREND_ATTEMPTS = 5;
-const DEFAULT_TREND_PIN_COUNT = 3;
+const DEFAULT_TREND_LEAVE_COUNT = 3;
+
+/** True when a leave's exact pin set matches the selection -- same members, same count. */
+function exactlyMatches(pins: number[], selected: Set<number>): boolean {
+  return pins.length === selected.size && pins.every((p) => selected.has(p));
+}
 
 /**
- * Trend line(s) for spare conversion on specific pins. Defaults to the few
- * busiest pins (enough attempts that a running rate means something); the
- * pin filter lets the user pick a different, specific pin instead --
- * explicit selection always wins over the default, even a rarely-faced one.
+ * Trend line(s) for spare conversion on exact leaves. Defaults to the few
+ * busiest leaves (enough attempts that a running rate means something); the
+ * pin filter lets the user highlight a specific leave instead -- e.g.
+ * highlighting just 10 trends only the single-pin "10" leave, highlighting
+ * 9 and 10 together trends only the exact "9-10" leave, NOT every leave that
+ * happens to include a 10. Explicit selection always wins over the default,
+ * even a rarely-faced leave (or one never faced at all, which just shows an
+ * empty state).
  */
-function PinTrendCharts({ data }: { data: { pin: number; totalAttempts: number; points: TimeDatum[] }[] }) {
+function LeaveTrendCharts({ data }: { data: { pins: number[]; name: string; totalAttempts: number; points: TimeDatum[] }[] }) {
   const [selectedPins, setSelectedPins] = useState<Set<number>>(new Set());
 
   function togglePin(pin: number) {
@@ -136,22 +145,18 @@ function PinTrendCharts({ data }: { data: { pin: number; totalAttempts: number; 
     });
   }
 
-  const faced = data.filter((d) => d.totalAttempts > 0);
-  if (faced.length === 0) return null;
+  if (data.length === 0) return null;
 
   const shown =
     selectedPins.size > 0
-      ? faced.filter((d) => selectedPins.has(d.pin))
-      : [...faced]
-          .sort((a, b) => b.totalAttempts - a.totalAttempts)
-          .filter((d) => d.totalAttempts >= MIN_TREND_ATTEMPTS)
-          .slice(0, DEFAULT_TREND_PIN_COUNT);
+      ? data.filter((d) => exactlyMatches(d.pins, selectedPins))
+      : [...data].filter((d) => d.totalAttempts >= MIN_TREND_ATTEMPTS).slice(0, DEFAULT_TREND_LEAVE_COUNT);
 
   return (
     <>
       <details className="filter-collapse">
         <summary>
-          Choose a Pin to Trend
+          Choose a Leave to Trend
           {selectedPins.size > 0 && <span className="filter-badge">Active</span>}
         </summary>
         <div className="pin-filter-body">
@@ -162,15 +167,17 @@ function PinTrendCharts({ data }: { data: { pin: number; totalAttempts: number; 
               </button>
             </div>
           )}
-          <p className="pin-hint">Pick specific pins to trend instead of your busiest ones:</p>
+          <p className="pin-hint">
+            Highlight the exact pins of a leave (e.g. 9 + 10 for the 9-10) to trend it instead of your busiest leaves:
+          </p>
           <PinRows standing={selectedPins} onToggle={togglePin} />
         </div>
       </details>
       {shown.length === 0 ? (
-        <p className="chart-empty">Not enough data yet for that pin.</p>
+        <p className="chart-empty">Not enough data yet for that leave.</p>
       ) : (
-        shown.map(({ pin, points }) => (
-          <LineChart key={pin} title={`Pin ${pin} Spare Trend`} data={points} valueLabel="conversion rate" unit="%" />
+        shown.map(({ pins, name, points }) => (
+          <LineChart key={pins.join('-')} title={`${name} Spare Trend`} data={points} valueLabel="conversion rate" unit="%" />
         ))
       )}
     </>
@@ -543,7 +550,7 @@ export default function StatsCharts({
   pinLeaveStats,
   cleanGameStats,
   handicapTrend,
-  pinLeaveTrends,
+  leaveTrends,
 }: Props) {
   return (
     <div className="stats-charts">
@@ -593,7 +600,7 @@ export default function StatsCharts({
 
           {rateStats && <LeaveConversionTable data={leaveConversions} />}
           {rateStats && <PinLeaveDiagram data={pinLeaveStats} />}
-          {rateStats && <PinTrendCharts data={pinLeaveTrends} />}
+          {rateStats && <LeaveTrendCharts data={leaveTrends} />}
         </>
       )}
     </div>

@@ -10,7 +10,7 @@ import {
   computeRateStats,
   computeLeaveConversions,
   computePinLeaveStats,
-  computePinLeaveTrends,
+  computeLeaveTrends,
   computeCleanGameStats,
   computeHandicapTrend,
   groupByLaneCondition,
@@ -66,10 +66,12 @@ const leaveConversions = computeLeaveConversions(statFrames, filter);
 const pinLeaveStats = computePinLeaveStats(statFrames, filter);
 const cleanGameStats = computeCleanGameStats(statFrames, filter);
 
-// All ten pins, in TimeDatum shape -- StatsCharts defaults to the busiest
-// few and lets the user pick a different one via its own pin filter.
-const pinLeaveTrends = computePinLeaveTrends(statFrames, filter).map((t) => ({
-  pin: t.pin,
+// Every exact leave ever faced, in TimeDatum shape -- StatsCharts defaults
+// to the busiest few and lets the user pick a specific (possibly multi-pin)
+// leave instead via its own pin filter.
+const leaveTrends = computeLeaveTrends(statFrames, filter).map((t) => ({
+  pins: t.pins,
+  name: t.name,
   totalAttempts: t.totalAttempts,
   points: t.points.map((p) => ({ date: p.date, score: p.pct * 100 })),
 }));
@@ -188,7 +190,7 @@ const bestSeries = fetchBestSeriesStats(allGamesEver, handicapOf);
           pinLeaveStats={pinLeaveStats}
           cleanGameStats={cleanGameStats}
           handicapTrend={handicapTrend}
-          pinLeaveTrends={pinLeaveTrends}
+          leaveTrends={leaveTrends}
         />
       )}
     </>
