@@ -9,7 +9,10 @@ export const GET: APIRoute = async ({ url, locals }) => {
 
   const { data } = await supabase
     .from('sessions')
-    .select('alley_name, lane_number, second_lane_number')
+    // Lane deliberately excluded -- lanes get reassigned most league nights,
+    // so inheriting one would just be wrong more often than it's right.
+    // Alley stays the same league to league, so that's still worth filling.
+    .select('alley_name')
     .eq('league_id', league_id)
     .eq('session_type', 'league')
     .order('session_date', { ascending: false })

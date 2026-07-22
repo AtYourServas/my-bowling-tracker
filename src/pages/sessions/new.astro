@@ -107,22 +107,6 @@ const { data: profile } = await supabase
 
   <form method="POST">
     <label>
-      Alley Name
-      <input type="text" name="alley_name" />
-    </label>
-    <label>
-      Starting Lane
-      <input type="number" name="lane_number" min="1" />
-    </label>
-    <label>
-      Second Lane (optional — for a two-lane pair)
-      <input type="number" name="second_lane_number" min="1" placeholder="alternates each frame" />
-    </label>
-    <label>
-      Date
-      <input type="date" name="session_date" value={new Date().toISOString().slice(0, 10)} />
-    </label>
-    <label>
       Session Type
       <select name="session_type" required>
         <option value="league">League</option>
@@ -148,6 +132,22 @@ const { data: profile } = await supabase
         <input type="number" name="manual_handicap" />
       </label>
     </div>
+    <label>
+      Alley Name
+      <input type="text" name="alley_name" />
+    </label>
+    <label>
+      Starting Lane
+      <input type="number" name="lane_number" min="1" />
+    </label>
+    <label>
+      Second Lane (optional — for a two-lane pair)
+      <input type="number" name="second_lane_number" min="1" placeholder="alternates each frame" />
+    </label>
+    <label>
+      Date
+      <input type="date" name="session_date" value={new Date().toISOString().slice(0, 10)} />
+    </label>
     {balls && balls.length > 0 && (
       <>
         <label>
@@ -201,21 +201,19 @@ const { data: profile } = await supabase
   // land on an unwired form.
   document.addEventListener('astro:page-load', () => {
     // Matching a saved league name (typed or picked from the datalist) fills
-    // the team-name field and, from that league's most recent session,
-    // Alley Name/Lane/Second Lane -- while leaving anything the user has
-    // typed themselves untouched (each field only auto-fills if it's still
-    // empty or still equals the last value THIS script auto-filled).
+    // the team-name field and, from that league's most recent session, Alley
+    // Name -- while leaving anything the user has typed themselves untouched
+    // (each field only auto-fills if it's still empty or still equals the
+    // last value THIS script auto-filled). Lane is deliberately NOT
+    // inherited -- lanes get reassigned most league nights, so carrying one
+    // over would be wrong more often than right; alley stays the same.
     const leagueInput = document.querySelector<HTMLInputElement>('input[name="league_name"]');
     const teamInput = document.querySelector<HTMLInputElement>('input[name="league_team_name"]');
     const alleyInput = document.querySelector<HTMLInputElement>('input[name="alley_name"]');
-    const laneInput = document.querySelector<HTMLInputElement>('input[name="lane_number"]');
-    const secondLaneInput = document.querySelector<HTMLInputElement>('input[name="second_lane_number"]');
 
     if (leagueInput && teamInput) {
       let autoTeam = teamInput.value;
       let autoAlley = alleyInput?.value ?? '';
-      let autoLane = laneInput?.value ?? '';
-      let autoSecondLane = secondLaneInput?.value ?? '';
       let lastMatchedId: string | null = null;
 
       leagueInput.addEventListener('input', () => {
@@ -238,22 +236,12 @@ const { data: profile } = await supabase
 
         fetch(`/api/leagues/last-session?league_id=${encodeURIComponent(id)}`)
           .then((res) => (res.ok ? res.json() : null))
-          .then((last: { alley_name: string | null; lane_number: number | null; second_lane_number: number | null } | null) => {
+          .then((last: { alley_name: string | null } | null) => {
             if (!last) return;
             if (alleyInput && (alleyInput.value === '' || alleyInput.value === autoAlley)) {
               const alley = last.alley_name ?? '';
               alleyInput.value = alley;
               autoAlley = alley;
-            }
-            if (laneInput && (laneInput.value === '' || laneInput.value === autoLane)) {
-              const lane = last.lane_number != null ? String(last.lane_number) : '';
-              laneInput.value = lane;
-              autoLane = lane;
-            }
-            if (secondLaneInput && (secondLaneInput.value === '' || secondLaneInput.value === autoSecondLane)) {
-              const secondLane = last.second_lane_number != null ? String(last.second_lane_number) : '';
-              secondLaneInput.value = secondLane;
-              autoSecondLane = secondLane;
             }
           })
           .catch(() => {});
