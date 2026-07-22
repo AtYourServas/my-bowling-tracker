@@ -66,13 +66,13 @@ const leaveConversions = computeLeaveConversions(statFrames, filter);
 const pinLeaveStats = computePinLeaveStats(statFrames, filter);
 const cleanGameStats = computeCleanGameStats(statFrames, filter);
 
-// Only the pins actually faced with enough volume to trend meaningfully --
-// rarely-faced pins would just whipsaw with each new attempt.
-const pinLeaveTrends = computePinLeaveTrends(statFrames, filter)
-  .filter((t) => t.totalAttempts >= 5)
-  .sort((a, b) => b.totalAttempts - a.totalAttempts)
-  .slice(0, 3)
-  .map((t) => ({ pin: t.pin, points: t.points.map((p) => ({ date: p.date, score: p.pct * 100 })) }));
+// All ten pins, in TimeDatum shape -- StatsCharts defaults to the busiest
+// few and lets the user pick a different one via its own pin filter.
+const pinLeaveTrends = computePinLeaveTrends(statFrames, filter).map((t) => ({
+  pin: t.pin,
+  totalAttempts: t.totalAttempts,
+  points: t.points.map((p) => ({ date: p.date, score: p.pct * 100 })),
+}));
 
 const handicapOf = await buildSessionHandicapResolver(supabase, allGamesEver);
 

@@ -21,7 +21,7 @@ type Props = {
   pinLeaveStats: PinLeaveStat[];
   cleanGameStats: CleanGameStats | null;
   handicapTrend: TimeDatum[];
-  pinLeaveTrends: { pin: number; points: TimeDatum[] }[];
+  pinLeaveTrends: { pin: number; totalAttempts: number; points: TimeDatum[] }[];
 };
 
 /** Signed drift (stance − slide) → "Straight" or "2.3 boards right/left". */
@@ -112,6 +112,68 @@ function LeaveConversionTable({ data }: { data: LeaveConversion[] }) {
         </table>
       )}
     </div>
+  );
+}
+
+const MIN_TREND_ATTEMPTS = 5;
+const DEFAULT_TREND_PIN_COUNT = 3;
+
+/**
+ * Trend line(s) for spare conversion on specific pins. Defaults to the few
+ * busiest pins (enough attempts that a running rate means something); the
+ * pin filter lets the user pick a different, specific pin instead --
+ * explicit selection always wins over the default, even a rarely-faced one.
+ */
+function PinTrendCharts({ data }: { data: { pin: number; totalAttempts: number; points: TimeDatum[] }[] }) {
+  const [selectedPins, setSelectedPins] = useState<Set<number>>(new Set());
+
+  function togglePin(pin: number) {
+    setSelectedPins((prev) => {
+      const next = new Set(prev);
+      if (next.has(pin)) next.delete(pin);
+      else next.add(pin);
+      return next;
+    });
+  }
+
+  const faced = data.filter((d) => d.totalAttempts > 0);
+  if (faced.length === 0) return null;
+
+  const shown =
+    selectedPins.size > 0
+      ? faced.filter((d) => selectedPins.has(d.pin))
+      : [...faced]
+          .sort((a, b) => b.totalAttempts - a.totalAttempts)
+          .filter((d) => d.totalAttempts >= MIN_TREND_ATTEMPTS)
+          .slice(0, DEFAULT_TREND_PIN_COUNT);
+
+  return (
+    <>
+      <details className="filter-collapse">
+        <summary>
+          Choose a Pin to Trend
+          {selectedPins.size > 0 && <span className="filter-badge">Active</span>}
+        </summary>
+        <div className="pin-filter-body">
+          {selectedPins.size > 0 && (
+            <div className="pin-shortcuts">
+              <button type="button" className="clear" onClick={() => setSelectedPins(new Set())}>
+                Clear
+              </button>
+            </div>
+          )}
+          <p className="pin-hint">Pick specific pins to trend instead of your busiest ones:</p>
+          <PinRows standing={selectedPins} onToggle={togglePin} />
+        </div>
+      </details>
+      {shown.length === 0 ? (
+        <p className="chart-empty">Not enough data yet for that pin.</p>
+      ) : (
+        shown.map(({ pin, points }) => (
+          <LineChart key={pin} title={`Pin ${pin} Spare Trend`} data={points} valueLabel="conversion rate" unit="%" />
+        ))
+      )}
+    </>
   );
 }
 
@@ -531,13 +593,7 @@ export default function StatsCharts({
 
           {rateStats && <LeaveConversionTable data={leaveConversions} />}
           {rateStats && <PinLeaveDiagram data={pinLeaveStats} />}
-          {rateStats && pinLeaveTrends.length > 0 && (
-            <>
-              {pinLeaveTrends.map(({ pin, points }) => (
-                <LineChart key={pin} title={`Pin ${pin} Spare Trend`} data={points} valueLabel="conversion rate" unit="%" />
-              ))}
-            </>
-          )}
+          {rateStats && <PinTrendCharts data={pinLeaveTrends} />}
         </>
       )}
     </div>
