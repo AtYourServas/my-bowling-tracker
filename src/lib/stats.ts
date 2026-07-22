@@ -175,6 +175,10 @@ export type StatFrame = {
   isPractice: boolean;
   sessionType: string | null;
   leagueId: string | null;
+  /** The session's date, straight off this frame's own join -- NOT sourced
+   *  from ScoredGame, which drops ended_early/unscored games (see
+   *  fetchAllGamesWithScores) that shot-level stats must still include. */
+  sessionDate: string | null;
   /** Shots in delivery order. */
   shots: StatShot[];
 };
@@ -190,7 +194,7 @@ export async function fetchStatFrames(supabase: SupabaseClient): Promise<StatFra
   const { data: frames } = await supabase
     .from('frames')
     .select(
-      'frame_number, games(id, is_warmup, sessions(session_type, league_id)), shots(pins_standing, strike, spare, foul, ball_id, created_at, lineup_position, slide_position, balls(name))',
+      'frame_number, games(id, is_warmup, sessions(session_type, league_id, session_date)), shots(pins_standing, strike, spare, foul, ball_id, created_at, lineup_position, slide_position, balls(name))',
     )
     .order('created_at', { foreignTable: 'shots', ascending: true });
 
@@ -206,6 +210,7 @@ export async function fetchStatFrames(supabase: SupabaseClient): Promise<StatFra
       isPractice: game.is_warmup,
       sessionType: game.sessions?.session_type ?? null,
       leagueId: game.sessions?.league_id ?? null,
+      sessionDate: game.sessions?.session_date ?? null,
       shots: frame.shots ?? [],
     });
   }
@@ -221,7 +226,7 @@ export async function fetchSessionStatFrames(supabase: SupabaseClient, sessionId
   const { data: frames } = await supabase
     .from('frames')
     .select(
-      'frame_number, games!inner(id, session_id, is_warmup, sessions(session_type, league_id)), shots(pins_standing, strike, spare, foul, ball_id, created_at, lineup_position, slide_position, balls(name))',
+      'frame_number, games!inner(id, session_id, is_warmup, sessions(session_type, league_id, session_date)), shots(pins_standing, strike, spare, foul, ball_id, created_at, lineup_position, slide_position, balls(name))',
     )
     .eq('games.session_id', sessionId)
     .order('created_at', { foreignTable: 'shots', ascending: true });
@@ -234,6 +239,7 @@ export async function fetchSessionStatFrames(supabase: SupabaseClient, sessionId
     isPractice: frame.games.is_warmup,
     sessionType: frame.games.sessions?.session_type ?? null,
     leagueId: frame.games.sessions?.league_id ?? null,
+    sessionDate: frame.games.sessions?.session_date ?? null,
     shots: frame.shots ?? [],
   }));
 }
@@ -607,6 +613,46 @@ export function computePinLeaveStats(frames: StatFrame[], filter: StatsFilter): 
 
   return Array.from(counts.entries())
     .map(([pin, { attempts, converted }]) => ({ pin, attempts, converted }))
+    .sort((a, b) => a.pin - b.pin);
+}
+
+export type PinLeaveTrendPoint = { date: string; pct: number; attempts: number };
+export type PinLeaveTrend = { pin: number; totalAttempts: number; points: PinLeaveTrendPoint[] };
+
+/**
+ * Cumulative (running, not per-frame) spare-conversion rate for each pin over
+ * time -- a raw per-frame rate would whipsaw between 0%/100% since most pins
+ * are only faced a handful of times a session; this expands the same way
+ * stats.astro's "Average Over Time" running average does. Uses each frame's
+ * own sessionDate (not a join through ScoredGame, which drops ended_early/
+ * unscored games that shot-level stats like this one must still include --
+ * see fetchAllGamesWithScores) so this stays consistent with
+ * computePinLeaveStats' aggregate numbers for the same filter. Undated frames
+ * are skipped. Always returns all ten pins (empty points if never faced).
+ */
+export function computePinLeaveTrends(frames: StatFrame[], filter: StatsFilter): PinLeaveTrend[] {
+  const dated = frames
+    .filter((f): f is StatFrame & { sessionDate: string } => frameInFilter(f, filter) && !!f.sessionDate)
+    .map((f) => ({ frame: f, date: f.sessionDate }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  const running = new Map<number, { attempts: number; converted: number; points: PinLeaveTrendPoint[] }>();
+  for (let pin = 1; pin <= 10; pin += 1) running.set(pin, { attempts: 0, converted: 0, points: [] });
+
+  for (const { frame, date } of dated) {
+    walkDeliveries([frame], (faced, converted) => {
+      for (const pin of faced) {
+        const entry = running.get(pin);
+        if (!entry) continue;
+        entry.attempts += 1;
+        if (converted) entry.converted += 1;
+        entry.points.push({ date, pct: entry.converted / entry.attempts, attempts: entry.attempts });
+      }
+    });
+  }
+
+  return Array.from(running.entries())
+    .map(([pin, { attempts, points }]) => ({ pin, totalAttempts: attempts, points }))
     .sort((a, b) => a.pin - b.pin);
 }
 

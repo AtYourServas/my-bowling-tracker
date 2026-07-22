@@ -21,6 +21,7 @@ type Props = {
   pinLeaveStats: PinLeaveStat[];
   cleanGameStats: CleanGameStats | null;
   handicapTrend: TimeDatum[];
+  pinLeaveTrends: { pin: number; points: TimeDatum[] }[];
 };
 
 /** Signed drift (stance − slide) → "Straight" or "2.3 boards right/left". */
@@ -346,7 +347,17 @@ function BarChart({ title, data, unit }: { title: string; data: BarDatum[]; unit
   );
 }
 
-function LineChart({ title, data }: { title: string; data: TimeDatum[] }) {
+function LineChart({
+  title,
+  data,
+  valueLabel = 'average',
+  unit = '',
+}: {
+  title: string;
+  data: TimeDatum[];
+  valueLabel?: string;
+  unit?: string;
+}) {
   const [hovered, setHovered] = useState<number | null>(null);
 
   if (data.length === 0) {
@@ -413,7 +424,7 @@ function LineChart({ title, data }: { title: string; data: TimeDatum[] }) {
             onBlur={() => setHovered(null)}
             tabIndex={0}
             role="img"
-            aria-label={`${d.date}: average ${d.score.toFixed(1)}`}
+            aria-label={`${d.date}: ${valueLabel} ${d.score.toFixed(1)}${unit}`}
           >
             <circle cx={xFor(i)} cy={yFor(d.score)} r={12} className="chart-hit" />
             <circle cx={xFor(i)} cy={yFor(d.score)} r={6} className="chart-dot-ring" />
@@ -422,10 +433,11 @@ function LineChart({ title, data }: { title: string; data: TimeDatum[] }) {
         ))}
         <text x={WIDTH - 2} y={yFor(last.score) - 8} textAnchor="end" className="chart-endlabel">
           {last.score.toFixed(1)}
+          {unit}
         </text>
       </svg>
       <p className="chart-tooltip" aria-live="polite">
-        {hovered != null ? `${data[hovered].date}: average ${data[hovered].score.toFixed(1)}` : ' '}
+        {hovered != null ? `${data[hovered].date}: ${valueLabel} ${data[hovered].score.toFixed(1)}${unit}` :' '}
       </p>
       <details>
         <summary>View as Table</summary>
@@ -433,14 +445,17 @@ function LineChart({ title, data }: { title: string; data: TimeDatum[] }) {
           <thead>
             <tr>
               <th>Date</th>
-              <th>Running Average</th>
+              <th>{valueLabel === 'average' ? 'Running Average' : `Running ${valueLabel}`}</th>
             </tr>
           </thead>
           <tbody>
             {data.map((d, i) => (
               <tr key={`${d.date}-${i}`}>
                 <td>{d.date}</td>
-                <td>{d.score.toFixed(1)}</td>
+                <td>
+                  {d.score.toFixed(1)}
+                  {unit}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -466,6 +481,7 @@ export default function StatsCharts({
   pinLeaveStats,
   cleanGameStats,
   handicapTrend,
+  pinLeaveTrends,
 }: Props) {
   return (
     <div className="stats-charts">
@@ -515,6 +531,13 @@ export default function StatsCharts({
 
           {rateStats && <LeaveConversionTable data={leaveConversions} />}
           {rateStats && <PinLeaveDiagram data={pinLeaveStats} />}
+          {rateStats && pinLeaveTrends.length > 0 && (
+            <>
+              {pinLeaveTrends.map(({ pin, points }) => (
+                <LineChart key={pin} title={`Pin ${pin} Spare Trend`} data={points} valueLabel="conversion rate" unit="%" />
+              ))}
+            </>
+          )}
         </>
       )}
     </div>

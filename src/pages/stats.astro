@@ -10,6 +10,7 @@ import {
   computeRateStats,
   computeLeaveConversions,
   computePinLeaveStats,
+  computePinLeaveTrends,
   computeCleanGameStats,
   computeHandicapTrend,
   groupByLaneCondition,
@@ -64,6 +65,14 @@ const rateStats = computeRateStats(statFrames, filter);
 const leaveConversions = computeLeaveConversions(statFrames, filter);
 const pinLeaveStats = computePinLeaveStats(statFrames, filter);
 const cleanGameStats = computeCleanGameStats(statFrames, filter);
+
+// Only the pins actually faced with enough volume to trend meaningfully --
+// rarely-faced pins would just whipsaw with each new attempt.
+const pinLeaveTrends = computePinLeaveTrends(statFrames, filter)
+  .filter((t) => t.totalAttempts >= 5)
+  .sort((a, b) => b.totalAttempts - a.totalAttempts)
+  .slice(0, 3)
+  .map((t) => ({ pin: t.pin, points: t.points.map((p) => ({ date: p.date, score: p.pct * 100 })) }));
 
 const handicapOf = await buildSessionHandicapResolver(supabase, allGamesEver);
 
@@ -179,6 +188,7 @@ const bestSeries = fetchBestSeriesStats(allGamesEver, handicapOf);
           pinLeaveStats={pinLeaveStats}
           cleanGameStats={cleanGameStats}
           handicapTrend={handicapTrend}
+          pinLeaveTrends={pinLeaveTrends}
         />
       )}
     </>
