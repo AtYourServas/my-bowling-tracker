@@ -2,6 +2,8 @@
 import Layout from '../../layouts/Layout.astro';
 import { laneLabel, laneConfigFromSession } from '../../lib/lanes';
 import { fetchMiniScoresheets, fetchEarliestIncompleteFrame, fetchEarliestIncompleteWarmupFrame, type MiniSheet } from '../../lib/scoring';
+import { buildSessionHandicapResolver } from '../../lib/handicap';
+import { fetchAllGamesWithScores } from '../../lib/stats';
 
 const { supabase } = Astro.locals;
 
@@ -14,7 +16,7 @@ const hasFilters = Boolean(filterType || filterAlley || filterFrom || filterTo);
 
 let sessionsQuery = supabase
   .from('sessions')
-  .select('*, leagues(name), games(id, final_score, ended_early, is_warmup, created_at)')
+  .select('*, leagues(name), games(id, final_score, ended_early, is_warmup, created_at, game_number)')
   .order('session_date', { ascending: false })
   .order('created_at', { ascending: false })
   .order('created_at', { foreignTable: 'games', ascending: true });
@@ -46,7 +48,14 @@ const alleyOptions = Array.from(new Set((alleyRows ?? []).map((r) => r.alley_nam
 // (covers a warmup's "End Practice", which never gets a final_score); only
 // unfinished games need a mini-scoresheet to tell "in progress" from "not
 // started yet" (dashboard rule).
-type GameRow = { id: string; final_score: number | null; ended_early: boolean; is_warmup: boolean; created_at: string };
+type GameRow = {
+  id: string;
+  final_score: number | null;
+  ended_early: boolean;
+  is_warmup: boolean;
+  created_at: string;
+  game_number: number | null;
+};
 const unfinishedGameIds = (sessions ?? []).flatMap((s) =>
   (s.games as GameRow[]).filter((g) => g.final_score == null && !g.ended_early).map((g) => g.id),
 );
@@ -74,6 +83,48 @@ for (const [sessionId, gameId] of resumeBySession) {
       : await fetchEarliestIncompleteFrame(supabase, gameId),
   );
 }
+
+// ---- Table view: per-game scratch scores + series scratch/handicap --------
+// A scored game's number is final_score, falling back to the derived total
+// from its mini-scoresheet's last frame (unfinishedGameIds already covers
+// every game with no final_score, warmup included, so this needs no extra
+// fetch). The warmup/practice slot never counts toward Game N columns or the
+// series -- same rule fetchBestSeriesStats uses for all-time bests.
+function scratchScore(game: GameRow): number | null {
+  if (game.final_score != null) return game.final_score;
+  return sheets.get(game.id)?.cells[9]?.cumulative ?? null;
+}
+
+// Batched handicap resolver (one query for every league's config + one for
+// every game ever, reused across all sessions here) instead of a per-session
+// lookup -- resolves to null for practice sessions, so those naturally show
+// scratch only.
+const allGamesEver = await fetchAllGamesWithScores(supabase);
+const handicapOf = await buildSessionHandicapResolver(supabase, allGamesEver);
+
+type SessionRow = {
+  session: NonNullable<typeof sessions>[number];
+  scoredGames: GameRow[];
+  scores: (number | null)[];
+  seriesScratch: number | null;
+  seriesHandicap: number | null;
+};
+
+const sessionRows: SessionRow[] = (sessions ?? []).map((session) => {
+  const scoredGames = (session.games as GameRow[])
+    .filter((g) => !g.is_warmup)
+    .sort((a, b) => (a.game_number ?? Infinity) - (b.game_number ?? Infinity) || a.created_at.localeCompare(b.created_at));
+  const scores = scoredGames.map(scratchScore);
+  const playedScores = scores.filter((s): s is number => s != null);
+  const seriesScratch = playedScores.length > 0 ? playedScores.reduce((a, b) => a + b, 0) : null;
+  const sessionHandicap = handicapOf(session);
+  const seriesHandicap =
+    sessionHandicap != null && seriesScratch != null ? seriesScratch + sessionHandicap * playedScores.length : null;
+
+  return { session, scoredGames, scores, seriesScratch, seriesHandicap };
+});
+
+const maxGames = sessionRows.reduce((max, r) => Math.max(max, r.scoredGames.length), 0);
 ---
 
 <Layout title="Sessions">
@@ -117,29 +168,127 @@ for (const [sessionId, gameId] of resumeBySession) {
   </form>
   </details>
 
-  {sessions && sessions.length > 0 ? (
-    <ul class="list">
-      {sessions.map((session) => {
-        const resumeGameId = resumeBySession.get(session.id);
-        return (
-          <li>
-            <a class="card" href={`/sessions/${session.id}`}>
-              <strong>{session.alley_name || 'Unnamed alley'} {laneLabel(laneConfigFromSession(session)) ? `· ${laneLabel(laneConfigFromSession(session))}` : ''}</strong>
-              <span>
-                {session.session_date} · {session.session_type === 'league' ? 'League' : 'Practice'}
-                {session.leagues?.name ? ` · ${session.leagues.name}` : ''}
-              </span>
-            </a>
-            {resumeGameId && (
-              <a class="card-resume" href={`/sessions/${session.id}/games/${resumeGameId}`}>
-                Resume · Frame {resumeFrames.get(resumeGameId)} &rarr;
-              </a>
-            )}
-          </li>
-        );
-      })}
-    </ul>
+  {sessionRows.length > 0 ? (
+    <div class="table-scroll">
+      <table class="sessions-table">
+        <thead>
+          <tr>
+            <th class="sess-col">Session</th>
+            {Array.from({ length: maxGames }, (_, i) => (
+              <th class="num-col">Game {i + 1}</th>
+            ))}
+            <th class="num-col">Series</th>
+            <th class="actions-col"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {sessionRows.map(({ session, scoredGames, scores, seriesScratch, seriesHandicap }) => {
+            const resumeGameId = resumeBySession.get(session.id);
+            return (
+              <tr>
+                <td class="sess-col">
+                  <strong>{session.alley_name || 'Unnamed alley'}{laneLabel(laneConfigFromSession(session)) ? ` · ${laneLabel(laneConfigFromSession(session))}` : ''}</strong>
+                  <span>
+                    {session.session_date} · {session.session_type === 'league' ? 'League' : 'Practice'}
+                    {session.leagues?.name ? ` · ${session.leagues.name}` : ''}
+                  </span>
+                </td>
+                {Array.from({ length: maxGames }, (_, i) => (
+                  <td class="num-col">{scoredGames[i] ? (scores[i] ?? '—') : ''}</td>
+                ))}
+                <td class="num-col">
+                  {seriesScratch != null ? (
+                    <div class="series-stack">
+                      <span class="series-scratch">{seriesScratch}</span>
+                      {seriesHandicap != null && <span class="series-hdcp">Hdcp {seriesHandicap}</span>}
+                    </div>
+                  ) : (
+                    '—'
+                  )}
+                </td>
+                <td class="actions-col">
+                  <a class="button secondary" href={`/sessions/${session.id}`}>View Details</a>
+                  {resumeGameId && (
+                    <a class="card-resume" href={`/sessions/${session.id}/games/${resumeGameId}`}>
+                      Resume · Frame {resumeFrames.get(resumeGameId)} &rarr;
+                    </a>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   ) : (
     <p class="empty">{hasFilters ? 'No sessions match those filters.' : 'No sessions yet.'} <a href="/sessions/new">Start a session</a>.</p>
   )}
 </Layout>
+
+<style>
+  .table-scroll {
+    margin-top: var(--s4);
+    overflow-x: auto;
+  }
+  .sessions-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .sessions-table th,
+  .sessions-table td {
+    padding: var(--s3);
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+  }
+  .sessions-table th {
+    text-align: left;
+    color: var(--text-muted);
+    font-weight: var(--fw-med);
+    font-size: var(--text-sm);
+    white-space: nowrap;
+  }
+  .sess-col {
+    min-width: 11rem;
+  }
+  .sess-col strong {
+    display: block;
+    font-size: var(--text-base);
+    font-weight: var(--fw-semi);
+  }
+  .sess-col span {
+    display: block;
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+  .num-col {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .series-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+  }
+  .series-scratch {
+    font-size: var(--text-lg);
+    font-weight: var(--fw-semi);
+  }
+  .series-hdcp {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+  }
+  .actions-col {
+    text-align: right;
+    white-space: nowrap;
+  }
+  .actions-col .button {
+    padding: 6px 12px;
+    font-size: var(--text-sm);
+  }
+  .actions-col .card-resume {
+    margin: var(--s1) 0 0;
+  }
+</style>
