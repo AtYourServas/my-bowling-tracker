@@ -107,6 +107,7 @@ type SessionRow = {
   scoredGames: GameRow[];
   scores: (number | null)[];
   seriesScratch: number | null;
+  sessionHandicap: number | null;
   seriesHandicap: number | null;
 };
 
@@ -121,10 +122,14 @@ const sessionRows: SessionRow[] = (sessions ?? []).map((session) => {
   const seriesHandicap =
     sessionHandicap != null && seriesScratch != null ? seriesScratch + sessionHandicap * playedScores.length : null;
 
-  return { session, scoredGames, scores, seriesScratch, seriesHandicap };
+  return { session, scoredGames, scores, seriesScratch, sessionHandicap, seriesHandicap };
 });
 
-const maxGames = sessionRows.reduce((max, r) => Math.max(max, r.scoredGames.length), 0);
+// Capped at 3 so a long practice session's game count can't blow up the
+// table's width -- games beyond the cap still count toward the series total,
+// just not their own column (see the "+N" badge on the last shown column).
+const MAX_GAME_COLUMNS = 3;
+const maxGames = Math.min(MAX_GAME_COLUMNS, sessionRows.reduce((max, r) => Math.max(max, r.scoredGames.length), 0));
 ---
 
 <Layout title="Sessions">
@@ -182,8 +187,9 @@ const maxGames = sessionRows.reduce((max, r) => Math.max(max, r.scoredGames.leng
           </tr>
         </thead>
         <tbody>
-          {sessionRows.map(({ session, scoredGames, scores, seriesScratch, seriesHandicap }) => {
+          {sessionRows.map(({ session, scoredGames, scores, seriesScratch, sessionHandicap, seriesHandicap }) => {
             const resumeGameId = resumeBySession.get(session.id);
+            const extraGames = Math.max(0, scoredGames.length - maxGames);
             return (
               <tr>
                 <td class="sess-col">
@@ -191,10 +197,18 @@ const maxGames = sessionRows.reduce((max, r) => Math.max(max, r.scoredGames.leng
                   <span>
                     {session.session_date} · {session.session_type === 'league' ? 'League' : 'Practice'}
                     {session.leagues?.name ? ` · ${session.leagues.name}` : ''}
+                    {sessionHandicap != null ? ` · Hdcp +${sessionHandicap}` : ''}
                   </span>
                 </td>
                 {Array.from({ length: maxGames }, (_, i) => (
-                  <td class="num-col">{scoredGames[i] ? (scores[i] ?? '—') : ''}</td>
+                  <td class="num-col">
+                    {scoredGames[i] ? (scores[i] ?? '—') : ''}
+                    {i === maxGames - 1 && extraGames > 0 && (
+                      <a class="more-games" href={`/sessions/${session.id}`} title={`${extraGames} more game${extraGames === 1 ? '' : 's'} — view details`}>
+                        +{extraGames}
+                      </a>
+                    )}
+                  </td>
                 ))}
                 <td class="num-col">
                   {seriesScratch != null ? (
@@ -248,7 +262,7 @@ const maxGames = sessionRows.reduce((max, r) => Math.max(max, r.scoredGames.leng
     white-space: nowrap;
   }
   .sess-col {
-    min-width: 11rem;
+    min-width: 9rem;
   }
   .sess-col strong {
     display: block;
@@ -280,9 +294,31 @@ const maxGames = sessionRows.reduce((max, r) => Math.max(max, r.scoredGames.leng
     font-size: var(--text-xs);
     color: var(--text-muted);
   }
+  /* small "+N" badge on the last shown Game column when a session (almost
+     always a long practice session) has more games than fit in the capped
+     column count -- links straight to the session's full game list */
+  .more-games {
+    display: inline-block;
+    margin-left: 4px;
+    padding: 1px 5px;
+    font-size: var(--text-xs);
+    font-weight: var(--fw-semi);
+    color: var(--accent-ink);
+    background: var(--accent);
+    border-radius: 999px;
+    text-decoration: none;
+    vertical-align: middle;
+  }
+  /* Pinned to the right of the scroll container so "View Details" is always
+     reachable without scrolling sideways through the Game columns, even
+     though those columns can still overflow on narrow screens. */
   .actions-col {
+    position: sticky;
+    right: 0;
     text-align: right;
     white-space: nowrap;
+    background: var(--bg);
+    box-shadow: -6px 0 6px -6px rgb(0 0 0 / 25%);
   }
   .actions-col .button {
     padding: 6px 12px;
