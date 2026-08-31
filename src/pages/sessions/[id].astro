@@ -332,7 +332,7 @@ const setupSummary = [leagueName, laneLabel(laneConfig)].filter(Boolean).join(' 
 
       {playedScores.length > 0 && (
         <div class="session-summary">
-          <div class="sum-group">
+          <div class="sum-group sum-group-hl">
             <div class="sum-stat">
               <span class="sum-stat-lbl">Series</span>
               <span class="sum-stat-val">{seriesScratch}</span>
@@ -347,7 +347,7 @@ const setupSummary = [leagueName, laneLabel(laneConfig)].filter(Boolean).join(' 
             </div>
           </div>
           {sessionHandicap != null && (
-            <div class="sum-group sum-group-hdcp">
+            <div class="sum-group">
               <div class="sum-stat">
                 <span class="sum-stat-lbl">Handicap</span>
                 <span class="sum-stat-val">+{sessionHandicap}</span>
@@ -813,7 +813,6 @@ const setupSummary = [leagueName, laneLabel(laneConfig)].filter(Boolean).join(' 
   .session-head-top {
     display: flex;
     align-items: center;
-    justify-content: space-between;
     gap: var(--s3);
   }
   .session-head h1 {
@@ -855,10 +854,21 @@ const setupSummary = [leagueName, laneLabel(laneConfig)].filter(Boolean).join(' 
   .session-title::-webkit-details-marker { display: none; }
   .session-title::after {
     content: '▾';
-    color: var(--text-muted);
-    font-size: var(--text-sm);
+    flex: none;
+    width: 1.75rem;
+    height: 1.75rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border-strong);
+    border-radius: 50%;
+    background: var(--surface-sunk);
+    color: var(--accent);
+    font-size: var(--text-base);
+    line-height: 1;
     transition: transform 0.15s;
   }
+  .session-title:hover::after { border-color: var(--accent); }
   .session-details[open] .session-title::after { transform: rotate(180deg); }
   .session-sub {
     margin: 2px 0 0;
@@ -878,14 +888,15 @@ const setupSummary = [leagueName, laneLabel(laneConfig)].filter(Boolean).join(' 
     border-top: 1px solid var(--border);
     overflow-x: auto;
   }
-  /* Scratch stats vs. the handicap group: the handicap stats get a tinted
-     pill so the two kinds of number read as distinct clusters at a glance. */
+  /* Scratch stats vs. the handicap group: the scratch stats (the numbers that
+     matter most) get a tinted pill so they stand out; the handicap group sits
+     plain beside them. */
   .sum-group {
     display: flex;
     gap: var(--s3);
     flex: none;
   }
-  .sum-group-hdcp {
+  .sum-group-hl {
     gap: var(--s2);
     padding: var(--s1) var(--s2);
     border-radius: var(--radius-sm);
