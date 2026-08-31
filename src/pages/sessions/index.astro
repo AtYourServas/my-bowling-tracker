@@ -205,14 +205,14 @@ function formatSessionDate(iso: string): string {
       <table class="sessions-table">
         <thead>
           <tr>
-            <th class="date-col" style={`width: ${DATE_COL_PCT}%`}>Date</th>
-            <th class="sess-col" style={`width: ${SESS_COL_PCT}%`}>Session</th>
-            <th class="num-col" style={`width: ${LANE_COL_PCT}%`}>Lane</th>
+            <th class="date-col" style={`width: ${DATE_COL_PCT}%`}>DATE</th>
+            <th class="sess-col" style={`width: ${SESS_COL_PCT}%`}>SESSION</th>
+            <th class="num-col" style={`width: ${LANE_COL_PCT}%`}>LN</th>
             {Array.from({ length: maxGames }, (_, i) => (
-              <th class="num-col" style={`width: ${gameColPct}%`}>Game {i + 1}</th>
+              <th class="num-col" style={`width: ${gameColPct}%`}>GM {i + 1}</th>
             ))}
-            <th class="num-col" style={`width: ${SERIES_COL_PCT}%`}>Series</th>
-            <th class="num-col" style={`width: ${HDCP_COL_PCT}%`}>Hdcp</th>
+            <th class="num-col" style={`width: ${SERIES_COL_PCT}%`}>SERIES</th>
+            <th class="num-col" style={`width: ${HDCP_COL_PCT}%`}>HDCP</th>
           </tr>
         </thead>
         <tbody>
@@ -224,7 +224,7 @@ function formatSessionDate(iso: string): string {
             const laneConfig = laneConfigFromSession(session);
             const laneCell =
               laneConfig.laneNumber != null
-                ? `${laneConfig.laneNumber}${laneConfig.secondLaneNumber ? ` & ${laneConfig.secondLaneNumber}` : ''}`
+                ? `${laneConfig.laneNumber}${laneConfig.secondLaneNumber ? `/${laneConfig.secondLaneNumber}` : ''}`
                 : '—';
             // League name leads for a league session (the thing you actually
             // care about at a glance); a standalone practice session has no
