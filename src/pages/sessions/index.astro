@@ -222,10 +222,6 @@ function formatSessionDate(iso: string): string {
             const isLeague = session.session_type === 'league';
             const leagueName = session.leagues?.name ?? null;
             const laneConfig = laneConfigFromSession(session);
-            const laneCell =
-              laneConfig.laneNumber != null
-                ? `${laneConfig.laneNumber}${laneConfig.secondLaneNumber ? `/${laneConfig.secondLaneNumber}` : ''}`
-                : '—';
             // League name leads for a league session (the thing you actually
             // care about at a glance); a standalone practice session has no
             // league name, so the alley fills in as the headline instead.
@@ -245,7 +241,18 @@ function formatSessionDate(iso: string): string {
                     </a>
                   )}
                 </td>
-                <td class="num-col">{laneCell}</td>
+                <td class="num-col">
+                  {laneConfig.laneNumber == null ? (
+                    '—'
+                  ) : laneConfig.secondLaneNumber != null ? (
+                    <div class="lane-stack">
+                      <span>{laneConfig.laneNumber}</span>
+                      <span>{laneConfig.secondLaneNumber}</span>
+                    </div>
+                  ) : (
+                    laneConfig.laneNumber
+                  )}
+                </td>
                 {Array.from({ length: maxGames }, (_, i) => (
                   <td class="num-col">
                     {scoredGames[i] ? (scores[i] ?? '—') : ''}
@@ -347,6 +354,15 @@ function formatSessionDate(iso: string): string {
   .num-col {
     text-align: right;
     font-variant-numeric: tabular-nums;
+  }
+  /* A two-lane pair stacks as two smaller rows instead of "13/12" -- reads
+     as two lane numbers rather than a fraction, and matches the compact
+     feel of the Series/Hdcp columns' single-value cells. */
+  .lane-stack {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.2;
+    font-size: var(--text-xs);
   }
   /* small "+N" badge on the last shown Game column when a session (almost
      always a long practice session) has more games than fit in the capped
