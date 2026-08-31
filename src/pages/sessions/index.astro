@@ -134,10 +134,10 @@ const maxGames = Math.min(MAX_GAME_COLUMNS, sessionRows.reduce((max, r) => Math.
 // Date/Session/Lane/Series/Handicap get a fixed share; whatever's left is
 // split evenly across however many Game columns are actually shown.
 const DATE_COL_PCT = 12;
-const SESS_COL_PCT = 26;
+const SESS_COL_PCT = 20;
 const LANE_COL_PCT = 11;
-const SERIES_COL_PCT = 13;
-const HDCP_COL_PCT = 10;
+const SERIES_COL_PCT = 15;
+const HDCP_COL_PCT = 14;
 const gamesPoolPct = 100 - (DATE_COL_PCT + SESS_COL_PCT + LANE_COL_PCT + SERIES_COL_PCT + HDCP_COL_PCT);
 const gameColPct = maxGames > 0 ? gamesPoolPct / maxGames : 0;
 
@@ -207,12 +207,12 @@ function formatSessionDate(iso: string): string {
           <tr>
             <th class="date-col" style={`width: ${DATE_COL_PCT}%`}>DATE</th>
             <th class="sess-col" style={`width: ${SESS_COL_PCT}%`}>SESSION</th>
-            <th class="num-col" style={`width: ${LANE_COL_PCT}%`}>LN</th>
+            <th class="num-col lane-col" style={`width: ${LANE_COL_PCT}%`}>LN</th>
             {Array.from({ length: maxGames }, (_, i) => (
-              <th class="num-col" style={`width: ${gameColPct}%`}>GM {i + 1}</th>
+              <th class="num-col" style={`width: ${gameColPct}%`}>G{i + 1}</th>
             ))}
             <th class="num-col" style={`width: ${SERIES_COL_PCT}%`}>SERIES</th>
-            <th class="num-col" style={`width: ${HDCP_COL_PCT}%`}>HDCP</th>
+            <th class="num-col hdcp-col" style={`width: ${HDCP_COL_PCT}%`}>HDCP</th>
           </tr>
         </thead>
         <tbody>
@@ -241,7 +241,7 @@ function formatSessionDate(iso: string): string {
                     </a>
                   )}
                 </td>
-                <td class="num-col">
+                <td class="num-col lane-col">
                   {laneConfig.laneNumber == null ? (
                     '—'
                   ) : laneConfig.secondLaneNumber != null ? (
@@ -264,7 +264,7 @@ function formatSessionDate(iso: string): string {
                   </td>
                 ))}
                 <td class="num-col">{seriesScratch ?? '—'}</td>
-                <td class="num-col">{sessionHandicap != null ? `+${sessionHandicap}` : '—'}</td>
+                <td class="num-col hdcp-col">{sessionHandicap != null ? `+${sessionHandicap}` : '—'}</td>
               </tr>
             );
           })}
@@ -323,6 +323,14 @@ function formatSessionDate(iso: string): string {
     color: var(--text-muted);
     font-weight: var(--fw-med);
     font-size: var(--text-xs);
+    white-space: nowrap;
+  }
+  /* Headers default to left (matching Date/Session's left-aligned data), but
+     every numeric column's data is centered, not right-aligned -- so its
+     header needs the same override to actually land above its data instead
+     of past it. */
+  .sessions-table th.num-col {
+    text-align: center;
   }
   /* Colored side stripe on the leading (Date) cell replaces the old inline
      "League"/"Practice" word -- same info, no extra text needed. Ties to
@@ -352,8 +360,15 @@ function formatSessionDate(iso: string): string {
     text-decoration: underline;
   }
   .num-col {
-    text-align: right;
+    text-align: center;
     font-variant-numeric: tabular-nums;
+  }
+  /* Subtle tint on Lane and Hdcp brackets the game-score columns (the Game
+     N's + Series) in between, so the two context columns read as a visual
+     divider from the pure score data rather than blending into it. */
+  .lane-col,
+  .hdcp-col {
+    background: var(--surface-sunk);
   }
   /* A two-lane pair stacks as two smaller rows instead of "13/12" -- reads
      as two lane numbers rather than a fraction, and matches the compact
