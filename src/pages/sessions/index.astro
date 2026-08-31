@@ -207,12 +207,12 @@ function formatSessionDate(iso: string): string {
           <tr>
             <th class="date-col" style={`width: ${DATE_COL_PCT}%`}>DATE</th>
             <th class="sess-col" style={`width: ${SESS_COL_PCT}%`}>SESSION</th>
-            <th class="num-col lane-col" style={`width: ${LANE_COL_PCT}%`}>LN</th>
+            <th class="num-col" style={`width: ${LANE_COL_PCT}%`}>LN</th>
             {Array.from({ length: maxGames }, (_, i) => (
-              <th class="num-col" style={`width: ${gameColPct}%`}>G{i + 1}</th>
+              <th class="num-col game-col" style={`width: ${gameColPct}%`}>G{i + 1}</th>
             ))}
-            <th class="num-col" style={`width: ${SERIES_COL_PCT}%`}>SERIES</th>
-            <th class="num-col hdcp-col" style={`width: ${HDCP_COL_PCT}%`}>HDCP</th>
+            <th class="num-col series-col" style={`width: ${SERIES_COL_PCT}%`}>SERIES</th>
+            <th class="num-col" style={`width: ${HDCP_COL_PCT}%`}>HDCP</th>
           </tr>
         </thead>
         <tbody>
@@ -241,7 +241,7 @@ function formatSessionDate(iso: string): string {
                     </a>
                   )}
                 </td>
-                <td class="num-col lane-col">
+                <td class="num-col">
                   {laneConfig.laneNumber == null ? (
                     '—'
                   ) : laneConfig.secondLaneNumber != null ? (
@@ -254,7 +254,7 @@ function formatSessionDate(iso: string): string {
                   )}
                 </td>
                 {Array.from({ length: maxGames }, (_, i) => (
-                  <td class="num-col">
+                  <td class="num-col game-col">
                     {scoredGames[i] ? (scores[i] ?? '—') : ''}
                     {i === maxGames - 1 && extraGames > 0 && (
                       <a class="more-games" href={`/sessions/${session.id}`} title={`${extraGames} more game${extraGames === 1 ? '' : 's'} — view details`}>
@@ -263,8 +263,8 @@ function formatSessionDate(iso: string): string {
                     )}
                   </td>
                 ))}
-                <td class="num-col">{seriesScratch ?? '—'}</td>
-                <td class="num-col hdcp-col">{sessionHandicap != null ? `+${sessionHandicap}` : '—'}</td>
+                <td class="num-col series-col">{seriesScratch ?? '—'}</td>
+                <td class="num-col">{sessionHandicap != null ? `+${sessionHandicap}` : '—'}</td>
               </tr>
             );
           })}
@@ -363,12 +363,14 @@ function formatSessionDate(iso: string): string {
     text-align: center;
     font-variant-numeric: tabular-nums;
   }
-  /* Subtle tint on Lane and Hdcp brackets the game-score columns (the Game
-     N's + Series) in between, so the two context columns read as a visual
-     divider from the pure score data rather than blending into it. */
-  .lane-col,
-  .hdcp-col {
+  /* Game N columns share one tint (they're the same kind of value repeated),
+     Series gets its own distinct tint as the one column that's a total
+     rather than a single game's score. */
+  .game-col {
     background: var(--surface-sunk);
+  }
+  .series-col {
+    background: var(--accent-weak);
   }
   /* A two-lane pair stacks as two smaller rows instead of "13/12" -- reads
      as two lane numbers rather than a fraction, and matches the compact
