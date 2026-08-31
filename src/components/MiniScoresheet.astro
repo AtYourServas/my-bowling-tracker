@@ -5,8 +5,11 @@ interface Props {
   cells: FrameCell[];
   pinfall: FramePinfall[];
   label?: string;
+  /** Render without the own overflow-x wrapper, so several sheets can share one
+   *  outer scroll container and stay frame-aligned (session cross-game view). */
+  bare?: boolean;
 }
-const { cells, pinfall, label } = Astro.props;
+const { cells, pinfall, label, bare = false } = Astro.props;
 
 // Same corner-box rule as the game page: a struck frame (1-9) shows the X
 // alone in the top-right corner, dropping the placeholder empty 2nd-ball box.
@@ -33,7 +36,7 @@ function pinState(pf: FramePinfall, p: number): 'unbowled' | 'down1' | 'down2' |
 }
 ---
 
-<div class="mini-sheet-wrap">
+<div class:list={['mini-sheet-wrap', { bare }]}>
   <div class="mini-sheet" aria-label={label ? `${label} scoresheet` : 'Scoresheet'}>
     {cells.map((cell) => {
       const pf = pinfall[cell.frameNumber - 1];
@@ -64,6 +67,12 @@ function pinState(pf: FramePinfall, p: number): 'unbowled' | 'down1' | 'down2' |
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     margin-top: var(--s2);
+  }
+  /* Bare: no own scroll or top margin -- an outer container provides the
+     single shared scroller so stacked sheets stay frame-aligned. */
+  .mini-sheet-wrap.bare {
+    overflow-x: visible;
+    margin-top: 0;
   }
   .mini-sheet {
     display: flex;
