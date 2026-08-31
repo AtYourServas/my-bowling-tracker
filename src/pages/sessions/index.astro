@@ -4,8 +4,24 @@ import { laneConfigFromSession } from '../../lib/lanes';
 import { fetchMiniScoresheets, fetchEarliestIncompleteFrame, fetchEarliestIncompleteWarmupFrame, type MiniSheet } from '../../lib/scoring';
 import { buildSessionHandicapResolver } from '../../lib/handicap';
 import { fetchAllGamesWithScores } from '../../lib/stats';
+import { SESSION_COLUMNS, SESSION_COLUMN_KEYS } from '../../lib/sessionColumns';
 
-const { supabase } = Astro.locals;
+const { supabase, user } = Astro.locals;
+
+// Saving the column chooser is a POST; each shown column posts col_<key>='on',
+// so anything unchecked is hidden. Upsert (not update) so an account with no
+// profiles row yet still saves. Post/Redirect/Get back to the same filtered
+// URL keeps the current filters and avoids a re-post on reload.
+if (Astro.request.method === 'POST') {
+  const formData = await Astro.request.formData();
+  if (formData.get('intent')?.toString() === 'columns') {
+    const hidden_session_columns = SESSION_COLUMN_KEYS.filter((key) => formData.get(`col_${key}`) !== 'on');
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .upsert({ id: user!.id, hidden_session_columns });
+    if (!updateError) return Astro.redirect(Astro.url.pathname + Astro.url.search);
+  }
+}
 
 const params = Astro.url.searchParams;
 const filterType = params.get('type') ?? '';
@@ -107,6 +123,7 @@ type SessionRow = {
   scoredGames: GameRow[];
   scores: (number | null)[];
   seriesScratch: number | null;
+  sessionAverage: number | null;
   sessionHandicap: number | null;
 };
 
@@ -117,29 +134,45 @@ const sessionRows: SessionRow[] = (sessions ?? []).map((session) => {
   const scores = scoredGames.map(scratchScore);
   const playedScores = scores.filter((s): s is number => s != null);
   const seriesScratch = playedScores.length > 0 ? playedScores.reduce((a, b) => a + b, 0) : null;
+  // Session average = scratch series over the games actually played, one
+  // decimal (matches the session detail page's Average stat).
+  const sessionAverage =
+    seriesScratch != null ? Math.round((seriesScratch / playedScores.length) * 10) / 10 : null;
   const sessionHandicap = handicapOf(session);
 
-  return { session, scoredGames, scores, seriesScratch, sessionHandicap };
+  return { session, scoredGames, scores, seriesScratch, sessionAverage, sessionHandicap };
 });
+
+// Which optional columns to show -- stored per profile as the HIDDEN keys, so a
+// column not listed stays visible (all shown by default).
+const { data: profile } = await supabase
+  .from('profiles')
+  .select('hidden_session_columns')
+  .eq('id', user!.id)
+  .maybeSingle();
+const hiddenColumns: string[] = profile?.hidden_session_columns ?? [];
+const show = (key: string) => !hiddenColumns.includes(key);
 
 // Capped at 3 so a long practice session's game count can't blow up the
 // table's width -- games beyond the cap still count toward the series total,
 // just not their own column (see the "+N" badge on the last shown column).
 const MAX_GAME_COLUMNS = 3;
-const maxGames = Math.min(MAX_GAME_COLUMNS, sessionRows.reduce((max, r) => Math.max(max, r.scoredGames.length), 0));
+const maxGames = show('games')
+  ? Math.min(MAX_GAME_COLUMNS, sessionRows.reduce((max, r) => Math.max(max, r.scoredGames.length), 0))
+  : 0;
 
 // Percentage widths (table-layout: fixed) instead of letting the browser size
-// columns to unwrapped content -- that's what was forcing the table wider
-// than the (480px-max, mobile-first) page and requiring a horizontal scroll.
-// Date/Session/Lane/Series/Handicap get a fixed share; whatever's left is
-// split evenly across however many Game columns are actually shown.
-const DATE_COL_PCT = 12;
-const SESS_COL_PCT = 20;
-const LANE_COL_PCT = 11;
-const SERIES_COL_PCT = 15;
-const HDCP_COL_PCT = 14;
-const gamesPoolPct = 100 - (DATE_COL_PCT + SESS_COL_PCT + LANE_COL_PCT + SERIES_COL_PCT + HDCP_COL_PCT);
-const gameColPct = maxGames > 0 ? gamesPoolPct / maxGames : 0;
+// columns to unwrapped content -- that's what forced a horizontal scroll. Each
+// shown column gets a relative weight; whatever's shown is normalized to 100%,
+// so hiding columns widens the rest to fill the table.
+const COL_WEIGHTS = { date: 1.1, session: 1.9, lane: 0.9, game: 0.85, series: 1.15, avg: 1.05, hdcp: 1.05 };
+let totalWeight = COL_WEIGHTS.date + COL_WEIGHTS.session;
+if (show('lane')) totalWeight += COL_WEIGHTS.lane;
+totalWeight += COL_WEIGHTS.game * maxGames;
+if (show('series')) totalWeight += COL_WEIGHTS.series;
+if (show('avg')) totalWeight += COL_WEIGHTS.avg;
+if (show('hdcp')) totalWeight += COL_WEIGHTS.hdcp;
+const pct = (weight: number) => `${(weight / totalWeight) * 100}%`;
 
 // "Jul 12" (year only when it isn't the current one) -- same T00:00:00 parse
 // the game page uses so a plain date column doesn't shift a day from UTC
@@ -195,6 +228,27 @@ function formatSessionDate(iso: string): string {
   </form>
   </details>
 
+  <details class="filter-collapse">
+    <summary>Columns</summary>
+    <form method="POST" class="column-chooser">
+      <input type="hidden" name="intent" value="columns" />
+      <div class="toggle-actions">
+        <button type="button" class="secondary" data-grid="session-columns" data-check="on">Select All</button>
+        <button type="button" class="secondary" data-grid="session-columns" data-check="off">Clear All</button>
+      </div>
+      <div class="field-toggles" id="session-columns">
+        {SESSION_COLUMNS.map((c) => (
+          <label class="check">
+            <input type="checkbox" name={`col_${c.key}`} checked={show(c.key)} />
+            {c.label}
+          </label>
+        ))}
+      </div>
+      <p class="empty">Date and Session always show.</p>
+      <button type="submit">Save Columns</button>
+    </form>
+  </details>
+
   {sessionRows.length > 0 ? (
     <>
     <div class="table-legend">
@@ -205,18 +259,19 @@ function formatSessionDate(iso: string): string {
       <table class="sessions-table">
         <thead>
           <tr>
-            <th class="date-col" style={`width: ${DATE_COL_PCT}%`}>DATE</th>
-            <th class="sess-col" style={`width: ${SESS_COL_PCT}%`}>SESSION</th>
-            <th class="num-col" style={`width: ${LANE_COL_PCT}%`}>LN</th>
+            <th class="date-col" style={`width: ${pct(COL_WEIGHTS.date)}`}>DATE</th>
+            <th class="sess-col" style={`width: ${pct(COL_WEIGHTS.session)}`}>SESSION</th>
+            {show('lane') && <th class="num-col" style={`width: ${pct(COL_WEIGHTS.lane)}`}>LN</th>}
             {Array.from({ length: maxGames }, (_, i) => (
-              <th class="num-col game-col" style={`width: ${gameColPct}%`}>G{i + 1}</th>
+              <th class="num-col game-col" style={`width: ${pct(COL_WEIGHTS.game)}`}>G{i + 1}</th>
             ))}
-            <th class="num-col series-col" style={`width: ${SERIES_COL_PCT}%`}>SERIES</th>
-            <th class="num-col" style={`width: ${HDCP_COL_PCT}%`}>HDCP</th>
+            {show('series') && <th class="num-col series-col" style={`width: ${pct(COL_WEIGHTS.series)}`}>SERIES</th>}
+            {show('avg') && <th class="num-col" style={`width: ${pct(COL_WEIGHTS.avg)}`}>AVG</th>}
+            {show('hdcp') && <th class="num-col" style={`width: ${pct(COL_WEIGHTS.hdcp)}`}>HDCP</th>}
           </tr>
         </thead>
         <tbody>
-          {sessionRows.map(({ session, scoredGames, scores, seriesScratch, sessionHandicap }) => {
+          {sessionRows.map(({ session, scoredGames, scores, seriesScratch, sessionAverage, sessionHandicap }) => {
             const resumeGameId = resumeBySession.get(session.id);
             const extraGames = Math.max(0, scoredGames.length - maxGames);
             const isLeague = session.session_type === 'league';
@@ -241,18 +296,20 @@ function formatSessionDate(iso: string): string {
                     </a>
                   )}
                 </td>
-                <td class="num-col">
-                  {laneConfig.laneNumber == null ? (
-                    '—'
-                  ) : laneConfig.secondLaneNumber != null ? (
-                    <div class="lane-stack">
-                      <span>{laneConfig.laneNumber}</span>
-                      <span>{laneConfig.secondLaneNumber}</span>
-                    </div>
-                  ) : (
-                    laneConfig.laneNumber
-                  )}
-                </td>
+                {show('lane') && (
+                  <td class="num-col">
+                    {laneConfig.laneNumber == null ? (
+                      '—'
+                    ) : laneConfig.secondLaneNumber != null ? (
+                      <div class="lane-stack">
+                        <span>{laneConfig.laneNumber}</span>
+                        <span>{laneConfig.secondLaneNumber}</span>
+                      </div>
+                    ) : (
+                      laneConfig.laneNumber
+                    )}
+                  </td>
+                )}
                 {Array.from({ length: maxGames }, (_, i) => (
                   <td class="num-col game-col">
                     {scoredGames[i] ? (scores[i] ?? '—') : ''}
@@ -263,8 +320,9 @@ function formatSessionDate(iso: string): string {
                     )}
                   </td>
                 ))}
-                <td class="num-col series-col">{seriesScratch ?? '—'}</td>
-                <td class="num-col">{sessionHandicap != null ? `+${sessionHandicap}` : '—'}</td>
+                {show('series') && <td class="num-col series-col">{seriesScratch ?? '—'}</td>}
+                {show('avg') && <td class="num-col">{sessionAverage ?? '—'}</td>}
+                {show('hdcp') && <td class="num-col">{sessionHandicap != null ? `+${sessionHandicap}` : '—'}</td>}
               </tr>
             );
           })}
@@ -399,4 +457,39 @@ function formatSessionDate(iso: string): string {
   .sess-col .card-resume {
     text-align: left;
   }
+  /* Boxed panel look for the Columns chooser, connecting flush under its
+     summary (the global .filter-collapse only styles a .filter-form child). */
+  .column-chooser {
+    margin: 0;
+    padding: var(--s4);
+    display: flex;
+    flex-direction: column;
+    gap: var(--s3);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-top: none;
+    border-radius: 0 0 var(--radius-md) var(--radius-md);
+    box-shadow: var(--shadow-sm);
+  }
+  .column-chooser .empty {
+    margin: 0;
+  }
+  .column-chooser button[type='submit'] {
+    align-self: flex-start;
+  }
 </style>
+
+<script>
+  // Select All / Clear All for the Columns chooser -- same pattern as the
+  // settings field grids. In astro:page-load so it rewires after every
+  // ClientRouter soft-navigation (a plain top-level body runs only once).
+  document.addEventListener('astro:page-load', () => {
+    document.querySelectorAll<HTMLButtonElement>('.column-chooser .toggle-actions button[data-grid]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const grid = document.getElementById(btn.dataset.grid!);
+        const checked = btn.dataset.check === 'on';
+        grid?.querySelectorAll<HTMLInputElement>('input[type="checkbox"]').forEach((box) => (box.checked = checked));
+      });
+    });
+  });
+</script>
