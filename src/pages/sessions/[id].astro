@@ -223,30 +223,41 @@ const inProgress = [...(games ?? [])].reverse().find((g) => {
 });
 const inProgressLabel = inProgress ? gameLabel(inProgress, (games ?? []).indexOf(inProgress)) : null;
 
+// Where a game's shown score comes from, so the header can badge it:
+//  'logged'  = a manually-entered final_score
+//  'derived' = totalled from the frames you logged (no manual final)
+//  'partial' = a game ended early (partial-score practice)
+//  'none'    = no score yet
+type ScoreSource = 'none' | 'logged' | 'derived' | 'partial';
+
 function gameScore(game: { id: string; final_score: number | null; ended_early: boolean }) {
   const derived = derivedScores.get(game.id) ?? null;
   const scratch = game.final_score ?? derived;
 
   if (scratch == null) {
-    return { primary: null as number | null, handicap: null as number | null, detail: 'No score yet' };
+    return { primary: null as number | null, handicap: null as number | null, source: 'none' as ScoreSource, detail: 'No score yet' };
   }
 
+  let source: ScoreSource;
   let detail = '';
   if (game.ended_early) {
+    source = 'partial';
     // last frame with any roll logged, not the last one with a fully-resolved
     // cumulative -- a trailing unresolved strike/spare bonus shouldn't hide
     // how far the game actually got
     const lastBowled = [...(miniSheets.get(game.id)?.cells ?? [])].reverse().find((c) => c.bowled);
     detail = lastBowled ? `through frame ${lastBowled.frameNumber}` : 'ended early';
-  } else if (game.final_score != null && derived != null && derived !== game.final_score) {
-    detail = `derived ${derived}`;
-  } else if (game.final_score == null && derived != null) {
-    detail = 'derived';
+  } else if (game.final_score != null) {
+    source = 'logged';
+    // surface the disagreement when a typed final doesn't match the frames
+    if (derived != null && derived !== game.final_score) detail = `frames total ${derived}`;
+  } else {
+    source = 'derived';
   }
 
   const handicap = sessionHandicap != null ? scratch + sessionHandicap : null;
 
-  return { primary: scratch, handicap, detail };
+  return { primary: scratch, handicap, source, detail };
 }
 
 // Session recap: series (scratch + handicap), average, and high game across
@@ -260,6 +271,14 @@ const seriesHandicap =
   sessionHandicap != null && seriesScratch != null ? seriesScratch + sessionHandicap * playedScores.length : null;
 const sessionAverage = seriesScratch != null ? Math.round((seriesScratch / playedScores.length) * 10) / 10 : null;
 const highGame = playedScores.length > 0 ? Math.max(...playedScores) : null;
+
+// Header badge text per score source (null = no badge, e.g. an unresolved game).
+const SOURCE_LABEL: Record<ScoreSource, string | null> = {
+  none: null,
+  logged: 'Final',
+  derived: 'Derived',
+  partial: 'Partial',
+};
 
 const isLeague = session.session_type === 'league';
 // Match the sessions list: a league night leads with the league name (the
@@ -414,7 +433,12 @@ const setupSummary = [leagueName, laneLabel(laneConfig)].filter(Boolean).join(' 
                     <a class="game-head" href={`/sessions/${id}/games/${slot.game.id}`}>
                       <div class="game-head-main">
                         <strong>{slot.label}</strong>
-                        {score.detail && <span class="game-detail">{score.detail}</span>}
+                        <div class="game-tags">
+                          {SOURCE_LABEL[score.source] && (
+                            <span class:list={['score-badge', `is-${score.source}`]}>{SOURCE_LABEL[score.source]}</span>
+                          )}
+                          {score.detail && <span class="game-detail">{score.detail}</span>}
+                        </div>
                       </div>
                       <GameScoreValue primary={score.primary} handicap={score.handicap} />
                     </a>
@@ -434,17 +458,25 @@ const setupSummary = [leagueName, laneLabel(laneConfig)].filter(Boolean).join(' 
                     </div>
                   </div>
                 ) : (
-                  <div class="add-slot">
-                    <strong>{slot.label}</strong>
-                    <form method="POST" class="add-game">
-                      <input type="hidden" name="slot" value={slot.key} />
-                      <input type="hidden" name="action" value="" />
-                      <input type="number" name="final_score" min="0" max="300" placeholder="final score (optional)" aria-label={`Score for ${slot.label}`} />
-                      <div class="add-game-actions">
-                        <button type="button" data-action="score" class="secondary">Log Final Score</button>
-                        <button type="button" data-action="log">Log Each Frame</button>
+                  <div class="game-block game-block-empty">
+                    <div class="game-head">
+                      <div class="game-head-main">
+                        <strong>{slot.label}</strong>
+                        <span class="game-detail">Not started</span>
                       </div>
-                    </form>
+                      <div class="game-card-score none">&mdash;</div>
+                    </div>
+                    <div class="game-add-body">
+                      <form method="POST" class="add-game">
+                        <input type="hidden" name="slot" value={slot.key} />
+                        <input type="hidden" name="action" value="" />
+                        <input type="number" name="final_score" min="0" max="300" placeholder="final score (optional)" aria-label={`Score for ${slot.label}`} />
+                        <div class="add-game-actions">
+                          <button type="button" data-action="score" class="secondary">Log Final Score</button>
+                          <button type="button" data-action="log">Log Each Frame</button>
+                        </div>
+                      </form>
+                    </div>
                   </div>
                 )}
               </li>
@@ -463,7 +495,12 @@ const setupSummary = [leagueName, laneLabel(laneConfig)].filter(Boolean).join(' 
                       <a class="game-head" href={`/sessions/${id}/games/${game.id}`}>
                         <div class="game-head-main">
                           <strong>Game {i + 1}</strong>
-                          {score.detail && <span class="game-detail">{score.detail}</span>}
+                          <div class="game-tags">
+                            {SOURCE_LABEL[score.source] && (
+                              <span class:list={['score-badge', `is-${score.source}`]}>{SOURCE_LABEL[score.source]}</span>
+                            )}
+                            {score.detail && <span class="game-detail">{score.detail}</span>}
+                          </div>
                         </div>
                         <GameScoreValue primary={score.primary} handicap={score.handicap} />
                       </a>
@@ -974,7 +1011,31 @@ const setupSummary = [leagueName, laneLabel(laneConfig)].filter(Boolean).join(' 
     min-width: 0;
   }
   .game-head-main strong { font-size: var(--text-base); font-weight: var(--fw-semi); }
+  .game-tags { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); }
   .game-detail { font-size: var(--text-xs); color: var(--text-muted); }
+  /* Score-source badge: how the shown score was arrived at. Derived (totalled
+     from logged frames) reads as a filled accent chip; a manually-typed Final
+     is a plain outlined chip; a partial (ended-early) game is mustard. */
+  .score-badge {
+    font-size: 0.65rem;
+    font-weight: var(--fw-semi);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 1px 6px;
+    border-radius: 999px;
+    line-height: 1.4;
+  }
+  .score-badge.is-derived { background: var(--accent-weak); color: var(--accent); }
+  .score-badge.is-logged { border: 1px solid var(--border-strong); color: var(--text-muted); }
+  .score-badge.is-partial { background: var(--mustard-weak); color: var(--mustard); }
+  /* An unstarted game keeps the same block shape as a played one -- a header
+     with the label and an em-dash score -- but with a dashed border and the
+     add-a-game form in place of a scoresheet, so it reads as "a game slot
+     waiting to be filled" rather than a different kind of thing. */
+  .game-block-empty { border-style: dashed; box-shadow: none; }
+  .game-block-empty .game-head { background: transparent; }
+  .game-add-body { padding: var(--s3); }
+  .game-add-body .add-game { margin: 0; }
   .game-head :global(.game-card-score) { font-size: var(--text-xl); }
   .game-head :global(.score-stat-value) { font-size: var(--text-lg); }
   /* Scoresheet sits flush under the header with just some breathing room --
