@@ -138,6 +138,18 @@ const maxGames = Math.min(MAX_GAME_COLUMNS, sessionRows.reduce((max, r) => Math.
 const SESS_COL_PCT = 40;
 const numericColCount = maxGames + 1; // game columns + Series
 const numColPct = (100 - SESS_COL_PCT) / numericColCount;
+
+// "Jul 12" (year only when it isn't the current one) -- same T00:00:00 parse
+// the game page uses so a plain date column doesn't shift a day from UTC
+// parsing. Made prominent in its own line now that "League"/"Practice" text
+// is gone from the row, replaced by the colored side stripe.
+const thisYear = new Date().getFullYear();
+function formatSessionDate(iso: string): string {
+  const d = new Date(`${iso}T00:00:00`);
+  const opts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' };
+  if (d.getFullYear() !== thisYear) opts.year = 'numeric';
+  return d.toLocaleDateString('en-US', opts);
+}
 ---
 
 <Layout title="Sessions">
@@ -182,6 +194,11 @@ const numColPct = (100 - SESS_COL_PCT) / numericColCount;
   </details>
 
   {sessionRows.length > 0 ? (
+    <>
+    <div class="table-legend">
+      <span class="legend-item"><i class="legend-swatch is-league"></i>League</span>
+      <span class="legend-item"><i class="legend-swatch is-practice"></i>Practice</span>
+    </div>
     <div class="table-scroll">
       <table class="sessions-table">
         <thead>
@@ -197,17 +214,26 @@ const numColPct = (100 - SESS_COL_PCT) / numericColCount;
           {sessionRows.map(({ session, scoredGames, scores, seriesScratch, sessionHandicap, seriesHandicap }) => {
             const resumeGameId = resumeBySession.get(session.id);
             const extraGames = Math.max(0, scoredGames.length - maxGames);
+            const isLeague = session.session_type === 'league';
+            const leagueName = session.leagues?.name ?? null;
+            const laneStr = laneLabel(laneConfigFromSession(session));
+            // League name leads for a league session (the thing you actually
+            // care about at a glance); the alley/lane, no longer the
+            // headline, drops to the meta line alongside the date. Practice
+            // has no league name, so the alley stays the headline and the
+            // lane joins the date line instead. The type word itself
+            // ("League"/"Practice") is dropped -- the side stripe carries it.
+            const headline = isLeague && leagueName ? leagueName : session.alley_name || 'Unnamed alley';
+            const venueLine = isLeague ? [session.alley_name, laneStr].filter(Boolean).join(' · ') : laneStr;
             return (
               <tr>
-                <td class="sess-col">
-                  <a class="sess-link" href={`/sessions/${session.id}`}>
-                    {session.alley_name || 'Unnamed alley'}{laneLabel(laneConfigFromSession(session)) ? ` · ${laneLabel(laneConfigFromSession(session))}` : ''}
-                  </a>
-                  <span>
-                    {session.session_date} · {session.session_type === 'league' ? 'League' : 'Practice'}
-                    {session.leagues?.name ? ` · ${session.leagues.name}` : ''}
-                    {sessionHandicap != null ? ` · Hdcp +${sessionHandicap}` : ''}
-                  </span>
+                <td class:list={['sess-col', isLeague ? 'is-league' : 'is-practice']}>
+                  <a class="sess-link" href={`/sessions/${session.id}`}>{headline}</a>
+                  <div class="sess-meta">
+                    <span class="sess-date">{formatSessionDate(session.session_date)}</span>
+                    {venueLine && <span class="sess-venue">{venueLine}</span>}
+                  </div>
+                  {sessionHandicap != null && <span class="sess-hdcp">Hdcp +{sessionHandicap}</span>}
                   {resumeGameId && (
                     <a class="card-resume" href={`/sessions/${session.id}/games/${resumeGameId}`}>
                       Resume · Frame {resumeFrames.get(resumeGameId)} &rarr;
@@ -240,14 +266,39 @@ const numColPct = (100 - SESS_COL_PCT) / numericColCount;
         </tbody>
       </table>
     </div>
+    </>
   ) : (
     <p class="empty">{hasFilters ? 'No sessions match those filters.' : 'No sessions yet.'} <a href="/sessions/new">Start a session</a>.</p>
   )}
 </Layout>
 
 <style>
-  .table-scroll {
+  .table-legend {
+    display: flex;
+    gap: var(--s4);
     margin-top: var(--s4);
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: var(--s1);
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+  }
+  .legend-swatch {
+    display: inline-block;
+    width: 3px;
+    height: 0.9em;
+    border-radius: 1px;
+  }
+  .legend-swatch.is-league {
+    background: var(--accent);
+  }
+  .legend-swatch.is-practice {
+    background: var(--mustard);
+  }
+  .table-scroll {
+    margin-top: var(--s2);
     overflow-x: auto;
   }
   .sessions-table {
@@ -268,9 +319,22 @@ const numColPct = (100 - SESS_COL_PCT) / numericColCount;
     font-weight: var(--fw-med);
     font-size: var(--text-xs);
   }
+  /* Colored side stripe replaces the old inline "League"/"Practice" word --
+     same info, no extra text taking up the narrow Session column. Ties to
+     .end-action's mustard (already this app's "practice" color) and the
+     accent blue used for handicap/league emphasis elsewhere. */
+  .sess-col.is-league {
+    box-shadow: inset 3px 0 0 var(--accent);
+  }
+  .sess-col.is-practice {
+    box-shadow: inset 3px 0 0 var(--mustard);
+  }
+  .sess-col {
+    padding-left: calc(var(--s1) + 4px);
+  }
   .sess-link {
     display: block;
-    font-size: var(--text-sm);
+    font-size: var(--text-base);
     font-weight: var(--fw-semi);
     color: var(--text-primary);
     text-decoration: none;
@@ -279,7 +343,23 @@ const numColPct = (100 - SESS_COL_PCT) / numericColCount;
     color: var(--accent);
     text-decoration: underline;
   }
-  .sess-col span {
+  .sess-meta {
+    display: flex;
+    flex-wrap: wrap;
+    column-gap: var(--s2);
+    row-gap: 0;
+    margin-top: 2px;
+  }
+  .sess-date {
+    font-size: var(--text-sm);
+    font-weight: var(--fw-med);
+    color: var(--text-secondary);
+  }
+  .sess-venue {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+  }
+  .sess-hdcp {
     display: block;
     font-size: var(--text-xs);
     color: var(--text-muted);
