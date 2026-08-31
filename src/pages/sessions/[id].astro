@@ -382,58 +382,57 @@ const setupSummary = [leagueName, laneLabel(laneConfig)].filter(Boolean).join(' 
       {session.session_type === 'league' ? (
         <ul class="list">
           <li>
-            {practiceGame ? (
-              <>
-                <a class="card game-card" href={`/sessions/${id}/games/${practiceGame.id}`}>
-                  <div class="game-card-main">
-                    <strong>Practice</strong>
-                    <div class="game-card-detail">
-                      {practiceShotCount} shot{practiceShotCount === 1 ? '' : 's'}
-                      {practiceGame.ended_early ? ' · Complete' : ''}
-                    </div>
-                  </div>
-                </a>
-              </>
-            ) : (
-              <div class="add-slot">
-                <strong>Practice</strong>
-                <form method="POST" class="add-game">
-                  <input type="hidden" name="slot" value="practice" />
-                  <button type="submit" name="action" value="log">Start Warmup</button>
-                </form>
+            <details class="game-block warmup-block" open={!practiceGame}>
+              <summary class="game-head">
+                <div class="game-head-main">
+                  <strong>Warmup</strong>
+                  <span class="game-detail">
+                    {practiceGame
+                      ? `${practiceShotCount} shot${practiceShotCount === 1 ? '' : 's'}${practiceGame.ended_early ? ' · Complete' : ''}`
+                      : 'Not started'}
+                  </span>
+                </div>
+              </summary>
+              <div class="game-foot">
+                {practiceGame ? (
+                  <a class="review-link" href={`/sessions/${id}/games/${practiceGame.id}`}>Open Warmup &rarr;</a>
+                ) : (
+                  <form method="POST" class="add-game">
+                    <input type="hidden" name="slot" value="practice" />
+                    <button type="submit" name="action" value="log">Start Warmup</button>
+                  </form>
+                )}
               </div>
-            )}
+            </details>
           </li>
           {leagueSlots.map((slot) => {
             const score = slot.game ? gameScore(slot.game) : null;
             return (
               <li>
                 {slot.game && score ? (
-                  <>
-                    <a class="card game-card" href={`/sessions/${id}/games/${slot.game.id}`}>
-                      <div class="game-card-main">
+                  <div class="game-block">
+                    <a class="game-head" href={`/sessions/${id}/games/${slot.game.id}`}>
+                      <div class="game-head-main">
                         <strong>{slot.label}</strong>
-                        {score.detail && <div class="game-card-detail">{score.detail}</div>}
+                        {score.detail && <span class="game-detail">{score.detail}</span>}
                       </div>
                       <GameScoreValue primary={score.primary} handicap={score.handicap} />
                     </a>
                     {miniSheet(slot.game.id) && (
                       <MiniScoresheet cells={miniSheet(slot.game.id)!.cells} pinfall={miniSheet(slot.game.id)!.pinfall} label={slot.label} />
                     )}
-                    {score.primary == null ? (
-                      <div class="game-actions">
+                    <div class="game-foot">
+                      {score.primary == null && (
                         <form method="POST" class="score-inline">
                           <input type="hidden" name="intent" value="set_game_score" />
                           <input type="hidden" name="game_id" value={slot.game.id} />
                           <input type="number" name="final_score" min="0" max="300" placeholder="final score" aria-label={`Final score for ${slot.label}`} />
                           <button type="submit" class="secondary">Save</button>
                         </form>
-                        <a href={`/sessions/${id}/games/${slot.game.id}/review`} class="review-link">Review Scorecard &rarr;</a>
-                      </div>
-                    ) : (
+                      )}
                       <a href={`/sessions/${id}/games/${slot.game.id}/review`} class="review-link">Review Scorecard &rarr;</a>
-                    )}
-                  </>
+                    </div>
+                  </div>
                 ) : (
                   <div class="add-slot">
                     <strong>{slot.label}</strong>
@@ -460,29 +459,29 @@ const setupSummary = [leagueName, laneLabel(laneConfig)].filter(Boolean).join(' 
                 const score = gameScore(game);
                 return (
                   <li>
-                    <a class="card game-card" href={`/sessions/${id}/games/${game.id}`}>
-                      <div class="game-card-main">
-                        <strong>Game {i + 1}</strong>
-                        {score.detail && <div class="game-card-detail">{score.detail}</div>}
-                      </div>
-                      <GameScoreValue primary={score.primary} handicap={score.handicap} />
-                    </a>
-                    {miniSheet(game.id) && (
-                      <MiniScoresheet cells={miniSheet(game.id)!.cells} pinfall={miniSheet(game.id)!.pinfall} label={`Game ${i + 1}`} />
-                    )}
-                    {score.primary == null ? (
-                      <div class="game-actions">
-                        <form method="POST" class="score-inline">
-                          <input type="hidden" name="intent" value="set_game_score" />
-                          <input type="hidden" name="game_id" value={game.id} />
-                          <input type="number" name="final_score" min="0" max="300" placeholder="final score" aria-label={`Final score for game ${i + 1}`} />
-                          <button type="submit" class="secondary">Save</button>
-                        </form>
+                    <div class="game-block">
+                      <a class="game-head" href={`/sessions/${id}/games/${game.id}`}>
+                        <div class="game-head-main">
+                          <strong>Game {i + 1}</strong>
+                          {score.detail && <span class="game-detail">{score.detail}</span>}
+                        </div>
+                        <GameScoreValue primary={score.primary} handicap={score.handicap} />
+                      </a>
+                      {miniSheet(game.id) && (
+                        <MiniScoresheet cells={miniSheet(game.id)!.cells} pinfall={miniSheet(game.id)!.pinfall} label={`Game ${i + 1}`} />
+                      )}
+                      <div class="game-foot">
+                        {score.primary == null && (
+                          <form method="POST" class="score-inline">
+                            <input type="hidden" name="intent" value="set_game_score" />
+                            <input type="hidden" name="game_id" value={game.id} />
+                            <input type="number" name="final_score" min="0" max="300" placeholder="final score" aria-label={`Final score for game ${i + 1}`} />
+                            <button type="submit" class="secondary">Save</button>
+                          </form>
+                        )}
                         <a href={`/sessions/${id}/games/${game.id}/review`} class="review-link">Review Scorecard &rarr;</a>
                       </div>
-                    ) : (
-                      <a href={`/sessions/${id}/games/${game.id}/review`} class="review-link">Review Scorecard &rarr;</a>
-                    )}
+                    </div>
                   </li>
                 );
               })}
@@ -942,15 +941,64 @@ const setupSummary = [leagueName, laneLabel(laneConfig)].filter(Boolean).join(' 
     text-align: center;
     margin: 0 0 1rem;
   }
-  /* Compact game cards: tighter padding + gap between games, and a smaller
-     score readout, so each game (card + its scoresheet + review link) takes
-     less vertical space now that the sheets sit under each game again. The
-     :global() reaches into GameScoreValue's markup but is anchored to this
-     page's scoped .game-card, so it only affects these cards. */
-  ul.list { gap: var(--s2); }
-  .game-card { padding: var(--s3) var(--s4); }
-  .game-card :global(.game-card-score) { font-size: var(--text-xl); }
-  .game-card :global(.score-stat-value) { font-size: var(--text-lg); }
+  /* Each game is one bordered block: a tinted header row (label + final score)
+     with the scoresheet attached flush below and the actions in a footer, so a
+     game reads as a single unit with a clear header and less vertical space
+     than a separate card + floating scoresheet. The :global() rules reach into
+     GameScoreValue / MiniScoresheet markup but are anchored to this page's
+     scoped .game-block, so they only affect these blocks. */
+  ul.list { gap: var(--s3); }
+  .game-block {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+  }
+  .game-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--s3);
+    padding: var(--s2) var(--s3);
+    background: var(--surface-sunk);
+    border-bottom: 1px solid var(--border);
+    text-decoration: none;
+    color: inherit;
+  }
+  a.game-head:hover { background: var(--surface); }
+  .game-head-main {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+  }
+  .game-head-main strong { font-size: var(--text-base); font-weight: var(--fw-semi); }
+  .game-detail { font-size: var(--text-xs); color: var(--text-muted); }
+  .game-head :global(.game-card-score) { font-size: var(--text-xl); }
+  .game-head :global(.score-stat-value) { font-size: var(--text-lg); }
+  /* Scoresheet sits flush under the header with just some breathing room --
+     no top margin, no double border. */
+  .game-block :global(.mini-sheet-wrap) { margin-top: 0; padding: var(--s3) var(--s3) 0; }
+  .game-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--s3);
+    padding: var(--s2) var(--s3);
+  }
+  .game-foot .review-link { margin: 0 0 0 auto; }
+  /* Warmup is a collapsible block (secondary to the real games); the header
+     row doubles as the toggle, with a chevron in place of a score. */
+  .warmup-block > summary { cursor: pointer; list-style: none; }
+  .warmup-block > summary::-webkit-details-marker { display: none; }
+  .warmup-block > summary::after {
+    content: '▾';
+    flex: none;
+    color: var(--text-muted);
+    transition: transform 0.15s;
+  }
+  .warmup-block[open] > summary::after { transform: rotate(180deg); }
   .setup-box > summary {
     cursor: pointer;
   }
