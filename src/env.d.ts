@@ -1,13 +1,14 @@
 /// <reference path="../.astro/types.d.ts" />
 /// <reference types="astro/client" />
 
-import type { SupabaseClient, User } from '@supabase/supabase-js';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 declare global {
   namespace App {
     interface Locals {
       supabase: SupabaseClient;
-      user: User | null;
+      /** The signed-in user, from the verified session JWT's claims (see middleware.ts). */
+      user: { id: string; email?: string } | null;
     }
   }
 }

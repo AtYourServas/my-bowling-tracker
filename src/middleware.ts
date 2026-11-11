@@ -8,9 +8,15 @@ export const onRequest = defineMiddleware(async (context, next) => {
   const supabase = createSupabaseServerClient(context.cookies, context.request);
   context.locals.supabase = supabase;
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // getClaims() verifies the session JWT locally against the project's
+  // published signing keys (cached), instead of getUser()'s round-trip to the
+  // Supabase Auth server on every single request -- that extra hop was paid
+  // before any page or endpoint could even start its own queries. On a
+  // project still using a legacy shared-secret key it falls back to the same
+  // server check getUser() did, so it's never less safe.
+  const { data } = await supabase.auth.getClaims();
+  const claims = data?.claims;
+  const user = claims ? { id: claims.sub, email: claims.email } : null;
   context.locals.user = user;
 
   const pathname = context.url.pathname;
