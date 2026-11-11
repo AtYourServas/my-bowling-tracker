@@ -54,9 +54,16 @@ if (filterTo) {
   sessionsQuery = sessionsQuery.lte('session_date', filterTo);
 }
 
-const { data: sessions } = await sessionsQuery;
-
-const { data: alleyRows } = await supabase.from('sessions').select('alley_name').not('alley_name', 'is', null);
+// Independent reads, fetched together. allGamesEver feeds the batched handicap
+// resolver below (one query for every league's config + one for every game
+// ever, reused across all sessions here) instead of a per-session lookup; the
+// profile holds which optional columns to show.
+const [{ data: sessions }, { data: alleyRows }, allGamesEver, { data: profile }] = await Promise.all([
+  sessionsQuery,
+  supabase.from('sessions').select('alley_name').not('alley_name', 'is', null),
+  fetchAllGamesWithScores(supabase),
+  supabase.from('profiles').select('hidden_session_columns').eq('id', user!.id).maybeSingle(),
+]);
 const alleyOptions = Array.from(new Set((alleyRows ?? []).map((r) => r.alley_name))).sort();
 
 // ---- Resume link per session (in-progress game) -----------------------------
@@ -75,7 +82,11 @@ type GameRow = {
 const unfinishedGameIds = (sessions ?? []).flatMap((s) =>
   (s.games as GameRow[]).filter((g) => g.final_score == null && !g.ended_early).map((g) => g.id),
 );
-const sheets = await fetchMiniScoresheets(supabase, unfinishedGameIds);
+// handicapOf resolves to null for practice sessions, so those show scratch only
+const [sheets, handicapOf] = await Promise.all([
+  fetchMiniScoresheets(supabase, unfinishedGameIds),
+  buildSessionHandicapResolver(supabase, allGamesEver),
+]);
 
 function gameComplete(game: GameRow) {
   if (game.final_score != null || game.ended_early) return true;
@@ -88,17 +99,21 @@ for (const s of sessions ?? []) {
   const game = (s.games as GameRow[]).find((g) => !gameComplete(g));
   if (game) resumeBySession.set(s.id, game.id);
 }
-const resumeFrames = new Map<string, number>(); // game id -> earliest incomplete frame
-for (const [sessionId, gameId] of resumeBySession) {
-  const session = (sessions ?? []).find((s) => s.id === sessionId);
-  const game = (session?.games as GameRow[] | undefined)?.find((g) => g.id === gameId);
-  resumeFrames.set(
-    gameId,
-    game?.is_warmup
-      ? await fetchEarliestIncompleteWarmupFrame(supabase, gameId)
-      : await fetchEarliestIncompleteFrame(supabase, gameId),
-  );
-}
+// game id -> earliest incomplete frame (looked up for all sessions at once)
+const resumeFrames = new Map<string, number>(
+  await Promise.all(
+    [...resumeBySession].map(async ([sessionId, gameId]): Promise<[string, number]> => {
+      const session = (sessions ?? []).find((s) => s.id === sessionId);
+      const game = (session?.games as GameRow[] | undefined)?.find((g) => g.id === gameId);
+      return [
+        gameId,
+        game?.is_warmup
+          ? await fetchEarliestIncompleteWarmupFrame(supabase, gameId)
+          : await fetchEarliestIncompleteFrame(supabase, gameId),
+      ];
+    }),
+  ),
+);
 
 // ---- Table view: per-game scratch scores + series scratch/handicap --------
 // A scored game's number is final_score, falling back to the derived total
@@ -110,13 +125,6 @@ function scratchScore(game: GameRow): number | null {
   if (game.final_score != null) return game.final_score;
   return sheets.get(game.id)?.cells[9]?.cumulative ?? null;
 }
-
-// Batched handicap resolver (one query for every league's config + one for
-// every game ever, reused across all sessions here) instead of a per-session
-// lookup -- resolves to null for practice sessions, so those naturally show
-// scratch only.
-const allGamesEver = await fetchAllGamesWithScores(supabase);
-const handicapOf = await buildSessionHandicapResolver(supabase, allGamesEver);
 
 type SessionRow = {
   session: NonNullable<typeof sessions>[number];
@@ -144,11 +152,6 @@ const sessionRows: SessionRow[] = (sessions ?? []).map((session) => {
 
 // Which optional columns to show -- stored per profile as the HIDDEN keys, so a
 // column not listed stays visible (all shown by default).
-const { data: profile } = await supabase
-  .from('profiles')
-  .select('hidden_session_columns')
-  .eq('id', user!.id)
-  .maybeSingle();
 const hiddenColumns: string[] = profile?.hidden_session_columns ?? [];
 const show = (key: string) => !hiddenColumns.includes(key);
 

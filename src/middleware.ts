@@ -19,6 +19,19 @@ export const onRequest = defineMiddleware(async (context, next) => {
   const user = claims ? { id: claims.sub, email: claims.email } : null;
   context.locals.user = user;
 
+  // Layout.astro needs the profile's display prefs on every page, but a
+  // layout's frontmatter only runs after the page's own queries finish. Start
+  // that query now so it overlaps the page's work instead of trailing it.
+  // Full-page GETs only -- background fetches (fragments, form POSTs) don't
+  // render the layout.
+  if (user && context.request.method === 'GET' && context.request.headers.get('accept')?.includes('text/html')) {
+    context.locals.layoutPrefs = Promise.resolve(
+      supabase.from('profiles').select('show_pinfall, theme').eq('id', user.id).maybeSingle(),
+    )
+      .then(({ data }) => data)
+      .catch(() => null);
+  }
+
   const pathname = context.url.pathname;
 
   if (!user && PROTECTED_ROUTES.some((route) => pathname.startsWith(route))) {

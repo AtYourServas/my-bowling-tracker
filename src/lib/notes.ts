@@ -285,7 +285,13 @@ export async function fetchLeaveNotes(
   const q = filters.query?.trim().toLowerCase();
   const matches = (body: string) => !q || body.toLowerCase().includes(q);
 
-  const { data: sessions } = await supabase.from('sessions').select('id, session_date, league_id');
+  // independent reads, fetched together
+  const [{ data: sessions }, { data: sessionNotes }, notedRes] = await Promise.all([
+    supabase.from('sessions').select('id, session_date, league_id'),
+    supabase.from('session_notes').select('id, body, created_at, shot_id'),
+    // shots that carry their own note — bounded by how many the user wrote
+    supabase.from('shots').select(SHOT_NOTE_SELECT).not('note', 'is', null),
+  ]);
   const dateBySession = new Map<string, string | null>((sessions ?? []).map((s: any) => [s.id, s.session_date]));
 
   // sessions passing the league / date-range filters; a note is kept only if its
@@ -301,17 +307,12 @@ export async function fetchLeaveNotes(
       .map((s: any) => s.id),
   );
 
-  const { data: sessionNotes } = await supabase.from('session_notes').select('id, body, created_at, shot_id');
   const linkedIds = [...new Set((sessionNotes ?? []).filter((n) => n.shot_id).map((n) => n.shot_id))];
 
-  const [notedRes, linkedRes] = await Promise.all([
-    // shots that carry their own note — bounded by how many the user wrote
-    supabase.from('shots').select(SHOT_NOTE_SELECT).not('note', 'is', null),
-    // plus shots a session_note points at, so we know that shot's faced leave
-    linkedIds.length
-      ? supabase.from('shots').select(SHOT_NOTE_SELECT).in('id', linkedIds)
-      : Promise.resolve({ data: [] as any[] }),
-  ]);
+  // plus shots a session_note points at, so we know that shot's faced leave
+  const linkedRes = linkedIds.length
+    ? await supabase.from('shots').select(SHOT_NOTE_SELECT).in('id', linkedIds)
+    : { data: [] as any[] };
 
   const notedShots = [...(notedRes.data ?? []), ...(linkedRes.data ?? [])];
   const shotById = new Map<string, any>();
