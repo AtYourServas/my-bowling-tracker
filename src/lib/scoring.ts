@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { fetchAllRows } from './paging';
 
 export type ShotLite = {
   pins_standing: number[] | null;
@@ -126,6 +127,42 @@ export async function fetchDerivedScoreForGame(
 }
 
 /**
+ * Every frame (+ its shots, in throw order) for many games, grouped by game
+ * with frames ascending. Game ids go in chunks so the `in (...)` list stays
+ * within PostgREST's URL length limit, and each chunk is paged (fetchAllRows)
+ * so no response can be silently cut off at the 1000-row cap -- an uncapped
+ * warmup game can hold any number of frames. Chunks run in parallel.
+ */
+async function fetchFramesByGame(supabase: SupabaseClient, gameIds: string[]): Promise<Map<string, FrameLite[]>> {
+  const CHUNK = 100;
+  const chunks: string[][] = [];
+  for (let i = 0; i < gameIds.length; i += CHUNK) chunks.push(gameIds.slice(i, i + CHUNK));
+  const pages = await Promise.all(
+    chunks.map((chunk) =>
+      fetchAllRows<any>((from, to) =>
+        supabase
+          .from('frames')
+          .select('game_id, frame_number, shots(pins_standing, strike, spare, foul, created_at)', { count: 'exact' })
+          // (game_id, frame_number) is unique, so pages never overlap or skip
+          .in('game_id', chunk)
+          .order('game_id', { ascending: true })
+          .order('frame_number', { ascending: true })
+          .order('created_at', { foreignTable: 'shots', ascending: true })
+          .range(from, to),
+      ),
+    ),
+  );
+
+  const byGame = new Map<string, FrameLite[]>();
+  for (const frame of pages.flat()) {
+    const list = byGame.get(frame.game_id) ?? [];
+    list.push({ frame_number: frame.frame_number, shots: (frame.shots ?? []) as ShotLite[] });
+    byGame.set(frame.game_id, list);
+  }
+  return byGame;
+}
+
+/**
  * Derived scores for many games in a single round-trip (bulk version of
  * fetchDerivedScoreForGame). Fetches every frame+shot for the given games at
  * once, groups by game, and scores each in memory -- avoiding the per-game N+1
@@ -140,38 +177,10 @@ export async function fetchDerivedScoresForGames(
   const result = new Map<string, number | null>();
   if (gameIds.length === 0) return result;
 
-  // Small enough that a chunk's frame rows (~10 per game) stay under
-  // PostgREST's default 1000-row response cap -- a 200-game chunk could be
-  // silently truncated. Chunks are fetched in parallel, not one after another.
-  const CHUNK = 60;
-  const chunks: string[][] = [];
-  for (let i = 0; i < gameIds.length; i += CHUNK) chunks.push(gameIds.slice(i, i + CHUNK));
-  const responses = await Promise.all(
-    chunks.map((chunk) =>
-      supabase
-        .from('frames')
-        .select('game_id, frame_number, shots(pins_standing, strike, spare, foul, created_at)')
-        .in('game_id', chunk)
-        .order('frame_number', { ascending: true })
-        .order('created_at', { foreignTable: 'shots', ascending: true }),
-    ),
-  );
-
-  for (let c = 0; c < chunks.length; c++) {
-    const chunk = chunks[c];
-    const frames = responses[c].data;
-
-    const framesByGame = new Map<string, FrameLite[]>();
-    for (const frame of (frames ?? []) as any[]) {
-      const list = framesByGame.get(frame.game_id) ?? [];
-      list.push(frame as FrameLite);
-      framesByGame.set(frame.game_id, list);
-    }
-
-    for (const id of chunk) {
-      const gameFrames = framesByGame.get(id);
-      result.set(id, gameFrames ? computeDerivedScore(gameFrames) : null);
-    }
+  const framesByGame = await fetchFramesByGame(supabase, gameIds);
+  for (const id of gameIds) {
+    const gameFrames = framesByGame.get(id);
+    result.set(id, gameFrames ? computeDerivedScore(gameFrames) : null);
   }
 
   return result;
@@ -684,19 +693,7 @@ export async function fetchMiniScoresheets(
   const out = new Map<string, MiniSheet>();
   if (gameIds.length === 0) return out;
 
-  const { data: frames } = await supabase
-    .from('frames')
-    .select('game_id, frame_number, shots(pins_standing, strike, spare, foul, created_at)')
-    .in('game_id', gameIds)
-    .order('frame_number', { ascending: true })
-    .order('created_at', { foreignTable: 'shots', ascending: true });
-
-  const byGame = new Map<string, FrameLite[]>();
-  for (const f of (frames ?? []) as any[]) {
-    const list = byGame.get(f.game_id) ?? [];
-    list.push({ frame_number: f.frame_number, shots: (f.shots ?? []) as ShotLite[] });
-    byGame.set(f.game_id, list);
-  }
+  const byGame = await fetchFramesByGame(supabase, gameIds);
 
   for (const gameId of gameIds) {
     const gframes = byGame.get(gameId) ?? [];
