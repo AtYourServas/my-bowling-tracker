@@ -364,13 +364,23 @@ export default function GameLogger({
     const timer = setTimeout(() => ctrl.abort(), 15000);
     let response: Response;
     try {
-      response = await fetch(write.url, { method: 'POST', body, credentials: 'same-origin', signal: ctrl.signal });
+      // redirect: 'manual' -- a successful write answers with a redirect back
+      // to the game page. Following it would make the server render (and us
+      // download) the entire page just to throw it away, on every single
+      // ball; the redirect itself is all the success signal needed.
+      response = await fetch(write.url, {
+        method: 'POST',
+        body,
+        credentials: 'same-origin',
+        signal: ctrl.signal,
+        redirect: 'manual',
+      });
     } catch {
       return { status: 'network' };
     } finally {
       clearTimeout(timer);
     }
-    if (response.redirected) return { status: 'ok' };
+    if (response.type === 'opaqueredirect' || response.redirected) return { status: 'ok' };
     if (response.ok) {
       // Server-side validation errors (e.g. a stale shot-cap mismatch) also
       // come back as response.ok without a redirect -- vanishingly rare here

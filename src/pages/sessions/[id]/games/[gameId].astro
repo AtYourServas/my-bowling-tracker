@@ -373,7 +373,18 @@ const liteFrames: FrameLite[] = initialFrames.map((f) => ({
 const cells = isWarmup ? computeWarmupSheet(liteFrames, frameNumber) : computeScoresheet(liteFrames);
 const lastBowled = [...cells].reverse().find((c) => c.bowled) ?? null;
 
-const scoreContext = await fetchGameScoreContext(supabase, sessionId!, game as any, liteFrames);
+// independent reads -- fired together rather than one round-trip after another
+const [scoreContext, { data: balls }, { data: approaches }, { data: prefRow }] = await Promise.all([
+  fetchGameScoreContext(supabase, sessionId!, game as any, liteFrames),
+  supabase.from('balls').select('id, name').order('name'),
+  supabase
+    .from('approaches')
+    .select('id, name, reference_lineup, reference_slide, reference_target_type, reference_target_value, leave')
+    .order('name'),
+  // profile preferences: hidden shot-logger fields + the default strike approach
+  supabase.from('profiles').select('hidden_shot_fields, default_approach_id').eq('id', user!.id).maybeSingle(),
+]);
+const hiddenShotFields = prefRow?.hidden_shot_fields ?? [];
 
 const sessionMeta = [
   game.sessions?.alley_name,
@@ -387,20 +398,6 @@ const sessionMeta = [
 ]
   .filter(Boolean)
   .join(' · ');
-
-const { data: balls } = await supabase.from('balls').select('id, name').order('name');
-const { data: approaches } = await supabase
-  .from('approaches')
-  .select('id, name, reference_lineup, reference_slide, reference_target_type, reference_target_value, leave')
-  .order('name');
-
-// profile preferences: hidden shot-logger fields + the default strike approach
-const { data: prefRow } = await supabase
-  .from('profiles')
-  .select('hidden_shot_fields, default_approach_id')
-  .eq('id', user!.id)
-  .maybeSingle();
-const hiddenShotFields = prefRow?.hidden_shot_fields ?? [];
 
 const gameLabel = game.is_warmup ? 'Practice' : game.game_number ? `Game ${game.game_number}` : 'Game';
 

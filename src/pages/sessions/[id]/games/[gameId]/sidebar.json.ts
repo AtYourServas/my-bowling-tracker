@@ -18,24 +18,25 @@ export const GET: APIRoute = async ({ params, url, locals }) => {
     return new Response(JSON.stringify({ error: 'missing route params' }), { status: 400 });
   }
 
-  const { data: game } = await supabase
-    .from('games')
-    .select('final_score, is_warmup, sessions(session_date, session_type, league_id, manual_handicap)')
-    .eq('id', gameId)
-    .maybeSingle();
+  const frameParam = Number(url.searchParams.get('frame'));
+  const frameNumber = Number.isFinite(frameParam) && frameParam > 0 ? frameParam : null;
+
+  // none of these depend on each other -- fetch them together
+  const [{ data: game }, frames, frameShots] = await Promise.all([
+    supabase
+      .from('games')
+      .select('final_score, is_warmup, sessions(session_date, session_type, league_id, manual_handicap)')
+      .eq('id', gameId)
+      .maybeSingle(),
+    fetchWarmupFrames(supabase, gameId),
+    frameNumber != null ? fetchFrameShotRows(supabase, gameId, frameNumber) : Promise.resolve(null),
+  ]);
 
   if (!game) {
     return new Response(JSON.stringify({ error: 'not found' }), { status: 404 });
   }
 
-  const frameParam = Number(url.searchParams.get('frame'));
-  const frameNumber = Number.isFinite(frameParam) && frameParam > 0 ? frameParam : null;
-
-  const frames = await fetchWarmupFrames(supabase, gameId);
-  const [context, frameShots] = await Promise.all([
-    fetchGameScoreContext(supabase, sessionId, game as any, frames),
-    frameNumber != null ? fetchFrameShotRows(supabase, gameId, frameNumber) : Promise.resolve(null),
-  ]);
+  const context = await fetchGameScoreContext(supabase, sessionId, game as any, frames);
 
   return new Response(JSON.stringify({ ...context, frameNumber, frameShots }), {
     headers: { 'Content-Type': 'application/json' },
