@@ -3,6 +3,7 @@ import { fetchDerivedScoresForGames, frameProgress, computeFrameRolls, FULL_RACK
 import { isSplit, leaveDisplayName, sortedLeave } from './leaves';
 import type { SessionForHandicap, SessionHandicapResolver } from './handicap';
 import { laneForFrame, type LaneConfig } from './lanes';
+import { fetchAllRows } from './paging';
 
 export type ScoredGame = {
   gameId: string;
@@ -31,11 +32,17 @@ export type StatsFilter = {
  * "best game"/"best series" bragging-rights stats.
  */
 export async function fetchAllGamesWithScores(supabase: SupabaseClient): Promise<ScoredGame[]> {
-  const { data: games } = await supabase
-    .from('games')
-    .select('id, final_score, session_id, is_warmup, ended_early, sessions(session_date, lane_condition_notes, session_type, league_id, manual_handicap)');
-
-  if (!games) return [];
+  // paged: a single response is capped at 1000 rows
+  const games = await fetchAllRows<any>((from, to) =>
+    supabase
+      .from('games')
+      .select(
+        'id, final_score, session_id, is_warmup, ended_early, sessions(session_date, lane_condition_notes, session_type, league_id, manual_handicap)',
+        { count: 'exact' },
+      )
+      .order('id')
+      .range(from, to),
+  );
 
   const derivedByGame = await fetchDerivedScoresForGames(
     supabase,
@@ -191,14 +198,19 @@ export type StatFrame = {
  * per-stat (each compute takes the StatsFilter) so one fetch serves any filter.
  */
 export async function fetchStatFrames(supabase: SupabaseClient): Promise<StatFrame[]> {
-  const { data: frames } = await supabase
-    .from('frames')
-    .select(
-      'frame_number, games(id, is_warmup, sessions(session_type, league_id, session_date)), shots(pins_standing, strike, spare, foul, ball_id, created_at, lineup_position, slide_position, balls(name))',
-    )
-    .order('created_at', { foreignTable: 'shots', ascending: true });
-
-  if (!frames) return [];
+  // Paged: every frame ever passes PostgREST's 1000-row response cap after
+  // ~100 games, and an unpaged select silently drops the rest.
+  const frames = await fetchAllRows<any>((from, to) =>
+    supabase
+      .from('frames')
+      .select(
+        'frame_number, games(id, is_warmup, sessions(session_type, league_id, session_date)), shots(pins_standing, strike, spare, foul, ball_id, created_at, lineup_position, slide_position, balls(name))',
+        { count: 'exact' },
+      )
+      .order('id')
+      .order('created_at', { foreignTable: 'shots', ascending: true })
+      .range(from, to),
+  );
 
   const results: StatFrame[] = [];
   for (const frame of frames as any[]) {
