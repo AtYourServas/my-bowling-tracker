@@ -205,12 +205,15 @@ if (Astro.request.method === 'POST') {
       return Astro.redirect(`/sessions/${sessionId}/games/${gameId}?frame=${frameNumber}${postModeQ}&saved=${inserted.id}`);
     }
   } else if (intent === 'log_shot' || intent === 'log_shorthand') {
-    let { data: frame } = await supabase
+    // the frame and its shots so far, in one round-trip
+    const { data: frameWithShots } = await supabase
       .from('frames')
-      .select('id')
+      .select('id, shots(id, pins_standing, strike, spare, foul, created_at)')
       .eq('game_id', gameId)
       .eq('frame_number', frameNumber)
+      .order('created_at', { foreignTable: 'shots', ascending: true })
       .maybeSingle();
+    let frame: { id: string } | null = frameWithShots;
 
     if (!frame) {
       const { data: newFrame, error: frameError } = await supabase
@@ -232,12 +235,7 @@ if (Astro.request.method === 'POST') {
       const clientId = formData.get('id')?.toString() || null;
 
       // enforce the physical shot cap (2/frame, 3 in the 10th only on strike/spare)
-      const { data: existing } = await supabase
-        .from('shots')
-        .select('id, pins_standing, strike, spare, foul')
-        .eq('frame_id', frame.id)
-        .order('created_at', { ascending: true });
-      const allExistingShots = (existing ?? []) as (ShotLite & { id: string })[];
+      const allExistingShots = (frameWithShots?.shots ?? []) as (ShotLite & { id: string })[];
       // Exclude this write's own id: a *retry* of an already-inserted shot would
       // otherwise see itself in `existing` and wrongly conclude the frame is
       // already full, rejecting a legitimate resend.
@@ -260,12 +258,8 @@ if (Astro.request.method === 'POST') {
         if (!parsed.ok) {
           error = parsed.error;
         } else {
-          const { data: sess } = await supabase
-            .from('games')
-            .select('sessions(default_ball_id, default_spare_ball_id)')
-            .eq('id', gameId)
-            .maybeSingle();
-          const s = (sess?.sessions ?? {}) as { default_ball_id?: string | null; default_spare_ball_id?: string | null };
+          // the session's default balls came along with the game row up top
+          const s = (game.sessions ?? {}) as { default_ball_id?: string | null; default_spare_ball_id?: string | null };
           const ball_id = ballIndex === 0 ? s.default_ball_id ?? null : s.default_spare_ball_id ?? s.default_ball_id ?? null;
           const { standing, strike, spare, foul } = parsed.result;
           const shotRow = { frame_id: frame.id, ball_id, pins_standing: standing, strike, spare, foul };
@@ -419,6 +413,7 @@ const laneConfig = laneConfigFromSession(game.sessions ?? { lane_number: null, s
     sessionId={sessionId!}
     gameId={gameId!}
     isWarmup={isWarmup}
+    isPracticeSession={game.sessions?.session_type === 'practice'}
     finalScore={game.final_score}
     frames={initialFrames}
     initialFrameNumber={frameNumber}

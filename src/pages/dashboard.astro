@@ -165,7 +165,42 @@ if (Astro.request.method === 'POST') {
 // ---- Averages + trend -------------------------------------------------------
 // Same default slice as the stats page (practice sessions included, the
 // Practice segment of a league night excluded).
-const allGamesEver = await fetchAllGamesWithScores(supabase);
+//
+// Every read below that doesn't depend on another is started here in one
+// batch (the first-run checklist counts and the Start League Night preview's
+// lookup included), rather than one round-trip after another down the page.
+const latestSessionSelect =
+  'id, session_date, session_type, alley_name, leagues(name), games(id, final_score, is_warmup, game_number, ended_early, created_at)';
+const [
+  allGamesEver,
+  { data: latestRows },
+  { data: onboardProfile },
+  { count: ballCount },
+  { count: leagueCount },
+  { data: mostRecentLeague },
+] = await Promise.all([
+  fetchAllGamesWithScores(supabase),
+  supabase
+    .from('sessions')
+    .select(latestSessionSelect)
+    .order('session_date', { ascending: false })
+    .order('created_at', { ascending: false })
+    .order('created_at', { foreignTable: 'games', ascending: true })
+    .limit(1),
+  supabase.from('profiles').select('onboarding_dismissed, default_ball_id').eq('id', user!.id).maybeSingle(),
+  supabase.from('balls').select('id', { count: 'exact', head: true }),
+  supabase.from('leagues').select('id', { count: 'exact', head: true }),
+  supabase
+    .from('sessions')
+    .select('alley_name, lane_number, default_ball_id, leagues(name)')
+    .eq('session_type', 'league')
+    .not('league_id', 'is', null)
+    .order('session_date', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle<{ alley_name: string | null; lane_number: number | null; default_ball_id: string | null; leagues: { name: string } | null }>(),
+]);
+
 const scoredGames = filterScoredGames(allGamesEver, { includePracticeSessions: true });
 const overallAverage = average(scoredGames.map((g) => g.score));
 
@@ -195,13 +230,6 @@ type SessionRow = {
   games: GameRow[];
 };
 
-const { data: latestRows } = await supabase
-  .from('sessions')
-  .select('id, session_date, session_type, alley_name, leagues(name), games(id, final_score, is_warmup, game_number, ended_early, created_at)')
-  .order('session_date', { ascending: false })
-  .order('created_at', { ascending: false })
-  .order('created_at', { foreignTable: 'games', ascending: true })
-  .limit(1);
 const latest = (latestRows?.[0] ?? null) as SessionRow | null;
 
 const latestSheets = latest
@@ -231,11 +259,11 @@ function gameComplete(game: GameRow, sheets: Map<string, MiniSheet>) {
 // (is_warmup) has no frame cap, so its resume frame is fetched uncapped.
 const resumeIndex = latest ? latest.games.findIndex((g) => !gameComplete(g, latestSheets)) : -1;
 const resumeGame = resumeIndex >= 0 ? latest!.games[resumeIndex] : null;
-const resumeFrame = resumeGame
+const resumeFramePromise = resumeGame
   ? resumeGame.is_warmup
-    ? await fetchEarliestIncompleteWarmupFrame(supabase, resumeGame.id)
-    : await fetchEarliestIncompleteFrame(supabase, resumeGame.id)
-  : null;
+    ? fetchEarliestIncompleteWarmupFrame(supabase, resumeGame.id)
+    : fetchEarliestIncompleteFrame(supabase, resumeGame.id)
+  : Promise.resolve(null);
 
 // ---- Last-session recap ------------------------------------------------------
 // The most recent session with at least one scored game. Usually the latest
@@ -245,20 +273,20 @@ const recapSessionId = latest && latest.games.some((g) => latestSheets.get(g.id)
   ? latest.id
   : lastScored?.sessionId ?? null;
 
-let recap: SessionRow | null = null;
-let recapSheets = latestSheets;
-if (recapSessionId && latest && recapSessionId === latest.id) {
-  recap = latest;
-} else if (recapSessionId) {
+async function fetchRecap(): Promise<{ recap: SessionRow | null; recapSheets: Map<string, MiniSheet> }> {
+  if (recapSessionId && latest && recapSessionId === latest.id) return { recap: latest, recapSheets: latestSheets };
+  if (!recapSessionId) return { recap: null, recapSheets: latestSheets };
   const { data: recapRows } = await supabase
     .from('sessions')
-    .select('id, session_date, session_type, alley_name, leagues(name), games(id, final_score, is_warmup, game_number, ended_early, created_at)')
+    .select(latestSessionSelect)
     .eq('id', recapSessionId)
     .order('created_at', { foreignTable: 'games', ascending: true })
     .limit(1);
-  recap = (recapRows?.[0] ?? null) as SessionRow | null;
-  recapSheets = recap ? await fetchMiniScoresheets(supabase, recap.games.map((g) => g.id)) : new Map();
+  const row = (recapRows?.[0] ?? null) as SessionRow | null;
+  return { recap: row, recapSheets: row ? await fetchMiniScoresheets(supabase, row.games.map((g) => g.id)) : new Map() };
 }
+// the resume frame and the recap don't depend on each other
+const [resumeFrame, { recap, recapSheets }] = await Promise.all([resumeFramePromise, fetchRecap()]);
 
 const scoreBySessionGame = new Map(allGamesEver.map((g) => [g.gameId, g.score]));
 
@@ -278,12 +306,7 @@ const recapStrip = (gameId: string) => {
 // ---- First-run checklist -----------------------------------------------------
 // Steps auto-check off the data itself (head-only count queries); the card shows
 // until every step is done or the user dismisses it for good (migration 0016).
-const [{ data: onboardProfile }, { count: ballCount }, { count: leagueCount }] = await Promise.all([
-  supabase.from('profiles').select('onboarding_dismissed').eq('id', user!.id).maybeSingle(),
-  supabase.from('balls').select('id', { count: 'exact', head: true }),
-  supabase.from('leagues').select('id', { count: 'exact', head: true }),
-]);
-
+// (onboardProfile / ballCount / leagueCount were fetched in the batch up top)
 const onboardSteps = [
   { label: 'Add a Ball', href: '/balls', done: (ballCount ?? 0) > 0 },
   { label: 'Set Up Your League', href: '/leagues', done: (leagueCount ?? 0) > 0 },
@@ -298,31 +321,16 @@ const showOnboarding = !onboardProfile?.onboarding_dismissed && onboardSteps.som
 // *before* the tap, instead of only finding out on the new session page.
 let leagueStartPreview: string | null = null;
 if (!resumeGame && recap && (leagueCount ?? 0) > 0) {
-  const { data: mostRecentLeague } = await supabase
-    .from('sessions')
-    .select('alley_name, lane_number, default_ball_id, leagues(name)')
-    .eq('session_type', 'league')
-    .not('league_id', 'is', null)
-    .order('session_date', { ascending: false })
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle<{ alley_name: string | null; lane_number: number | null; default_ball_id: string | null; leagues: { name: string } | null }>();
-
-  let leagueName = mostRecentLeague?.leagues?.name ?? null;
-  let ballId = mostRecentLeague?.default_ball_id ?? null;
-  if (!leagueName) {
-    const { data: anyLeague } = await supabase.from('leagues').select('name').order('created_at', { ascending: false }).limit(1).maybeSingle();
-    leagueName = anyLeague?.name ?? null;
-  }
-  if (!ballId) {
-    const { data: profile } = await supabase.from('profiles').select('default_ball_id').eq('id', user!.id).maybeSingle();
-    ballId = profile?.default_ball_id ?? null;
-  }
-  let ballName: string | null = null;
-  if (ballId) {
-    const { data: ball } = await supabase.from('balls').select('name').eq('id', ballId).maybeSingle();
-    ballName = ball?.name ?? null;
-  }
+  // (mostRecentLeague and the profile's default ball came in the batch up top)
+  const ballId = mostRecentLeague?.default_ball_id ?? onboardProfile?.default_ball_id ?? null;
+  const [anyLeagueRes, ballRes] = await Promise.all([
+    mostRecentLeague?.leagues?.name
+      ? Promise.resolve({ data: null })
+      : supabase.from('leagues').select('name').order('created_at', { ascending: false }).limit(1).maybeSingle(),
+    ballId ? supabase.from('balls').select('name').eq('id', ballId).maybeSingle() : Promise.resolve({ data: null }),
+  ]);
+  const leagueName = mostRecentLeague?.leagues?.name ?? anyLeagueRes.data?.name ?? null;
+  const ballName: string | null = ballRes.data?.name ?? null;
 
   const parts = [
     leagueName,

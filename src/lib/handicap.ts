@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { fetchDerivedScoreForGame } from './scoring';
+import { fetchDerivedScoresForGames } from './scoring';
 
 export type SessionForHandicap = {
   id: string;
@@ -19,28 +19,25 @@ async function fetchPriorLeagueAverage(
   leagueId: string,
   beforeDate: string,
 ): Promise<number | null> {
-  const { data: sessions } = await supabase
-    .from('sessions')
-    .select('id')
-    .eq('league_id', leagueId)
-    .lt('session_date', beforeDate);
-
-  if (!sessions || sessions.length === 0) return null;
-
-  const sessionIds = sessions.map((s) => s.id);
-
+  // the league's earlier sessions' games, in one joined query
   const { data: games } = await supabase
     .from('games')
-    .select('id, final_score')
+    .select('id, final_score, sessions!inner(league_id, session_date)')
     .eq('is_warmup', false)
-    .in('session_id', sessionIds);
+    .eq('sessions.league_id', leagueId)
+    .lt('sessions.session_date', beforeDate);
 
   if (!games || games.length === 0) return null;
 
+  // one bulk fetch for every game still lacking a typed score -- this used to
+  // be one round-trip per game, run on every ball logged in a league game
+  const derived = await fetchDerivedScoresForGames(
+    supabase,
+    (games as any[]).filter((g) => g.final_score == null).map((g) => g.id),
+  );
   const scores: number[] = [];
   for (const game of games as any[]) {
-    const derived = await fetchDerivedScoreForGame(supabase, game.id);
-    const score = game.final_score ?? derived;
+    const score = game.final_score ?? derived.get(game.id) ?? null;
     if (score != null) scores.push(score);
   }
 

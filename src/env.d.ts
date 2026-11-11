@@ -9,6 +9,8 @@ declare global {
       supabase: SupabaseClient;
       /** The signed-in user, from the verified session JWT's claims (see middleware.ts). */
       user: { id: string; email?: string } | null;
+      /** Profile display prefs for Layout.astro, already in flight (see middleware.ts). */
+      layoutPrefs?: Promise<{ show_pinfall: boolean | null; theme: string | null } | null>;
     }
   }
 }

@@ -140,15 +140,26 @@ export async function fetchDerivedScoresForGames(
   const result = new Map<string, number | null>();
   if (gameIds.length === 0) return result;
 
-  const CHUNK = 200;
-  for (let i = 0; i < gameIds.length; i += CHUNK) {
-    const chunk = gameIds.slice(i, i + CHUNK);
-    const { data: frames } = await supabase
-      .from('frames')
-      .select('game_id, frame_number, shots(pins_standing, strike, spare, foul, created_at)')
-      .in('game_id', chunk)
-      .order('frame_number', { ascending: true })
-      .order('created_at', { foreignTable: 'shots', ascending: true });
+  // Small enough that a chunk's frame rows (~10 per game) stay under
+  // PostgREST's default 1000-row response cap -- a 200-game chunk could be
+  // silently truncated. Chunks are fetched in parallel, not one after another.
+  const CHUNK = 60;
+  const chunks: string[][] = [];
+  for (let i = 0; i < gameIds.length; i += CHUNK) chunks.push(gameIds.slice(i, i + CHUNK));
+  const responses = await Promise.all(
+    chunks.map((chunk) =>
+      supabase
+        .from('frames')
+        .select('game_id, frame_number, shots(pins_standing, strike, spare, foul, created_at)')
+        .in('game_id', chunk)
+        .order('frame_number', { ascending: true })
+        .order('created_at', { foreignTable: 'shots', ascending: true }),
+    ),
+  );
+
+  for (let c = 0; c < chunks.length; c++) {
+    const chunk = chunks[c];
+    const frames = responses[c].data;
 
     const framesByGame = new Map<string, FrameLite[]>();
     for (const frame of (frames ?? []) as any[]) {
@@ -701,4 +712,33 @@ export async function fetchMiniScoresheets(
   }
 
   return out;
+}
+
+export type GameScoreSummary = {
+  scratchScore: number | null;
+  canEndEarly: boolean;
+  partialScore: { score: number; throughFrame: number } | null;
+};
+
+/**
+ * The game page's live score readout, from frames alone: the scratch score
+ * (typed final score, else the derived/running total), plus the partial
+ * score a practice-session game can be ended early at. Pure, so the server's
+ * first render and the client-side logger compute it identically -- the
+ * logger recomputes it after every ball with no server round-trip.
+ */
+export function computeGameScoreSummary(
+  frames: FrameLite[],
+  game: { isWarmup: boolean; finalScore: number | null; isPracticeSession: boolean },
+): GameScoreSummary {
+  const cells = game.isWarmup ? computeWarmupSheet(frames, 1) : computeScoresheet(frames);
+  const runningTotal = [...cells].reverse().find((c) => c.cumulative != null)?.cumulative ?? null;
+  const finalDerived = !game.isWarmup ? (cells[9]?.cumulative ?? null) : null;
+  const scratchScore = game.finalScore ?? finalDerived ?? runningTotal;
+
+  const isPracticeSessionGame = !game.isWarmup && game.isPracticeSession;
+  const partialScore =
+    isPracticeSessionGame && game.finalScore == null && finalDerived == null ? computeRunningScore(frames) : null;
+
+  return { scratchScore, canEndEarly: partialScore != null, partialScore };
 }

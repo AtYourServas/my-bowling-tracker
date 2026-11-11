@@ -2,20 +2,26 @@
 // Background refresh target for GameLogger.tsx's "Past Notes" panel. A bare
 // HTML fragment (no <Layout>) reusing NoteCard.astro directly -- notes can't
 // be rendered from a plain React island since NoteCard is an Astro-only
-// component, so this is fetched as text and its innerHTML swapped in after
-// each synced shot, instead of trying to reimplement NoteCard in React.
+// component, so this is fetched as text and its innerHTML swapped in.
+// `?leave=` is the leave the next ball faces (e.g. "3-10"; empty = full
+// rack), which the logger already knows client-side -- so this only has to
+// look up notes, not re-derive the frame state, and the logger caches the
+// result per leave.
 import NoteCard from '../../../../../components/NoteCard.astro';
-import { fetchGameLeaveNotesContext } from '../../../../../lib/gameContext';
+import { fetchLeaveNotes, notesForLeave, leaveAnchor } from '../../../../../lib/notes';
 import { leaveDisplayName } from '../../../../../lib/leaves';
-import { leaveAnchor } from '../../../../../lib/notes';
+import { FULL_RACK } from '../../../../../lib/scoring';
 
 const { supabase } = Astro.locals;
-const { gameId } = Astro.params;
 
-const frameNumber = Number(Astro.url.searchParams.get('frame')) || 1;
-const isWarmup = Astro.url.searchParams.get('warmup') === '1';
+const leaveParam = Astro.url.searchParams.get('leave') ?? '';
+const parsed = leaveParam
+  .split('-')
+  .map(Number)
+  .filter((n) => Number.isInteger(n) && n >= 1 && n <= 10);
+const facedNow = parsed.length ? parsed : [...FULL_RACK];
 
-const { leaveNotes, facedNow } = await fetchGameLeaveNotesContext(supabase, gameId!, isWarmup, frameNumber);
+const leaveNotes = notesForLeave(await fetchLeaveNotes(supabase), facedNow);
 const leaveNotesShown = leaveNotes.slice(0, 5);
 ---
 

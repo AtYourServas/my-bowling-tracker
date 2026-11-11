@@ -22,11 +22,10 @@ const path = Astro.url.pathname;
 let showPinfall = true;
 let savedTheme: string | null = null;
 if (user) {
-  const { data: profile } = await Astro.locals.supabase
-    .from('profiles')
-    .select('show_pinfall, theme')
-    .eq('id', user.id)
-    .maybeSingle();
+  // usually already started by the middleware, in parallel with the page
+  const profile =
+    (await Astro.locals.layoutPrefs) ??
+    (await Astro.locals.supabase.from('profiles').select('show_pinfall, theme').eq('id', user.id).maybeSingle()).data;
   showPinfall = profile?.show_pinfall ?? true;
   savedTheme = profile?.theme ?? null;
 }

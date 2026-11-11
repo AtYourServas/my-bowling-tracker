@@ -10,6 +10,8 @@ import {
   parseShotShorthand,
   earliestIncompleteFrame,
   earliestIncompleteWarmupFrame,
+  pinsFacedBefore,
+  computeGameScoreSummary,
   WARMUP_FRAME,
   type ShotLite,
   type FrameLite,
@@ -77,6 +79,8 @@ type Props = {
   sessionId: string;
   gameId: string;
   isWarmup: boolean;
+  /** Belongs to a practice-type session (can be ended early with a partial score). */
+  isPracticeSession: boolean;
   finalScore: number | null;
   frames: FrameRow[];
   initialFrameNumber: number;
@@ -112,6 +116,7 @@ export default function GameLogger({
   sessionId,
   gameId,
   isWarmup,
+  isPracticeSession,
   finalScore,
   frames: initialFrames,
   initialFrameNumber,
@@ -129,7 +134,6 @@ export default function GameLogger({
   const [approaches, setApproaches] = useState<Approach[]>(initialApproaches);
   const [activeFrame, setActiveFrame] = useState(initialFrameNumber);
   const [mode, setMode] = useState<'pick' | 'type'>(initialMode);
-  const [sidebar, setSidebar] = useState<Sidebar>(initialSidebar);
   const [leaveNotesHtml, setLeaveNotesHtml] = useState('');
   const [shorthandValue, setShorthandValue] = useState('');
   const [shorthandError, setShorthandError] = useState<string | null>(null);
@@ -248,24 +252,54 @@ export default function GameLogger({
   const nextFrameNumber = isWarmup ? activeFrame + 1 : activeFrame < 10 ? activeFrame + 1 : null;
   const activeBox = progress.nextBall != null ? progress.nextBall - 1 : -1;
 
+  // Score readout, recomputed locally after every ball (same function the
+  // server's first render used) -- no per-ball server round-trip. The
+  // handicap comes from that first render; it can't change mid-game.
+  const scoreSummary = useMemo(
+    () => computeGameScoreSummary(liteFrames, { isWarmup, finalScore, isPracticeSession }),
+    [liteFrames, isWarmup, finalScore, isPracticeSession],
+  );
+  const sidebar: Sidebar = { ...scoreSummary, sessionHandicap: initialSidebar.sessionHandicap };
+
   const frameLane = laneForFrame(activeFrame, laneConfig);
   const showFrameLane = hasLanePair(laneConfig) && frameLane != null;
 
-  // --- background refresh (sidebar + leave notes) --------------------------
+  // --- Past Notes panel (notes for the leave the next ball faces) ---------
+  // Fetched per leave and cached for the life of the page: most balls face a
+  // leave already seen this game (a full rack, above all), which then costs
+  // no request at all.
 
-  async function refreshLeaveNotes(forFrame: number) {
-    try {
-      const res = await fetch(
-        `/sessions/${sessionId}/games/${gameId}/leave-notes-fragment?frame=${forFrame}&warmup=${isWarmup ? '1' : '0'}`,
-        { credentials: 'same-origin' },
-      );
-      if (!res.ok) return;
-      const html = await res.text();
-      setLeaveNotesHtml(html);
-    } catch {
-      // best-effort background refresh -- leave whatever was showing
+  const facedKey =
+    progress.nextBall != null ? [...pinsFacedBefore(activeFrameShotsLite)].sort((a, b) => a - b).join('-') : null;
+  const leaveNotesCache = useRef(new Map<string, string>());
+  const facedKeyRef = useRef(facedKey);
+  facedKeyRef.current = facedKey;
+
+  useEffect(() => {
+    if (facedKey == null) {
+      setLeaveNotesHtml('');
+      return;
     }
-  }
+    const cached = leaveNotesCache.current.get(facedKey);
+    if (cached != null) {
+      setLeaveNotesHtml(cached);
+      return;
+    }
+    (async () => {
+      try {
+        const res = await fetch(`/sessions/${sessionId}/games/${gameId}/leave-notes-fragment?leave=${facedKey}`, {
+          credentials: 'same-origin',
+        });
+        if (!res.ok) return;
+        const html = await res.text();
+        leaveNotesCache.current.set(facedKey, html);
+        // ignore a response that arrives after the bowler has moved on
+        if (facedKeyRef.current === facedKey) setLeaveNotesHtml(html);
+      } catch {
+        // best-effort -- leave whatever was showing
+      }
+    })();
+  }, [facedKey, sessionId, gameId]);
 
   useEffect(() => {
     if (leaveNotesContainerRef.current) {
@@ -282,41 +316,6 @@ export default function GameLogger({
       }
     }
   }, [leaveNotesHtml]);
-
-  async function refreshSidebarAndFrame(loggedFrame: number, activeAfter: number) {
-    try {
-      const res = await fetch(`/sessions/${sessionId}/games/${gameId}/sidebar.json?frame=${loggedFrame}`, {
-        credentials: 'same-origin',
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setSidebar({
-          scratchScore: data.scratchScore,
-          sessionHandicap: data.sessionHandicap,
-          canEndEarly: data.canEndEarly,
-          partialScore: data.partialScore,
-        });
-        if (data.frameShots) {
-          setFrames((prev) => {
-            const next = prev.filter((f) => f.frameNumber !== loggedFrame);
-            next.push({ frameNumber: loggedFrame, shots: data.frameShots });
-            return next.sort((a, b) => a.frameNumber - b.frameNumber);
-          });
-        }
-      }
-    } catch {
-      // the shot already synced (that's what triggered this call) -- a
-      // failure here only means the sidebar/ids stay momentarily stale
-    }
-    void refreshLeaveNotes(activeAfter);
-  }
-
-  // Initial leave-notes paint (server already computed the peripheral data,
-  // but not leaveNotesHtml -- fetch it once on mount).
-  useEffect(() => {
-    void refreshLeaveNotes(initialFrameNumber);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // --- reference-data caching (write-only in Phase 2 -- Phase 3's service
   // worker is what will read this back for an offline page-load) -----------
@@ -456,6 +455,9 @@ export default function GameLogger({
       if (next.kind === 'save_as_approach') {
         // already applied optimistically when it was enqueued -- nothing else to reconcile
       } else {
+        // The shot was stored under its client-generated id, so the
+        // optimistic row already IS the saved row -- just clear its pending
+        // flag. (The score readout is derived locally from `frames`.)
         setFrames((prev) =>
           prev.map((f) =>
             f.frameNumber === next.frameNumber
@@ -463,14 +465,6 @@ export default function GameLogger({
               : f,
           ),
         );
-        // Awaited, not fire-and-forget: this replaces frame `next.frameNumber`'s
-        // whole shots array with the server's current snapshot (see
-        // refreshSidebarAndFrame above). Two overlapping calls for the same
-        // frame -- e.g. one per queued shot when catching up a multi-shot
-        // backlog -- would race, and the slower/older one can resolve last
-        // and clobber the newer snapshot. Awaiting keeps the queue's
-        // one-at-a-time ordering guarantee intact through the refresh too.
-        await refreshSidebarAndFrame(next.frameNumber, activeFrame);
       }
     }
 
@@ -788,7 +782,6 @@ export default function GameLogger({
   function navigateToFrame(n: number) {
     if (n === activeFrame) return;
     setActiveFrame(n);
-    void refreshLeaveNotes(n);
   }
 
   return (

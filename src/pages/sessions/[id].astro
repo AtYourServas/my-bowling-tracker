@@ -174,24 +174,22 @@ if (!session) {
 const viewParam = Astro.url.searchParams.get('view');
 const view: 'games' | 'stats' | 'notes' = viewParam === 'stats' || viewParam === 'notes' ? viewParam : 'games';
 
-const handicap = await fetchSessionHandicapDetail(supabase, session);
+// independent reads, fetched together rather than one round-trip after another
+const [handicap, { data: leagues }, { data: balls }, { data: games }] = await Promise.all([
+  fetchSessionHandicapDetail(supabase, session),
+  supabase.from('leagues').select('id, name').order('name'),
+  supabase.from('balls').select('id, name').order('name'),
+  supabase.from('games').select('*').eq('session_id', id).order('created_at', { ascending: true }),
+]);
 const sessionHandicap = handicap.effective;
 const leagueName = session.leagues?.name ?? null;
 
 const laneConfig = laneConfigFromSession(session);
-const { data: leagues } = await supabase.from('leagues').select('id, name').order('name');
-const { data: balls } = await supabase.from('balls').select('id, name').order('name');
 const ballName = (ballId: string | null) => balls?.find((b) => b.id === ballId)?.name ?? null;
 const defaultBallSummary =
   [ballName(session.default_ball_id), ballName(session.default_spare_ball_id) && `spare ${ballName(session.default_spare_ball_id)}`]
     .filter(Boolean)
     .join(' · ') || 'Not set';
-
-const { data: games } = await supabase
-  .from('games')
-  .select('*')
-  .eq('session_id', id)
-  .order('created_at', { ascending: true });
 
 // The slot label the games list uses for a game (league night vs freeform).
 function gameLabel(game: { is_warmup: boolean; game_number: number | null }, index: number): string {
@@ -206,8 +204,10 @@ function gameLabel(game: { is_warmup: boolean; game_number: number | null }, ind
 // banner can total the series; both are single bulk queries, so the cost is
 // two round-trips regardless of game count.
 const scoredGames = (games ?? []).filter((g) => !g.is_warmup);
-const derivedScores = await fetchDerivedScoresForGames(supabase, scoredGames.map((g) => g.id));
-const miniSheets = await fetchMiniScoresheets(supabase, scoredGames.map((g) => g.id));
+const [derivedScores, miniSheets] = await Promise.all([
+  fetchDerivedScoresForGames(supabase, scoredGames.map((g) => g.id)),
+  fetchMiniScoresheets(supabase, scoredGames.map((g) => g.id)),
+]);
 const miniSheet = (gameId: string) => {
   const mini = miniSheets.get(gameId);
   return mini && mini.cells.some((c) => c.bowled) ? mini : null;
